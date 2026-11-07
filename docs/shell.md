@@ -28,10 +28,14 @@ site is online, the tab says so: "Try again" or "Close tab".
 Each site's icon (from its `site.json`), its title under it.
 
 - **Installed** (solid frame, shadow): every page and upload kept on this device, never evicted, and served
-  to others. Remembered across restarts. An install that couldn't be done (the site unreachable) is tried
-  again at the next launch.
+  to others whenever HyperBrowser runs, with or without a tab open. Remembered across restarts. An install
+  that couldn't be done (the site unreachable) is tried again at the next launch.
 - **Bookmark** (dotted frame): cached and evicted as usual. The toolbar's bookmark button adds or removes one.
   Making an installed site a bookmark, or removing its icon, hands its files back to the cache.
+- **Who serves what**: your installed sites and your own published sites, always. Any other site (a
+  bookmark, or one you only visited) only while a tab shows it, and for 5 minutes after you close its last
+  tab; then HyperBrowser stops serving it (and at the next launch, it isn't served at all). Its files stay
+  in the cache: opening it again reuses them, but needs someone serving it online to find it.
 - Double-click (or Enter) opens; right-click: open, install or bookmark, remove; drag to another cell.
 - The official site and forum are preset; until their keys are published they say "not published".
 

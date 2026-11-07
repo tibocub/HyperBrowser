@@ -211,7 +211,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   // the engine confirmed it, so a site that couldn't be reached is tried again at the next launch.
   function keepSite (key, on) {
     rpc.request('site.open', { key })
-      .then(() => rpc.request('site.keep', { key, keep: on, timeout: 30000 }))
+      .then(() => rpc.request('site.keep', { key, keep: on, timeout: 30000 }).finally(() => rpc.request('site.close', { key }).catch(() => {})))
       .then(() => {
         const icon = iconOf(key)
         if (icon && (icon.kind === 'installed') === on) setIcons(upsert(data.desktop.icons, { id: icon.id, kept: on }))

@@ -2,6 +2,13 @@
 
 What HyperBrowser needs from SwarmFS and doesn't work around (constitution IV). Newest first.
 
+## F6. `leave()` then a visit: installing again keeps nothing (2026-11-07, spec 004) — fixed on a branch, not merged
+
+- **Seen**: install, uninstall, `sfs.leave(key)`, visit again, `site.keep(true)`: `kept()` true, nothing in
+  `kept/`. `leave()` kept the site's keeping pass (`_keepers`), which ran on the old, closed handles.
+- **Fix**: branch `claude/leave-forgets-site` (SwarmFS worktree `.claude/worktrees/leave-rejoin`): `leave()`
+  forgets the site's keeping pass, its check, and its members watch. Test in `test/install.test.js`.
+
 ## F5. Bytes held of a site on this device (2026-11-07, spec 002) — done
 
 - **Done** in SwarmFS 006 (`main` 43946bc): `site.held()`. Used by HyperBrowser 003 (`site.held`).
