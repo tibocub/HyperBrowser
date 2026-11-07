@@ -291,12 +291,17 @@ document.addEventListener('keydown', (e) => {
 })
 
 // Tabs share the room left in the bar, each a whole number of pixels wide (crisp glyphs), at most 240.
+// Narrow ones show their icon only (close: Ctrl+W or the middle button).
+// shortcut: past ~35 tabs on a 1280 px window the last ones are cut off; a tab list menu if that matters.
 function sizeTabs () {
   const tabs = $('tabs').children
   if (!tabs.length) return
   const room = $('top').clientWidth - $('hb').offsetWidth - $('plus').offsetWidth - $('win').offsetWidth - 48
-  const w = Math.max(48, Math.min(240, Math.floor(room / tabs.length)))
-  for (const t of tabs) t.style.width = w + 'px'
+  const w = Math.max(24, Math.min(240, Math.floor(room / tabs.length)))
+  for (const t of tabs) {
+    t.style.width = w + 'px'
+    t.classList.toggle('narrow', w < 72)
+  }
 }
 addEventListener('resize', sizeTabs)
 

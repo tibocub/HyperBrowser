@@ -35,6 +35,8 @@ button:disabled { cursor: default; opacity: .35; }
 .tab { box-sizing: border-box; position: relative; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 0; padding: 0 7px 0 12px; border: 0; border-right: 1px solid var(--ink); background: var(--paper); text-align: left; }
 .tab .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab img { width: 16px; height: 16px; image-rendering: pixelated; }
+.tab.narrow { justify-content: center; padding: 0; }
+.tab.narrow .name, .tab.narrow .x { display: none; }
 .tab[aria-current="page"] { background: var(--ink); color: var(--paper); }
 .tab .x { box-sizing: border-box; display: inline-flex; flex: 0 0 16px; height: 16px; padding: 3px; color: inherit; }
 .tab .x:hover { outline: 1px solid currentColor; outline-offset: -1px; }

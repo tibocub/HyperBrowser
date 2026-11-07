@@ -175,6 +175,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     if (mod && input.key.toLowerCase() === 't') { select(0); fwc.focus(); fwc.send('frame-focus'); return true }
     if (mod && input.key.toLowerCase() === 'l') { fwc.focus(); fwc.send('frame-focus'); return true }
     if (mod && input.key.toLowerCase() === 'w') { closeTab(current); return true }
+    if (input.control && input.key === 'Tab') {
+      const i = tabs.findIndex((t) => t.id === current)
+      select(tabs[(i + (input.shift ? -1 : 1) + tabs.length) % tabs.length].id)
+      return true
+    }
     if (input.key === 'F5' || (mod && input.key.toLowerCase() === 'r')) { tabOf(current)?.wc?.reload(); return true }
     if (input.alt && input.key === 'ArrowLeft') { go(-1); return true }
     if (input.alt && input.key === 'ArrowRight') { go(1); return true }

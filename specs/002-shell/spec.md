@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-07
 
-**Status**: Draft
+**Status**: Built (2026-11-07), except what waits on SwarmFS F4 and F5
 
 **Input**: "Spec 002, the shell's interface" (lead session, 2026-11-07), from the milestone-1 design
 (hypergraph `specs/research/hyperbrowser-milestone-1.md`, "Visual identity" and "The shell", Tibo
@@ -159,7 +159,8 @@ the three buttons; copy and paste in the address and in a site.
 - A site whose `site.json` has no icon, or an icon that isn't an image: a generic icon.
 - A site that stops being served while open: the state shows no peers; the page already shown stays.
 - The engine stops: the shell says so and exits (spec 001's behaviour).
-- Many tabs: tab names shorten with an ellipsis; the bar never scrolls past the window.
+- Many tabs: tab names shorten with an ellipsis, then narrow tabs show their icon only; the bar never scrolls
+  (past ~35 tabs on a 1280 px window the last ones are cut off: Ctrl+Tab still reaches them).
 - A preset site whose key isn't known yet: its icon shows, opening it says "not published yet".
 - The desktop file is missing or unreadable: the preset desktop.
 - Linux: a window without an OS frame must still move and resize (not tested by hand yet).
