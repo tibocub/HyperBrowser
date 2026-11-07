@@ -3,7 +3,8 @@
 // (frame.js, spec 002). Only this file bridges a site to the engine, and it names the site from the view.
 //   npm start [-- --open <key>] [-- --dir <engine folder>]
 //   npm run selftest [-- --no-guards]      (the sandbox self-test; --no-guards is its control run: must fail)
-import { app, BaseWindow, ipcMain, protocol, dialog } from 'electron'
+//   npm run framecheck                     (the frame: no OS frame, no app menu, sites under the bars)
+import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents } from 'electron'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -15,6 +16,7 @@ import { startFrame } from './frame.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SELFTEST = process.argv.includes('--selftest')
+const FRAMECHECK = process.argv.includes('--framecheck')
 const GUARDS = !process.argv.includes('--no-guards')
 const HEARTBEAT = 2000
 const arg = (name) => { const i = process.argv.indexOf(name); return i === -1 ? null : process.argv[i + 1] }
@@ -183,20 +185,60 @@ async function selftest (dir) {
   app.exit(ok ? 0 : 1)
 }
 
+// The frame check: the demo site in a frame of its own, then where everything is.
+async function framecheck (dir) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-framecheck-'))
+  fs.cpSync(path.join(HERE, '..', 'sites', 'demo'), path.join(tmp, 'site'), { recursive: true })
+  const { key } = await rpc.request('site.publish', { folder: path.join(tmp, 'site') })
+  const { win, inspect } = startFrame({ rpc, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
+  const timeout = setTimeout(() => { console.log('FRAMECHECK TIMEOUT'); app.exit(2) }, 60000)
+  const settled = async () => inspect().ready === 1 && await inspect().fwc.executeJavaScript("document.getElementById('tabs').children.length === 2").catch(() => false)
+  while (!(await settled())) await new Promise((resolve) => setTimeout(resolve, 250))
+  await new Promise((resolve) => setTimeout(resolve, 500)) // the frame's 'bars' message
+  clearTimeout(timeout)
+  const i = inspect()
+  const css = await i.fwc.executeJavaScript(`(() => {
+    const region = (q) => { const c = getComputedStyle(document.querySelector(q)); return c.getPropertyValue('app-region') || c.getPropertyValue('-webkit-app-region') }
+    return { top: region('#top'), clickable: ['#tabs', '#plus', '#hb', '#w-min', '#w-max', '#w-close'].map(region), bars: document.getElementById('bars').offsetHeight }
+  })()`)
+  const site = await openSiteOf(key).executeJavaScript('typeof window.frame')
+  const b = win.getBounds()
+  const c = win.getContentBounds()
+  const out = [
+    ['no app menu (no File, Edit, View)', Menu.getApplicationMenu() === null],
+    ['no OS frame: the window is all content', b.width === c.width && b.height === c.height],
+    ['the taskbar row drags the window', css.top === 'drag'],
+    ['tabs, +, the menu and the window buttons stay clickable', css.clickable.every((r) => r === 'no-drag')],
+    ['the site view starts right under the bars', i.views.length === 1 && i.views[0].y === i.bars && i.bars >= css.bars],
+    ['over a site, the frame covers the bars only', i.frame.height === i.bars],
+    ["a site's page has no door to the frame", site === 'undefined']
+  ]
+  for (const [name, pass] of out) console.log((pass ? 'PASS ' : 'FAIL ') + 'frame  ' + name)
+  const ok = out.every(([, pass]) => pass)
+  console.log(ok ? 'FRAMECHECK PASS' : 'FRAMECHECK FAIL')
+  win.destroy()
+  await shutdown()
+  for (const d of [tmp, dir]) try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5 }) } catch {}
+  app.exit(ok ? 0 : 1)
+}
+
+const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContents.fromId(id)).find(Boolean)
+
 app.whenReady().then(async () => {
   worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
   worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
   rpc = connect(worker, { onEvent })
-  const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST ? 'selftest-' + process.pid : 'engine')
+  const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST || FRAMECHECK ? 'selftest-' + process.pid : 'engine')
   const { identity } = await rpc.request('init', { dir, heartbeat: HEARTBEAT })
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
   console.log('engine up, identity', identity)
   if (SELFTEST) return selftest(dir)
+  if (FRAMECHECK) return framecheck(dir)
   startFrame({ rpc, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open') })
 }).catch((err) => { console.error(err); app.exit(1) })
 
 app.on('window-all-closed', async () => {
-  if (SELFTEST) return // the self-test exits with its own code
+  if (SELFTEST || FRAMECHECK) return // the checks exit with their own code
   await shutdown()
   app.quit()
 })

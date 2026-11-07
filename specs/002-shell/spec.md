@@ -134,6 +134,26 @@ and a site has no way to reach the frame's controls or messages.
 2. **Given** a site's page, **When** it tries to send the frame's messages, **Then** they are refused.
 3. **Given** spec 001's sandbox self-test and its control run, **Then** both still give their expected result.
 
+### User Story 7 - The taskbar row is the title bar (Priority: P1) *(Tibo, after trying the first build)*
+
+There is no OS window frame and no File/Edit/View menu bar. The top bar is the window's title bar: our own 1-bit
+minimize, maximize/restore and close buttons at its right end; its empty parts move the window, and a
+double-click on an empty part maximizes it. Tabs, "+", "HyperBrowser ▾" and the buttons stay clickable. "+"
+sits right after the last tab, as in Firefox and Chrome. Every pixel icon is drawn on whole pixels: the tab's ×
+and the "+" are perfect pixel crosses.
+
+**Independent Test**: drag the window by the empty bar, snap it to a screen edge, double-click to maximize, use
+the three buttons; copy and paste in the address and in a site.
+
+**Acceptance Scenarios**:
+
+1. **Given** the window, **Then** it has no OS frame and no menu bar.
+2. **Given** the empty part of the top bar, **When** dragged, **Then** the window moves (and snaps to screen
+   edges on Windows); **When** double-clicked, **Then** it maximizes (again: restores).
+3. **Given** the window buttons, **Then** they minimize, maximize or restore, and close.
+4. **Given** no app menu, **Then** Ctrl+W, reload (F5, Ctrl+R), copy, cut, paste, undo in sites and in the
+   address, and devtools (F12, Ctrl+Shift+I, in development only) still work.
+
 ### Edge Cases
 
 - A site whose `site.json` has no icon, or an icon that isn't an image: a generic icon.
@@ -142,14 +162,15 @@ and a site has no way to reach the frame's controls or messages.
 - Many tabs: tab names shorten with an ellipsis; the bar never scrolls past the window.
 - A preset site whose key isn't known yet: its icon shows, opening it says "not published yet".
 - The desktop file is missing or unreadable: the preset desktop.
+- Linux: a window without an OS frame must still move and resize (not tested by hand yet).
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: One launch command opens the window on the desktop tab; it is in `README.md` and stays the same.
-- **FR-002**: The top bar holds "HyperBrowser ▾" then the taskbar; a "+" at the end of the tabs goes to the
-  desktop with the address focused.
+- **FR-002**: The top bar holds "HyperBrowser ▾" then the taskbar; a "+" right after the last tab goes to the
+  desktop with the address focused; the window's buttons at the right end.
 - **FR-003**: Tabs share the bar's width equally (up to a maximum), no dragging or resizing; background tabs
   keep running; the desktop tab is first and can't be closed.
 - **FR-004**: The toolbar: back, forward, reload, the address, the bookmark button, the state. On the desktop
@@ -169,8 +190,11 @@ and a site has no way to reach the frame's controls or messages.
 - **FR-010**: The frame is drawn by HyperBrowser only: site views are placed under the toolbar; the frame's
   messages are accepted from the frame only.
 - **FR-011**: Spec 001's sandbox self-test and its control run keep their results.
-- **FR-012**: The look: 1-bit black and white plus one accent, Cozette for the frame, pixel icons,
-  box-drawing separators, dark = inverted.
+- **FR-012**: The look: 1-bit black and white plus one accent, Cozette for the frame, pixel icons on whole
+  pixels (a crisp cross beats a centred blur), box-drawing separators, dark = inverted.
+- **FR-013**: No OS window frame, no app menu: the top bar's empty parts drag the window (double-click
+  maximizes, OS snapping kept), its controls don't; our own minimize, maximize/restore and close buttons. The
+  keys a menu would give (close tab, reload, copy/paste, devtools in development) keep working.
 
 ### Key Entities
 

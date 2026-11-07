@@ -16,6 +16,7 @@ Accepted only from the frame's own view; any other sender gets `{ error: { code:
 | `icon.kind` | `{ id, kind }` | `installed` or `bookmark` |
 | `icon.remove` | `{ id }` | |
 | `settings` | `{ theme?, accent? }` | |
+| `window` | `{ act }` | `minimize`, `maximize` (toggles restore), `close` |
 | `cover` | `{ full }` | `true` while a frame menu is open: the frame covers the window |
 | `bars` | `{ height }` | the bars' height in px (the frame measures itself) |
 
@@ -23,7 +24,7 @@ Accepted only from the frame's own view; any other sender gets `{ error: { code:
 
 ```js
 { current, tabs: [{ id, key, title, icon, status, error, canBack, canForward, loading, state }],
-  desktop: { icons }, settings, identity, bookmarked /* current site has an icon */ }
+  desktop: { icons }, settings, identity, open /* site tabs */, ready, maximized }
 ```
 
 ## Engine: `site.state`

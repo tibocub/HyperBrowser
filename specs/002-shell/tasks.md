@@ -36,10 +36,20 @@ Built with Phase 2 (one page); checked through the frame's messages, not yet by 
 - [x] T012 HyperBrowser menu: identity, installed sites, open by key, theme, accent, about; Escape / outside
   click closes
 - [x] T013 installed sites opened in the engine at launch (seeded while running, FR-008)
-- [ ] T014 tests, docs, commit; hand to Tibo
+- [x] T014 tests, docs, commit; hand to Tibo
 
-## Phase 4: Polish
+## Phase 4: Tibo's fixes after the first build (US7)
 
-- [ ] T015 the self-test checks the frame: a site's view starts under the bars (SC-004), a site's page can't
-  reach the `frame` channel
-- [ ] T016 `docs/shell.md` (using the shell), README status; tasks ticked
+- [x] T017 the tab's × and the "+" as perfect pixel crosses (5×5 at 2 px, whole-pixel boxes); "+" right after
+  the last tab
+- [x] T018 no OS frame, no app menu: the top bar drags the window; our minimize, maximize/restore, close; keys
+  kept (Ctrl+W, F5/Ctrl+R, Ctrl+T, Ctrl+L, devtools in dev); copy/paste checked
+- [x] T019 [test] `npm run framecheck` in `npm run test:sandbox`: no app menu, no OS frame, the bar drags and its
+  controls don't, the site view right under the bars, the frame covers the bars only, a site page has no
+  `window.frame`
+
+## Phase 5: Polish
+
+- [x] T015 the frame check (T019): a site's view starts under the bars (SC-004), a site's page has no door to
+  the frame
+- [x] T016 `docs/shell.md` (using the shell), README status; tasks ticked

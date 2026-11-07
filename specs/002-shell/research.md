@@ -40,6 +40,18 @@
 - **Alternatives**: the person's hypergraph settings (synced across devices): later, once the desktop layout
   is settled; noted.
 
+## R7. No OS frame (Tibo, after the first build)
+
+- **Decision**: `BaseWindow({ frame: false })` and `Menu.setApplicationMenu(null)`; the top bar is
+  `-webkit-app-region: drag`, its buttons and tabs `no-drag` (so are open menus and their backdrop). The OS
+  handles the drag, so Windows keeps snapping and double-click-to-maximize. Keys a menu gave: Ctrl+W, F5/Ctrl+R,
+  Ctrl+T, Ctrl+L, devtools (dev only) through `before-input-event`; copy, paste and undo are Chromium's own on
+  Windows and Linux (checked: Ctrl+A, C, V in the address with no menu).
+- **Pixel crosses**: the ×, +, and window glyphs are 5×5 drawn at 10 px (2 px a pixel), and every box of the
+  bar has a whole-pixel width (tabs sized by the page, `#hb` 160 px, `+` 36 px, window buttons 40 px).
+- **Linux**: frameless windows move by the drag region; resizing at the edges depends on the window manager
+  (Wayland may give none): not tried yet.
+
 ## R6. Fonts and look
 
 - Cozette Vector 1.30.0 (MIT), regular and bold woff2 from the mockup's asset store, in `shell/ui/fonts/`.

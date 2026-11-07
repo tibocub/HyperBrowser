@@ -2,7 +2,8 @@
 // taskbar, toolbar, desktop, menus: shell/ui/). Site views sit under the bars and never above the frame;
 // the frame covers the whole window on the desktop tab, while a tab has no page yet, and while a menu is
 // open (transparent over the site). Its messages are taken from its own view only (contracts/frame.md).
-import { BaseWindow, WebContentsView, ipcMain } from 'electron'
+// No OS frame and no app menu: the taskbar row is the title bar (drag, double-click, our window buttons).
+import { app, BaseWindow, WebContentsView, ipcMain, Menu } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -13,12 +14,14 @@ const POLL = 2000
 const KINDS = new Set(['installed', 'bookmark'])
 const THEMES = new Set(['system', 'light', 'dark'])
 const ACCENTS = new Set(['#1f4fd1', '#c2410c', '#0b7a52'])
+const DEV = !app.isPackaged // devtools: F12, Ctrl+Shift+I
 
 // openSite(key) → { key, manifest, view, webContents, close }; readIcon(key, manifest) → data URL or null.
 export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null }) {
   const preset = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
   let data = load()
-  const win = new BaseWindow({ width: 1280, height: 820, minWidth: 560, minHeight: 360, title: 'HyperBrowser', backgroundColor: '#ffffff' })
+  Menu.setApplicationMenu(null) // no File/Edit/View: copy, paste and undo still work in pages (Windows, Linux)
+  const win = new BaseWindow({ width: 1280, height: 820, minWidth: 560, minHeight: 360, frame: false, title: 'HyperBrowser', backgroundColor: '#ffffff' })
   const frame = new WebContentsView({
     webPreferences: { preload: path.join(HERE, 'frame-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
@@ -74,7 +77,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       settings: data.settings,
       identity,
       open: tabs.length - 1,
-      ready: !!tab?.view
+      ready: !!tab?.view,
+      maximized: win.isMaximized()
     }
   }
 
@@ -135,7 +139,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         push()
       }
       for (const e of ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading']) v.webContents.on(e, sync)
-      v.webContents.on('before-input-event', (e, input) => { if (keys(input)) e.preventDefault() })
+      v.webContents.on('before-input-event', (e, input) => { if (keys(input, v.webContents)) e.preventDefault() })
       win.contentView.addChildView(v.view)
       win.contentView.addChildView(frame) // added again: on top of every site
       if (current === tab.id) select(tab.id)
@@ -163,10 +167,12 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     if (h?.canGoToOffset(offset)) h.goToOffset(offset)
   }
 
-  // The few keys the frame answers even while a site has the focus.
-  function keys (input) {
+  // The few keys the frame answers even while a site has the focus (there is no app menu to give them).
+  function keys (input, wc) {
     if (input.type !== 'keyDown') return false
     const mod = input.control || input.meta
+    if (DEV && (input.key === 'F12' || (mod && input.shift && input.key.toLowerCase() === 'i'))) { wc.toggleDevTools(); return true }
+    if (mod && input.key.toLowerCase() === 't') { select(0); fwc.focus(); fwc.send('frame-focus'); return true }
     if (mod && input.key.toLowerCase() === 'l') { fwc.focus(); fwc.send('frame-focus'); return true }
     if (mod && input.key.toLowerCase() === 'w') { closeTab(current); return true }
     if (input.key === 'F5' || (mod && input.key.toLowerCase() === 'r')) { tabOf(current)?.wc?.reload(); return true }
@@ -233,6 +239,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         push()
         return { result: true }
       case 'cover': cover = !!a.full; layout(); return { result: true }
+      case 'window':
+        if (a.act === 'minimize') win.minimize()
+        else if (a.act === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
+        else if (a.act === 'close') win.close()
+        return { result: true }
       case 'bars':
         if (Number.isFinite(a.height) && a.height > 0 && a.height < 400) bars = Math.ceil(a.height)
         layout()
@@ -249,9 +260,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       return { error: { code: err.code || 'ERROR', message: err.message } }
     }
   })
-  fwc.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'F12') fwc.toggleDevTools() })
+  fwc.on('before-input-event', (e, input) => { if (DEV && input.type === 'keyDown' && (input.key === 'F12' || ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i'))) { e.preventDefault(); fwc.toggleDevTools() } })
 
   win.on('resize', layout)
+  win.on('maximize', push)
+  win.on('unmaximize', push)
   win.on('closed', () => {
     clearInterval(timer)
     ipcMain.removeHandler('frame')
@@ -262,5 +275,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   // installed sites are opened in the engine, so seeded while HyperBrowser runs (FR-008; whole: SwarmFS F4)
   for (const i of data.desktop.icons) if (i.kind === 'installed' && i.key) rpc.request('site.open', { key: i.key }).catch(() => {})
   if (open) openKey(open)
-  return win
+  // for the frame check (npm run test:sandbox): where everything is
+  const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc })
+  return { win, inspect }
 }

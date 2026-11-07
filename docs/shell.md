@@ -4,11 +4,15 @@
 npm start
 ```
 
-The window has two bars, drawn by HyperBrowser itself (a site only ever draws below them):
+The window has no OS frame and no menu bar: two bars drawn by HyperBrowser itself (a site only ever draws
+below them):
 
-- **The top bar**: "HyperBrowser ▾" (your identity, installed sites, open a site by key, the look: system,
-  light or dark, and the accent), then **the tabs** as a taskbar. Tabs share the width; other tabs keep running
-  in the background. The desktop is always the first tab. `+` goes to the desktop with the address ready.
+- **The top bar** is the window's title bar: "HyperBrowser ▾" (your identity, installed sites, open a site by
+  key, the look: system, light or dark, and the accent), then **the tabs** as a taskbar, `+` right after the
+  last tab (goes to the desktop with the address ready), empty space, and the window's buttons (minimize,
+  maximize/restore, close). Drag the empty space to move the window (Windows snaps it to screen edges);
+  double-click it to maximize. Tabs share the width; other tabs keep running in the background. The desktop is
+  always the first tab.
 - **The toolbar**: back, forward, reload, the address, the bookmark button, and the site's state on the right
   (`■ complete` or `□ loading`, peers).
 
@@ -36,12 +40,19 @@ The desktop, bookmarks and the look are kept in `shell.json` in the app's data f
 | | |
 |---|---|
 | Ctrl+L | the address |
+| Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+Z | as usual, in sites and in the address |
+| F12, Ctrl+Shift+I | devtools (from `npm start` only, not in a packaged build) |
 | Ctrl+T | the desktop, address ready |
 | Ctrl+W | close the tab |
 | Ctrl+Tab, Ctrl+Shift+Tab | next, previous tab |
 | F5, Ctrl+R | reload |
 | Alt+Left, Alt+Right | back, forward |
 | Escape | close a menu |
+
+## Linux
+
+Not tried yet. The window has no OS frame: it moves by the top bar; resizing at the edges depends on the
+window manager (some Wayland desktops give none).
 
 ## Not yet
 

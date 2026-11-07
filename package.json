@@ -18,6 +18,7 @@
   "scripts": {
     "start": "electron .",
     "selftest": "electron . --selftest",
+    "framecheck": "electron . --framecheck",
     "test": "node scripts/test-runner.js",
     "test:bare": "node scripts/test-runner.js --bare",
     "test:sandbox": "node test/sandbox.electron.js",

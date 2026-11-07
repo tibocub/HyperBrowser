@@ -1,4 +1,5 @@
-// The sandbox self-test and its control run, as a test (spec 001 US3, SC-002). Node only (it starts
+// The sandbox self-test and its control run, as a test (spec 001 US3, SC-002), then the frame check
+// (spec 002 US6, FR-010, FR-013). Node only (it starts
 // Electron): `npm run test:sandbox`. The guarded run must pass every check; the control run (--no-guards)
 // must fail, and fail exactly where a guard of ours does the work.
 import test from 'brittle'
@@ -12,7 +13,7 @@ const ELECTRON = createRequire(import.meta.url)('electron') // the binary's path
 
 function selftest (...args) {
   return new Promise((resolve) => {
-    const p = spawn(ELECTRON, ['.', '--selftest', ...args], { cwd: ROOT })
+    const p = spawn(ELECTRON, ['.', ...(args.includes('--framecheck') ? [] : ['--selftest']), ...args], { cwd: ROOT })
     let out = ''
     p.stdout.on('data', (d) => { out += d })
     p.stderr.on('data', (d) => { out += d })
@@ -40,4 +41,11 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     'no web: <img src=https://...> fails to load (needs internet to mean anything)',
     'the page names no space: hyper.subspace(<other site>) is refused'
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
+})
+
+test('the frame: no OS frame, no app menu, sites under the bars', { timeout: 150000 }, async (t) => {
+  const { code, out } = await selftest('--framecheck')
+  t.is(fails(out).length, 0, fails(out).join('; '))
+  t.ok(out.includes('FRAMECHECK PASS'))
+  t.is(code, 0)
 })

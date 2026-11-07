@@ -11,19 +11,24 @@ const GLYPHS = {
   back: 'M3 1h1v1H3zM2 2h1v1H2zM1 3h6v2H1zM2 5h1v1H2zM3 6h1v1H3z',
   forward: 'M4 1h1v1H4zM5 2h1v1H5zM1 3h6v2H1zM5 5h1v1H5zM4 6h1v1H4z',
   reload: 'M2 1h3v1H2zM1 2h1v4H1zM2 6h4v1H2zM6 4h1v2H6zM5 0h1v3H5zM6 1h1v1H6z',
-  plus: 'M3 0h2v3h3v2H5v3H3V5H0V3h3z',
+  // 5×5, drawn at 10px (2px a pixel): perfect crosses, symmetric round the middle pixel
+  plus: 'M2 0h1v5H2zM0 2h2v1H0zM3 2h2v1H3z',
+  close: 'M0 0h1v1H0zM1 1h1v1H1zM2 2h1v1H2zM3 3h1v1H3zM4 4h1v1H4zM4 0h1v1H4zM3 1h1v1H3zM1 3h1v1H1zM0 4h1v1H0z',
+  min: 'M0 4h5v1H0z',
+  max: 'M0 0h5v2H0zM0 2h1v2H0zM4 2h1v2H4zM0 4h5v1H0z',
+  restore: 'M1 0h4v1H1zM4 1h1v3H4zM0 1h4v1H0zM0 2h1v2H0zM3 2h1v2H3zM0 4h4v1H0z',
   mark: 'M1 0h6v8H6V7H5V6H3v1H2v1H1zM2 1v5h1V5h2v1h1V1z',
   marked: 'M1 0h6v8H6V7H5V6H3v1H2v1H1z',
-  close: 'M1 1h1v1H1zM2 2h1v1H2zM3 3h2v2H3zM5 2h1v1H5zM6 1h1v1H6zM2 5h1v1H2zM1 6h1v1H1zM5 5h1v1H5zM6 6h1v1H6z',
   me: 'M1 0h6v1H1zM0 1h1v6H0zM7 1h1v6H7zM1 7h6v1H1zM2 2h1v2H2zM5 2h1v2H5zM2 5h4v1H2z'
 }
+const SMALL = new Set(['plus', 'close', 'min', 'max', 'restore']) // the 5×5 ones
 const DARK_ACCENT = { '#1f4fd1': '#8fb0ff', '#c2410c': '#ff9a5c', '#0b7a52': '#4fd1a0' }
 const SVG = 'http://www.w3.org/2000/svg'
 const $ = (id) => document.getElementById(id)
 
 function glyph (name) {
   const svg = document.createElementNS(SVG, 'svg')
-  svg.setAttribute('viewBox', '0 0 8 8')
+  svg.setAttribute('viewBox', SMALL.has(name) ? '0 0 5 5' : '0 0 8 8')
   svg.setAttribute('shape-rendering', 'crispEdges')
   svg.setAttribute('aria-hidden', 'true')
   const p = document.createElementNS(SVG, 'path')
@@ -98,13 +103,15 @@ function render () {
       x.setAttribute('role', 'button')
       x.setAttribute('aria-label', 'Close ' + t.title)
       x.append(glyph('close'))
-      x.style.width = x.style.height = '12px'
       x.onclick = (e) => { e.stopPropagation(); send('close', { id: t.id }) }
       b.append(x)
       b.onauxclick = (e) => { if (e.button === 1) send('close', { id: t.id }) }
     }
     return b
   }))
+  sizeTabs()
+  $('w-max').setAttribute('aria-label', S.maximized ? 'Restore' : 'Maximize')
+  setGlyph($('w-max').firstElementChild, S.maximized ? 'restore' : 'max')
 
   // toolbar
   $('back').disabled = !tab.canBack
@@ -282,6 +289,20 @@ document.addEventListener('keydown', (e) => {
     send('select', { id: S.tabs[(i + (e.shiftKey ? -1 : 1) + S.tabs.length) % S.tabs.length].id })
   }
 })
+
+// Tabs share the room left in the bar, each a whole number of pixels wide (crisp glyphs), at most 240.
+function sizeTabs () {
+  const tabs = $('tabs').children
+  if (!tabs.length) return
+  const room = $('top').clientWidth - $('hb').offsetWidth - $('plus').offsetWidth - $('win').offsetWidth - 48
+  const w = Math.max(48, Math.min(240, Math.floor(room / tabs.length)))
+  for (const t of tabs) t.style.width = w + 'px'
+}
+addEventListener('resize', sizeTabs)
+
+$('w-min').onclick = () => send('window', { act: 'minimize' })
+$('w-max').onclick = () => send('window', { act: 'maximize' })
+$('w-close').onclick = () => send('window', { act: 'close' })
 
 // --- the bars' height, so main puts site views right under them ---
 

@@ -47,8 +47,9 @@ The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` fro
 ```bash
 npm test               # Node: protocol, engine, sites, site API, two engines, the worker's heartbeat
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
-npm run test:sandbox   # the sandbox self-test, then its control run (guards off), which must fail
+npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), then the frame check
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS
+npm run framecheck     # the frame alone (no OS frame, no app menu, sites under the bars): FRAMECHECK PASS
 ```
 
 On Windows, put test temp folders on the SSD: `set HG_TEST_TMP=C:/Users/<you>/AppData/Local/Temp/hg-tests`
