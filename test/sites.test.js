@@ -1,0 +1,73 @@
+// Publishing a folder and opening it by key (spec 001 US1, US2; FR-006..008; SC-001, SC-006).
+import test from 'brittle'
+import fs from 'fs'
+import path from 'path'
+import { engine, siteFolder, codeOf, eventually, text } from './helpers.js'
+
+test('site.json is checked before anything is made', async (t) => {
+  const e = await engine(t)
+  const bad = async (opts) => {
+    try {
+      await e.rpc.request('site.publish', { folder: siteFolder(t, opts) })
+      return null
+    } catch (err) {
+      return err.code + ': ' + err.message
+    }
+  }
+  t.ok((await bad({ manifest: null })).startsWith('NO_MANIFEST'))
+  t.ok((await bad({ manifest: '{ nope' })).startsWith('INVALID_MANIFEST'))
+  t.ok((await bad({ manifest: [] })).startsWith('INVALID_MANIFEST'))
+  t.ok((await bad({ manifest: { title: '' } })).includes('title'))
+  t.ok((await bad({ manifest: { title: 'x', entry: '../up.html' } })).includes('entry'))
+  t.ok((await bad({ manifest: { title: 'x', entry: 'missing.html' } })).includes('missing.html'))
+  t.ok((await bad({ manifest: { title: 'x', permissions: 'space' } })).includes('permissions'))
+  t.is(await codeOf(e.rpc.request('site.publish', { folder: path.join(e.dir, 'no-such-folder') })), 'NO_MANIFEST')
+})
+
+test('publish, publish again: same key; a second engine opens it from the key alone', async (t) => {
+  const owner = await engine(t)
+  const visitor = await engine(t)
+  const folder = siteFolder(t, {
+    manifest: { title: 'Docs', entry: 'index.html', icon: 'icon.png', permissions: ['space', 'future-thing'] },
+    files: { 'index.html': '<link rel=stylesheet href=style.css><h1>Docs</h1>', 'style.css': 'h1{}', 'icon.png': 'png', 'a/b.html': 'deep' }
+  })
+
+  const first = await owner.rpc.request('site.publish', { folder })
+  t.is(first.created, true)
+  t.is(first.key.length, 52)
+  const again = await owner.rpc.request('site.publish', { folder })
+  t.is(again.key, first.key, 'same folder, same site')
+  t.is(again.created, false)
+
+  const opened = await visitor.rpc.request('site.open', { key: first.key })
+  t.is(opened.key, first.key)
+  t.alike(opened.manifest, { title: 'Docs', entry: 'index.html', icon: 'icon.png', permissions: ['space', 'future-thing'] })
+  t.is(opened.dynamic, true)
+
+  const entry = await visitor.rpc.request('site.read', { key: first.key, path: '' })
+  t.is(entry.path, 'index.html')
+  t.is(text(entry.bytes), fs.readFileSync(path.join(folder, 'index.html'), 'utf-8'))
+  t.is(text((await visitor.rpc.request('site.read', { key: first.key, path: 'style.css' })).bytes), 'h1{}')
+  t.is(text((await visitor.rpc.request('site.read', { key: first.key, path: 'a/b.html' })).bytes), 'deep')
+  t.is(text((await visitor.rpc.request('site.read', { key: first.key, path: '/a/b.html' })).bytes), 'deep', 'a leading slash is the root')
+
+  for (const p of ['nope.html', '../x', 'a/../index.html', '%2e%2e/x', 'a\\b.html', 'a//b.html', 'a/b.html\0', '.']) {
+    t.is(await codeOf(visitor.rpc.request('site.read', { key: first.key, path: p, timeout: 500 })), 'NOT_FOUND', p)
+  }
+
+  // the owner's edit reaches the visitor (SwarmFS's linked folder, synced by the engine)
+  fs.writeFileSync(path.join(folder, 'style.css'), 'h1{color:red}')
+  t.ok(await eventually(async () => text((await visitor.rpc.request('site.read', { key: first.key, path: 'style.css' })).bytes) === 'h1{color:red}', 20000, 250))
+})
+
+test('a static site, a site not opened, a key nobody has', async (t) => {
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t) })
+  const visitor = await engine(t)
+  t.is(await codeOf(visitor.rpc.request('site.read', { key, path: '' })), 'NOT_FOUND', 'open it first')
+  const opened = await visitor.rpc.request('site.open', { key })
+  t.is(opened.dynamic, false)
+  t.alike(opened.manifest, { title: 'Test site', entry: 'index.html', permissions: [] })
+  const nobody = 'y'.repeat(52)
+  t.ok(await codeOf(visitor.rpc.request('site.open', { key: nobody, timeout: 2000 })), 'refused, not a hang')
+})

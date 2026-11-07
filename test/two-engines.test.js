@@ -1,0 +1,60 @@
+// Two engines, two processes: the command line publishes a folder, this process opens the printed key alone
+// (spec 001 US1, US2, FR-009; SC-001). The child runs on the runtime running this test (Node or Bare).
+import test from 'brittle'
+import fs from 'fs'
+import path from 'path'
+import process from 'process'
+import { spawn } from 'child_process'
+import { fileURLToPath } from 'url'
+import { engine, siteFolder, tmpDir, bootstrap, eventually, within, text } from './helpers.js'
+
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'engine', 'cli.js')
+
+// The child and what it printed so far; killed (and waited for) at teardown, before the folders go.
+function cli (t, args) {
+  const child = spawn(process.execPath, [CLI, ...args])
+  const out = { text: '', code: null }
+  child.stdout.on('data', (d) => { out.text += d })
+  child.stderr.on('data', (d) => { out.text += d })
+  const exited = new Promise((resolve) => child.on('exit', (code) => { out.code = code; resolve(code) }))
+  t.teardown(async () => {
+    if (out.code === null) child.kill()
+    await within(exited, 10000)
+  })
+  return { out, exited }
+}
+
+const boot = (nodes) => nodes.map((n) => `${n.host}:${n.port}`).join(',')
+
+test('publish from the command line; another engine opens the key alone', async (t) => {
+  const folder = siteFolder(t, { manifest: { title: 'From the CLI' }, files: { 'index.html': '<p>published</p>' } })
+  const net = boot(await bootstrap(t))
+  const publisher = cli(t, ['publish', folder, '--dir', tmpDir(t, 'owner'), '--bootstrap', net])
+  const key = await eventually(() => /key: ([a-z0-9]{52})/.exec(publisher.out.text)?.[1], 60000, 100)
+  t.ok(key, 'the key is printed: ' + publisher.out.text.trim())
+  t.ok(publisher.out.text.includes('created'), 'the first time')
+  t.is(publisher.out.code, null, 'and it stays online')
+
+  const started = Date.now()
+  const visitor = await engine(t)
+  const opened = await visitor.rpc.request('site.open', { key })
+  t.is(opened.manifest.title, 'From the CLI')
+  t.is(text((await visitor.rpc.request('site.read', { key, path: '' })).bytes), '<p>published</p>')
+  t.comment(`opened and read in ${Date.now() - started} ms`)
+  t.ok(Date.now() - started < 15000, 'SC-001: within 15 s')
+
+  const reader = cli(t, ['open', key, '--once', '--dir', tmpDir(t, 'reader'), '--bootstrap', net])
+  t.is(await within(reader.exited, 60000, 'timeout'), 0, reader.out.text.trim())
+  t.ok(reader.out.text.includes('title: From the CLI'))
+  t.ok(reader.out.text.includes('entry bytes: ' + fs.statSync(path.join(folder, 'index.html')).size))
+})
+
+test('the command line refuses a bad folder and says why', async (t) => {
+  const folder = siteFolder(t, { manifest: null })
+  const r = cli(t, ['publish', folder, '--dir', tmpDir(t, 'owner'), '--bootstrap', boot(await bootstrap(t))])
+  t.is(await within(r.exited, 60000, 'timeout'), 1)
+  t.ok(r.out.text.includes('NO_MANIFEST'), r.out.text.trim())
+  const usage = cli(t, [])
+  t.is(await within(usage.exited, 10000, 'timeout'), 1)
+  t.ok(usage.out.text.includes('publish <folder>'))
+})
