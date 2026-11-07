@@ -18,6 +18,8 @@
 - **Rationale**: the site handle can't reach the personal space (by design), so a site had no way to keep
   something for the person across their devices. Read state, the chosen sort and mentions seen need it. One
   setting per name keeps each write small (a thread read = one setting).
+- **Caps** (lead review): a value ≤ 64 KB, a site ≤ 1 MB (names and values as JSON), else `TOO_BIG`; the forum
+  drops read state of threads it no longer shows (≤ 500 entries, ~45 KB).
 - **Alternatives**: `localStorage` (one device only: refused by the design); a JSON map in one setting (rewrites
   everything on each read). Noted in requests-to-hypergraph (B3): a site's own personal data on `hg.scope`
   would be the better home; the engine's names can move there without changing `hyper.mine`.

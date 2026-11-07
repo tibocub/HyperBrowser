@@ -45,7 +45,8 @@ stop(); off()
 - `hyper.mine`: the person's own data for your site, kept on their devices (their settings), never in your
   site's space, out of other sites' reach: `await hyper.mine.all()` → `{ name: value }`,
   `await hyper.mine.set(name, value)` (`null` removes; names up to 200 characters, values JSON). For read state,
-  a chosen sort, drafts: one name per thing, so each write stays small.
+  a chosen sort, drafts: one name per thing, so each write stays small. Capped, since every device of the person
+  keeps it: a value at most 64 KB and the site's names and values at most 1 MB, as JSON; over that, `TOO_BIG`.
 - The first call asks the person "let this site use your identity?" once; after a no, calls fail with
   `NOT_ALLOWED`.
 - Reads answer at once: right after a visitor opens your site, a list may be empty with `complete: false`.

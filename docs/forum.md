@@ -25,7 +25,9 @@ Publishing again (same folder, same engine folder) sends the edited pages and ad
   `lib/icon.js`: 16×16 1-bit icons (32 bytes), made from a key or drawn.
 - Record types in `site.json` (`board`, `thread`, `comment`, `vote`, `mention`, `avatar`; names are SwarmFS's
   `profile`): see `specs/006-forum/data-model.md`. Only additions between versions.
-- Read state, the sort and mentions seen: `hyper.mine` (the person's settings, on their devices).
+- Read state, the sort and mentions seen: `hyper.mine` (the person's settings, on their devices). Bounded: one
+  `read/<thread>` entry (~90 bytes) per thread read among the ones shown; entries of threads no longer shown
+  (deleted, hidden, past the newest 500) are dropped once per visit, so at most ~45 KB of the site's 1 MB.
 - Moderation and roles: hypergraph's (`moderateAction`, `report`, `reports`, `setRole`).
 
 ## Tests

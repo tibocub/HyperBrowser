@@ -17,6 +17,10 @@ const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'linked', 'count', 
   'peers', 'status', 'isComplete', 'completeFrom', 'types'])
 const MINE = new Set(['mine.all', 'mine.set'])
 const MINE_PREFIX = 'hyperbrowser/site/' // + key + '/' + name: a site's own settings
+// What a site may keep in the person's settings, which every device of theirs replicates (site code is untrusted).
+// The forum's use: read state ~90 bytes per thread opened, pruned to the threads it shows (<= 500): ~45 KB.
+const MINE_VALUE_MAX = 64 * 1024 // one value, as JSON
+const MINE_SITE_MAX = 1024 * 1024 // all of a site's names and values, as JSON
 const FILTERS = new Set(['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice'])
 const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'helpers']
 // A site no tab shows, not installed and not the person's own, is left this long after its last tab closes
@@ -34,6 +38,7 @@ export function start (ipc) {
   let closing = null
   let nextSub = 1
   let answering = Promise.resolve()
+  let keeping = Promise.resolve() // mine.set one at a time: two at once would each pass the cap
   let syncing = null
   const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null, tabs }
   const leaving = new Map() // key -> timer: no tab shows it, left once the grace period is over
@@ -251,7 +256,21 @@ export function start (ipc) {
       return out
     }
     if (typeof name !== 'string' || !name || name.length > 200) throw error('INVALID_PARAMS', 'mine.set needs a name of 1 to 200 characters')
-    await sfs.hg.setSetting(prefix + name, value === undefined ? null : value)
+    if (value === undefined) value = null
+    const size = JSON.stringify(value).length
+    if (size > MINE_VALUE_MAX) throw error('TOO_BIG', `a value is at most ${MINE_VALUE_MAX} bytes as JSON (this one: ${size})`)
+    const write = keeping.then(async () => {
+      if (value !== null) {
+        let total = name.length + size
+        for (const [n, v] of Object.entries(await sfs.hg.settings())) {
+          if (n.startsWith(prefix) && n !== prefix + name && v !== null) total += n.length - prefix.length + JSON.stringify(v).length
+        }
+        if (total > MINE_SITE_MAX) throw error('TOO_BIG', `a site keeps at most ${MINE_SITE_MAX} bytes here: remove some names first`)
+      }
+      await sfs.hg.setSetting(prefix + name, value)
+    })
+    keeping = write.catch(() => {})
+    await write
     return true
   }
 

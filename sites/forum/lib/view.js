@@ -99,6 +99,10 @@ export function visible (rows, folded) {
 // Unread: never read, or active since. read: the activity stamp seen last, or undefined.
 export const unread = (activity, read) => read === undefined || read === null || activity > read
 
+// Read state kept for threads no longer shown (deleted, hidden, or older than the newest LIMITS.threads): names to
+// drop, so the person's read state stays at most one entry per shown thread (~90 bytes each).
+export const staleRead = (mine, threadIds) => Object.keys(mine).filter((n) => n.startsWith('read/') && !threadIds.has(n.slice(5)))
+
 export function ago (stamp, now = Date.now()) {
   const s = Math.max(0, Math.round((now - stamp) / 1000))
   if (s < 60) return 'just now'

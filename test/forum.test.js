@@ -6,7 +6,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, text } from './helpers.js'
 import { forum, people } from '../sites/forum/lib/forum.js'
-import { summarize, sortThreads, tree, visible, tally, score, voteOf, nextVote, unread, boardTree } from '../sites/forum/lib/view.js'
+import { summarize, sortThreads, tree, visible, tally, score, voteOf, nextVote, unread, staleRead, boardTree } from '../sites/forum/lib/view.js'
 import { render, mentioned, toStored, toDraft } from '../sites/forum/lib/text.js'
 import * as icon from '../sites/forum/lib/icon.js'
 
@@ -205,6 +205,15 @@ test('sorting, unread and new, mentions with the current name; names and icons (
   t.ok(unread(now, kept['read/' + old.id]), 'a new reply: unread again')
   t.alike((await items(a2, 'comment', [['on', old.id]])).filter((x) => x.stamp > kept['read/' + old.id]).map((x) => x.id), [r3.id], 'and only that reply is new')
   t.ok(r2.stamp <= kept['read/' + old.id])
+
+  // bounded: read state of a thread no longer shown (here: deleted) is dropped
+  await a2.markRead(fresh.id, Date.now())
+  await a2.remove(fresh.id)
+  const shown = new Set((await items(a2, 'thread')).map((x) => x.id))
+  const stale = staleRead(await a2.mine(), shown)
+  t.alike(stale, ['read/' + fresh.id], "the deleted thread's read state is stale")
+  await a2.forget(stale)
+  t.alike(Object.keys(await a2.mine()).filter((n) => n.startsWith('read/')), ['read/' + old.id], 'one entry per shown thread read')
 
   // mentions: the stored text has the key, the list is c's, the name shown is the current one
   await c.setName('cee')

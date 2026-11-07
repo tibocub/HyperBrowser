@@ -87,6 +87,7 @@ export function forum (hyper) {
     // --- the person's own (on their devices, never in the forum) ---
     mine: () => hyper.mine.all(),
     markRead: (thread, activity) => hyper.mine.set('read/' + thread, activity),
+    async forget (names) { for (const n of names) await hyper.mine.set(n, null) },
     setSort: (how) => hyper.mine.set('sort', how),
     markMentionsSeen: (stamp) => hyper.mine.set('mentions', stamp)
   }

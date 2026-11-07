@@ -1,7 +1,7 @@
 // The forum's page (spec 006): one page, hash routes, redrawn from live views. The data: lib/forum.js; what is
 // derived: lib/view.js; post text: lib/text.js; icons: lib/icon.js. The shell draws the frame; this, the content.
 import { forum, watch, people, LIMITS, MODERATORS, ADMINS } from './lib/forum.js'
-import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, unread, ago, boardTree, SORTS } from './lib/view.js'
+import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, unread, staleRead, ago, boardTree, SORTS } from './lib/view.js'
 import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/text.js'
 import * as icon from './lib/icon.js'
 
@@ -37,9 +37,16 @@ async function start () {
   f = forum(hyper)
   me = await f.me() // the identity question, once per site
   mine = await f.mine()
+  let pruned = false
   watch(hyper, (state) => {
     data = state
     names = people(state.profiles, state.avatars)
+    if (!pruned && state.complete.threads) { // once per visit: read state only for the threads shown
+      pruned = true
+      const stale = staleRead(mine, new Set(state.threads.map((x) => x.id)))
+      for (const n of stale) delete mine[n]
+      f.forget(stale).catch(() => {})
+    }
     schedule()
   })
   hyper.query('mention').where({ who: me.identity }).live(({ items, complete }) => { mentionView.items = items; mentionView.complete = complete; schedule() }, { limit: 200 })

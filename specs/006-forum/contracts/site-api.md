@@ -18,7 +18,8 @@ await hyper.mine.set('sort', 'top')  // null removes
 ```
 
 Engine: `site.call` with `method: 'mine.all'` / `'mine.set'` (`args: [name, value]`). Names are non-empty
-strings up to 200 characters; values JSON. Stored as the person's setting `hyperbrowser/site/<key>/<name>`.
+strings up to 200 characters; values JSON, at most 64 KB each and 1 MB per site (names and values, as JSON):
+`TOO_BIG` over that. Stored as the person's setting `hyperbrowser/site/<key>/<name>`.
 
 ## CLI
 

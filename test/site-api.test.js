@@ -175,6 +175,14 @@ test('mine: the person\'s own data for a site, on their settings, asked first li
   t.alike(await owner.rpc.request('site.call', { key, method: 'mine.all' }), { 'read/abc': 42 }, 'null removes')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['', 1] })), 'INVALID_PARAMS')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['x'.repeat(201), 1] })), 'INVALID_PARAMS')
+  // capped: a value, and the site's whole share (every device of the person replicates it)
+  t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['big', 'x'.repeat(64 * 1024)] })), 'TOO_BIG', 'one value over 64 KB')
+  const chunk = 'x'.repeat(60 * 1024)
+  for (let i = 0; i < 17; i++) await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c' + i, chunk] })
+  t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c17', chunk] })), 'TOO_BIG', 'the site over 1 MB')
+  await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c0', 'small'] })
+  t.ok(await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c17', 'x'.repeat(50 * 1024)] }), 'room again once a value shrinks')
+  for (let i = 0; i <= 17; i++) await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c' + i, null] })
 
   // another site sees none of it
   const other = await owner.rpc.request('site.publish', { folder: siteFolder(t, DYNAMIC) })
