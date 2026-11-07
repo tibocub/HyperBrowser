@@ -1,9 +1,11 @@
 // The site API through the engine (spec 001 US4; FR-013..016; SC-004): hypergraph's site handle for the
 // site's own space, asked once per site, live views across the boundary. The types used are those a
-// SwarmFS site space has (profile, site, file): a site's own types are a request (research R11).
+// SwarmFS site space has (profile, site, file), except the last tests: a site's own types (spec 006).
 import test from 'brittle'
 import b4a from 'b4a'
-import { engine, siteFolder, codeOf, eventually, sleep } from './helpers.js'
+import fs from 'fs'
+import path from 'path'
+import { engine, siteFolder, codeOf, eventually, sleep, text } from './helpers.js'
 
 const DYNAMIC = { manifest: { title: 'Dynamic', permissions: ['space'] } }
 
@@ -117,4 +119,71 @@ test('a type the space never had: INVALID_TYPE once complete, not before', async
   const r = await read()
   if (!(r instanceof Error)) t.alike(r, { items: [], complete: false }, 'before the space is complete: empty and incomplete')
   t.ok(await eventually(async () => (await read()).code === 'INVALID_TYPE', 15000), 'then INVALID_TYPE')
+})
+
+// Spec 006: a site's own types (site.json), invite-only sites, and the person's own data for a site (mine).
+const OWN = {
+  manifest: {
+    title: 'Own types',
+    permissions: ['space'],
+    public: false,
+    types: { note: { fields: { text: 'text' } } }
+  }
+}
+
+test('a site with its own types, invite-only: strangers stay out, an invite lets a member in to write them', async (t) => {
+  const owner = await engine(t)
+  const folder = siteFolder(t, OWN)
+  const { key } = await owner.rpc.request('site.publish', { folder })
+  await owner.rpc.request('site.open', { key })
+  await owner.rpc.request('site.consent', { key, allow: true })
+  const mine = await owner.rpc.request('site.call', { key, method: 'put', args: ['note', { text: 'from the owner' }] })
+  t.is(mine.text, 'from the owner', "the owner writes the site's own type")
+
+  const stranger = await engine(t)
+  t.ok(await codeOf(stranger.rpc.request('site.open', { key, timeout: 3000 })), 'not public: the key alone is refused')
+
+  const link = await owner.rpc.request('site.call', { key, method: 'createInvite', args: [{ role: 'member', uses: 1 }] })
+  t.ok(typeof link === 'string' && link.startsWith('hg:'), 'an invite is an hg: link')
+  const member = await engine(t)
+  const opened = await member.rpc.request('site.open', { key: link })
+  t.is(opened.key, key, 'opened with the invite')
+  t.is(text((await member.rpc.request('site.read', { key, path: '' })).bytes), '<h1>hi</h1>', 'its pages too')
+  await member.rpc.request('site.consent', { key, allow: true })
+  t.ok(await eventually(async () => {
+    const r = await member.rpc.request('site.call', { key, method: 'query', args: ['note'], chain: [['latest', [5]]] })
+    return r.items.some((n) => n.id === mine.id)
+  }, 15000), "the member reads the owner's note")
+  const theirs = await member.rpc.request('site.call', { key, method: 'put', args: ['note', { text: 'from a member' }] })
+  t.ok(await eventually(async () => (await owner.rpc.request('site.call', { key, method: 'get', args: [theirs.id] })).record?.text === 'from a member', 15000), 'and writes one the owner gets')
+
+  // published again with one more type: added, the first one kept
+  fs.writeFileSync(path.join(folder, 'site.json'), JSON.stringify({ ...OWN.manifest, types: { ...OWN.manifest.types, tag2: { fields: { name: 'string' } } } }))
+  await owner.rpc.request('site.publish', { folder })
+  t.is((await owner.rpc.request('site.call', { key, method: 'put', args: ['tag2', { name: 'x' }] })).name, 'x', 'a type added by publishing again')
+})
+
+test('mine: the person\'s own data for a site, on their settings, asked first like the rest', async (t) => {
+  const { owner, key } = await published(t)
+  t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.all' })), 'NEEDS_CONSENT')
+  await owner.rpc.request('site.consent', { key, allow: true })
+  t.alike(await owner.rpc.request('site.call', { key, method: 'mine.all' }), {})
+  await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['sort', 'top'] })
+  await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['read/abc', 42] })
+  t.alike(await owner.rpc.request('site.call', { key, method: 'mine.all' }), { sort: 'top', 'read/abc': 42 })
+  await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['sort', null] })
+  t.alike(await owner.rpc.request('site.call', { key, method: 'mine.all' }), { 'read/abc': 42 }, 'null removes')
+  t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['', 1] })), 'INVALID_PARAMS')
+  t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['x'.repeat(201), 1] })), 'INVALID_PARAMS')
+
+  // another site sees none of it
+  const other = await owner.rpc.request('site.publish', { folder: siteFolder(t, DYNAMIC) })
+  await owner.rpc.request('site.open', { key: other.key })
+  await owner.rpc.request('site.consent', { key: other.key, allow: true })
+  t.alike(await owner.rpc.request('site.call', { key: other.key, method: 'mine.all' }), {}, "another site's mine is its own")
+
+  await owner.rpc.request('close')
+  const again = await engine(t, { dir: owner.dir })
+  await again.rpc.request('site.open', { key })
+  t.alike(await again.rpc.request('site.call', { key, method: 'mine.all' }), { 'read/abc': 42 }, 'kept after a restart')
 })

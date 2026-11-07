@@ -44,6 +44,9 @@ revokeInvite createSubspace subspaces redemptions peers status isComplete comple
 `info` returns `{ key, name, parent, private, typesVersion, history, helpers, identity }`. `query` takes
 `chain`: `[[name, args], ...]` of `by on where tag since until moderated fromDevice`, ending with
 `latest` (`[['latest', [20, { after }]]]`). `sub`: a sub-space key of the site (`NOT_ALLOWED` otherwise).
+Spec 006: `mine.all` (→ `{ name: value }`) and `mine.set` (`args: [name, value]`, `null` removes): the person's
+own data for the site, as their settings `hyperbrowser/site/<key>/<name>`. `site.publish` reads `site.json`'s
+`public` (false: not made public) and `types` (the site's record types; declared again on a later publish).
 
 ## Events (engine → shell)
 

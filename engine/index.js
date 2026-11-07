@@ -15,6 +15,8 @@ const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'linked', 'count', 
   'relate', 'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces', 'redemptions',
   'peers', 'status', 'isComplete', 'completeFrom', 'types'])
+const MINE = new Set(['mine.all', 'mine.set'])
+const MINE_PREFIX = 'hyperbrowser/site/' // + key + '/' + name: a site's own settings
 const FILTERS = new Set(['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice'])
 const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'helpers']
 // A site no tab shows, not installed and not the person's own, is left this long after its last tab closes
@@ -97,9 +99,13 @@ export function start (ipc) {
     }
     // a folder published before is linked to its site's pages (SwarmFS keeps the links): same site, same key
     const link = (await sfs.links()).find((l) => l.path === full)
-    if (link) return { key: sfs.hg.space(link.space).parent, created: false, manifest }
-    const site = await sfs.createSite(manifest.title)
-    await site.makePublic()
+    if (link) {
+      const key = sfs.hg.space(link.space).parent
+      if (manifest.types) await (await sfs.site(key)).declareTypes(manifest.types) // types added since (additions only)
+      return { key, created: false, manifest }
+    }
+    const site = await sfs.createSite(manifest.title, { types: manifest.types })
+    if (manifest.public !== false) await site.makePublic()
     await site.publish(full)
     return { key: site.key, created: true, manifest }
   }
@@ -216,9 +222,10 @@ export function start (ipc) {
   }
 
   async function call ({ key, sub, method, args = [], chain }) {
-    if (method !== 'info' && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
+    if (method !== 'info' && !MINE.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
     if (!Array.isArray(args)) throw error('INVALID_PARAMS', 'args is a list')
     const t = await target({ key, sub })
+    if (MINE.has(method)) return mine(keyOf({ key }), method, args)
     if (method === 'info') {
       const out = { identity: t.identity.publicKey }
       for (const name of INFO) out[name] = t[name] ?? null
@@ -232,6 +239,20 @@ export function start (ipc) {
     }
     await t.ready() // sync getters (subspaces, status, types) need the space's decisions
     return plain(await t[method](...args))
+  }
+
+  // The person's own data for this site (spec 006 R2): one setting per name, on every device of the person,
+  // never in the site's space. Another site's names are out of reach (the prefix is this site's key).
+  async function mine (key, method, [name, value]) {
+    const prefix = `${MINE_PREFIX}${key}/`
+    if (method === 'mine.all') {
+      const out = {}
+      for (const [n, v] of Object.entries(await sfs.hg.settings())) if (n.startsWith(prefix) && v !== null) out[n.slice(prefix.length)] = v
+      return out
+    }
+    if (typeof name !== 'string' || !name || name.length > 200) throw error('INVALID_PARAMS', 'mine.set needs a name of 1 to 200 characters')
+    await sfs.hg.setSetting(prefix + name, value === undefined ? null : value)
+    return true
   }
 
   async function live ({ key, sub, args = [], chain = [], opts }) {

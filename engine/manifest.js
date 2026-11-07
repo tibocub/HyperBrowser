@@ -31,6 +31,15 @@ export function parseManifest (textOrBytes) {
     throw error('INVALID_MANIFEST', 'site.json: permissions must be a list of names')
   }
   out.permissions = permissions
+  // spec 006: an invite-only site (public: false), and a dynamic site's own record types (hypergraph's form)
+  if (m.public !== undefined) {
+    if (typeof m.public !== 'boolean') throw error('INVALID_MANIFEST', 'site.json: public must be true or false')
+    out.public = m.public
+  }
+  if (m.types !== undefined) {
+    if (!m.types || typeof m.types !== 'object' || Array.isArray(m.types)) throw error('INVALID_MANIFEST', 'site.json: types must be an object of record types')
+    out.types = m.types
+  }
   return out
 }
 

@@ -48,7 +48,14 @@ function api (sub) {
   for (const m of METHODS) o[m] = (...args) => invoke({ op: 'call', sub, method: m, args })
   o.query = (...args) => query(sub, args)
   o.on = (event, fn) => subscribe({ op: 'on', sub, event }, fn)
-  if (sub === null) o.subspace = (key) => api(String(key))
+  if (sub === null) {
+    o.subspace = (key) => api(String(key))
+    // the person's own data for this site, on their devices (spec 006)
+    o.mine = {
+      all: () => invoke({ op: 'call', sub, method: 'mine.all', args: [] }),
+      set: (name, value) => invoke({ op: 'call', sub, method: 'mine.set', args: [name, value ?? null] })
+    }
+  }
   return o
 }
 

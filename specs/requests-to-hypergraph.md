@@ -2,6 +2,17 @@
 
 What HyperBrowser needs from hypergraph and doesn't work around (constitution IV). Newest first.
 
+## B3. A site's own data on the person's devices (2026-11-07, spec 006) — done in HyperBrowser for now
+
+- **Need**: the forum keeps what a person read, the sort they chose and the mentions they saw on their own
+  devices, never in the forum's space. A site's handle (`hg.scope`) reaches no personal space, by design.
+- **Today**: HyperBrowser's engine keeps it as the person's settings named `hyperbrowser/site/<key>/<name>`
+  (`hyper.mine.all()`, `hyper.mine.set()`: docs/site-api.md). Each `set` is a settings record in the personal
+  space; `settings()` reads them all.
+- **Ask (later, not blocking)**: a site's own corner of the personal space on its handle, e.g.
+  `scope.mine.get/set/all`, so a site's names aren't mixed with the person's settings and a site with many
+  names (one per thread read) doesn't grow `settings()`. HyperBrowser would keep `hyper.mine` as it is.
+
 ## B2. Joining again a space left with `leaveSpace` (2026-11-07, spec 004) — fixed on a branch, not merged
 
 - **Seen**: a visitor of a public site that left it (`leaveSpace`) and opened it again (`redeemInvite` of its

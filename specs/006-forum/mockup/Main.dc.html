@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forum front page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+@font-face{font-family:'Cozette';src:url(/_blob/019d08e55f6b6ea36523c01c4a46a5b6) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Cozette';src:url(/_blob/d5125c7cc7b3facb2efad1209ab38e17) format('woff2');font-weight:700;font-display:swap}
+body{margin:0;background:#fff}
+a{color:#000}a:hover{color:#000}
+button{font:inherit;color:inherit}
+.hb-row:hover{background:#f0f0f0}
+.hb-btn:focus-visible,.hb-link:focus-visible{outline:2px solid #000;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 880px; box-sizing: border-box; padding-bottom: 40px; font-family: 'Cozette', 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; line-height: 1.6; color: #000; background-color: #fff; background-image: repeating-conic-gradient(#000 0 25%, #fff 0 50%); background-size: 2px 2px; filter: {{filter}}">
+
+<nav aria-label="Menu bar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; padding: 3px 16px; background: #fff; border-bottom: 1px solid #000; font-weight: 600">
+<span style="display: flex; align-items: center; gap: 8px">
+<svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#000" d="M3 0h2v1H3zM1 1h2v1H1zM5 1h2v1H5zM0 2h1v4H0zM7 2h1v4H7zM3 3h2v2H3zM1 6h2v1H1zM5 6h2v1H5zM3 7h2v1H3z"/></svg>
+HyperBrowser
+</span>
+<span>File</span><span>Edit</span><span>View</span><span>Forum</span>
+<span style="flex: 1 1 auto"></span>
+<a class="hb-link" href="#mentions" style="text-decoration: none; display: flex; align-items: center; gap: 6px">Mentions <span aria-label="2 unread" style="color: {{accent}}">■</span></a>
+<span style="display: flex; align-items: center; gap: 6px">
+<svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#000" d="M1 0h6v1H1zM0 1h1v6H0zM7 1h1v6H7zM1 7h6v1H1zM2 2h1v2H2zM5 2h1v2H5zM2 5h4v1H2z"/></svg>
+tibo
+</span>
+</nav>
+
+<div style="max-width: 1160px; margin: 32px auto 0; padding: 0 16px; box-sizing: border-box">
+<section aria-label="Forum window" style="background: #fff; border: 1px solid #000; box-shadow: 2px 2px 0 #000">
+
+<div style="display: flex; align-items: center; gap: 10px; height: 22px; padding: 0 8px; border-bottom: 1px solid #000; background-image: repeating-linear-gradient(to bottom, #fff 0 2px, #000 2px 3px); background-clip: content-box; padding-top: 4px; padding-bottom: 4px">
+<button class="hb-btn" aria-label="Close window" style="width: 14px; height: 14px; padding: 0; border: 1px solid #000; background: #fff; flex: 0 0 auto; cursor: pointer"></button>
+<span style="flex: 1 1 auto"></span>
+<h1 style="margin: 0; padding: 0 12px; background: #fff; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">HyperBrowser Forum</h1>
+<span style="flex: 1 1 auto"></span>
+<span style="width: 14px; flex: 0 0 auto"></span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 4px 12px; border-bottom: 1px solid #000; font-size: 13px">
+<span>key ◇ 6x99a3mm…ejnz4cjy</span>
+<span style="flex: 1 1 auto"></span>
+<span>☆ bookmarked</span>
+<span>you hold all of it · 12.4 MB</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap">
+
+<aside aria-label="Boards" style="flex: 1 1 220px; max-width: 100%; box-sizing: border-box; padding: 16px 0; border-right: 1px solid #000">
+<div aria-hidden="true" style="padding: 0 16px 8px; white-space: pre; overflow: hidden">── Boards ──────────</div>
+<ul style="list-style: none; margin: 0; padding: 0">
+<sc-for list="{{boards}}" as="b" hint-placeholder-count="6">
+<li>
+<button class="hb-btn" onClick="{{b.pick}}" aria-current="{{b.current}}" style="display: flex; width: 100%; align-items: center; gap: 8px; padding: 4px 16px; border: 0; text-align: left; cursor: pointer; background: {{b.bg}}; color: {{b.fg}}">
+<span aria-hidden="true" style="width: 1ch; color: {{b.markColor}}">{{b.mark}}</span>
+<span style="flex: 1 1 auto">{{b.name}}</span>
+<span style="font-size: 12px">{{b.count}}</span>
+</button>
+</li>
+</sc-for>
+</ul>
+<div aria-hidden="true" style="padding: 16px 16px 4px; white-space: pre; overflow: hidden">── Sub-forums ───────</div>
+<ul style="list-style: none; margin: 0; padding: 0 16px">
+<li style="padding: 4px 0">▸ Windows</li>
+<li style="padding: 4px 0">▸ Linux</li>
+</ul>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 16px 20px 20px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px">
+<h2 style="margin: 0; font-size: 26px; font-weight: 700; flex: 1 1 auto">{{boardName}}</h2>
+<button class="hb-btn" style="padding: 6px 16px; min-height: 36px; border: 1px solid #000; border-radius: 8px; background: #fff; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #000; font-weight: 600; cursor: pointer">New thread</button>
+</div>
+
+<div role="group" aria-label="Sort threads" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 18px 0 10px">
+<span style="margin-right: 4px">Sort:</span>
+<sc-for list="{{sorts}}" as="s" hint-placeholder-count="4">
+<button class="hb-btn" onClick="{{s.pick}}" aria-pressed="{{s.on}}" style="padding: 2px 8px; min-height: 28px; border: 1px solid {{s.border}}; background: {{s.bg}}; color: {{s.fg}}; cursor: pointer">{{s.label}}</button>
+</sc-for>
+</div>
+
+<div aria-hidden="true" style="white-space: pre; overflow: hidden">┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────</div>
+<ol style="list-style: none; margin: 0; padding: 0">
+<sc-for list="{{threads}}" as="t" hint-placeholder-count="6">
+<li class="hb-row" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0 10px 0; border-bottom: 1px dashed #000">
+<span aria-hidden="true" style="flex: 0 0 auto; white-space: pre">│</span>
+<span style="flex: 0 0 1ch; color: {{accent}}" aria-label="{{t.unreadLabel}}">{{t.mark}}</span>
+<div style="flex: 1 1 auto; min-width: 0">
+<a class="hb-link" href="Thread.dc.html" style="font-weight: {{t.weight}}; text-decoration: none">{{t.title}}</a>
+<div style="font-size: 13px; margin-top: 2px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px">
+<span style="display: flex; align-items: center; gap: 6px"><svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#000" d="{{t.icon}}"/></svg>{{t.author}}</span>
+<span>{{t.replies}} replies</span>
+<span>{{t.when}}</span>
+</div>
+</div>
+<div style="flex: 0 0 auto; display: flex; align-items: center; gap: 4px">
+<button class="hb-btn" onClick="{{t.up}}" aria-label="Vote up" aria-pressed="{{t.isUp}}" style="min-width: 32px; min-height: 32px; border: 0; background: transparent; cursor: pointer; color: {{t.upColor}}">▲</button>
+<span style="min-width: 3ch; text-align: center">{{t.score}}</span>
+<button class="hb-btn" onClick="{{t.down}}" aria-label="Vote down" aria-pressed="{{t.isDown}}" style="min-width: 32px; min-height: 32px; border: 0; background: transparent; cursor: pointer; color: {{t.downColor}}">▼</button>
+</div>
+</li>
+</sc-for>
+</ol>
+</main>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 4px 12px; border-top: 1px solid #000; font-size: 13px">
+<span>6 threads · 2 unread</span>
+<span style="flex: 1 1 auto"></span>
+<span>3 members online · seeding</span>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1f4fd1","options":["#1f4fd1","#c2410c","#0b7a52"]},"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":880}}'>
+class Component extends DCLogic {
+  constructor (props) {
+    super(props)
+    this.state = { board: 'Getting started', sort: 'activity', votes: {} }
+  }
+  renderVals () {
+    var accent = this.props.accent ?? '#1f4fd1'
+    var dark = !!this.props.dark
+    var darkOf = { '#1f4fd1': '#8fb0ff', '#c2410c': '#ff9a5c', '#0b7a52': '#4fd1a0' }
+    var inv = function (hex) {
+      var h = hex.replace('#', '')
+      var out = '#'
+      for (var i = 0; i < 6; i += 2) out += (255 - parseInt(h.slice(i, i + 2), 16)).toString(16).padStart(2, '0')
+      return out
+    }
+    // dark = the same 1-bit design inverted; the accent is pre-inverted so it shows its light variant
+    var shown = dark ? inv(darkOf[accent.toLowerCase()] || accent) : accent
+    var self = this
+    var icons = {
+      mara: 'M3 0h2v1H3zM2 1h4v1H2zM1 2h6v1H1zM0 3h8v2H0zM1 5h6v1H1zM2 6h4v1H2zM3 7h2v1H3z',
+      jun: 'M0 0h4v4H0zM4 4h4v4H4z',
+      sol: 'M3 0h2v1H3zM2 1h4v1H2zM1 2h6v1H1zM1 3h1v5H1zM6 3h1v5H6zM2 7h4v1H2zM3 4h2v3H3z',
+      ana: 'M0 0h8v1H0zM0 2h8v1H0zM0 4h8v1H0zM0 6h8v1H0z',
+      tibo: 'M1 0h6v1H1zM0 1h1v6H0zM7 1h1v6H7zM1 7h6v1H1zM2 2h1v2H2zM5 2h1v2H5zM2 5h4v1H2z'
+    }
+    var boardList = [
+      { name: 'Announcements', count: 4, unread: false },
+      { name: 'Getting started', count: 6, unread: true },
+      { name: 'Sites & HyperMD', count: 11, unread: true },
+      { name: 'Show & tell', count: 8, unread: false },
+      { name: 'Bugs & requests', count: 15, unread: false },
+      { name: 'Off-topic', count: 9, unread: false }
+    ]
+    var boards = boardList.map(function (b) {
+      var on = b.name === self.state.board
+      return {
+        name: b.name, count: b.count,
+        mark: b.unread ? '■' : ' ',
+        markColor: on ? '#fff' : shown,
+        current: on ? 'true' : 'false',
+        bg: on ? '#000' : 'transparent', fg: on ? '#fff' : '#000',
+        pick: function () { self.setState({ board: b.name }) }
+      }
+    })
+    var list = [
+      { id: 1, title: 'How do I open a site from its key?', author: 'mara', replies: 14, when: '4 min ago', score: 23, act: 6, made: 3, lively: 9, unread: true },
+      { id: 2, title: 'Bookmarks are not the same on my laptop and my desktop', author: 'jun', replies: 6, when: '22 min ago', score: 9, act: 5, made: 5, lively: 6, unread: true },
+      { id: 3, title: 'What stays on my disk after I visit a site?', author: 'sol', replies: 31, when: '1 h ago', score: 41, act: 4, made: 2, lively: 8, unread: false },
+      { id: 4, title: 'Tray icon: can I stop seeding at night?', author: 'ana', replies: 3, when: '3 h ago', score: 5, act: 3, made: 6, lively: 2, unread: false },
+      { id: 5, title: 'Inviting friends to a private forum', author: 'tibo', replies: 12, when: 'yesterday', score: 17, act: 2, made: 4, lively: 4, unread: false },
+      { id: 6, title: 'Why is the first visit slower than the next ones?', author: 'mara', replies: 8, when: '2 days ago', score: 12, act: 1, made: 1, lively: 1, unread: false }
+    ]
+    var key = { activity: 'act', newest: 'made', top: 'score', lively: 'lively' }[this.state.sort]
+    var votes = this.state.votes
+    var threads = list.slice().sort(function (a, b) { return b[key] - a[key] }).map(function (t) {
+      var v = votes[t.id] || 0
+      var setVote = function (n) {
+        var next = Object.assign({}, votes)
+        next[t.id] = v === n ? 0 : n
+        self.setState({ votes: next })
+      }
+      return {
+        title: t.title, author: t.author, replies: t.replies, when: t.when, icon: icons[t.author],
+        score: t.score + v,
+        mark: t.unread ? '■' : ' ', unreadLabel: t.unread ? 'unread posts' : 'read',
+        weight: t.unread ? '700' : '500',
+        isUp: v === 1 ? 'true' : 'false', isDown: v === -1 ? 'true' : 'false',
+        upColor: v === 1 ? shown : '#000', downColor: v === -1 ? shown : '#000',
+        up: function () { setVote(1) }, down: function () { setVote(-1) }
+      }
+    })
+    var sorts = [['activity', 'Activity'], ['newest', 'Newest'], ['top', 'Top'], ['lively', 'Lively']].map(function (s) {
+      var on = s[0] === self.state.sort
+      return {
+        label: s[1], on: on ? 'true' : 'false',
+        bg: on ? '#000' : '#fff', fg: on ? '#fff' : '#000', border: '#000',
+        pick: function () { self.setState({ sort: s[0] }) }
+      }
+    })
+    return {
+      accent: shown,
+      filter: dark ? 'invert(1)' : 'none',
+      boards: boards,
+      boardName: this.state.board,
+      sorts: sorts,
+      threads: threads
+    }
+  }
+}
+</script>
+</body>
+</html>

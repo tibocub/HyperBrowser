@@ -58,3 +58,19 @@ test('the command line refuses a bad folder and says why', async (t) => {
   t.is(await within(usage.exited, 10000, 'timeout'), 1)
   t.ok(usage.out.text.includes('publish <folder>'))
 })
+
+test('publish --invite: an invite-only site and a one-use link into it (spec 006)', async (t) => {
+  const folder = siteFolder(t, { manifest: { title: 'Closed', permissions: ['space'], public: false }, files: { 'index.html': '<p>members</p>' } })
+  const publisher = cli(t, ['publish', folder, '--dir', tmpDir(t, 'owner'), '--bootstrap', boot(await bootstrap(t)), '--invite', 'admin'])
+  const link = await eventually(() => /invite \(admin, one use\): (hg:\S+)/.exec(publisher.out.text)?.[1], 60000, 100)
+  t.ok(link, 'an invite is printed: ' + publisher.out.text.trim())
+  const key = /key: ([a-z0-9]{52})/.exec(publisher.out.text)[1]
+  const admin = await engine(t)
+  t.is((await admin.rpc.request('site.open', { key: link })).key, key)
+  t.is(text((await admin.rpc.request('site.read', { key, path: '' })).bytes), '<p>members</p>')
+  await admin.rpc.request('site.consent', { key, allow: true })
+  const me = await admin.rpc.request('site.call', { key, method: 'info' })
+  t.ok(await eventually(async () => (await admin.rpc.request('site.call', { key, method: 'getRole', args: [me.identity] })) === 'admin', 15000), 'in as admin')
+  const usage = cli(t, ['publish', folder, '--invite', 'king'])
+  t.is(await within(usage.exited, 10000, 'timeout'), 1, 'a role other than member or admin: usage')
+})

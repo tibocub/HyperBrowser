@@ -21,6 +21,9 @@ test('site.json is checked before anything is made', async (t) => {
   t.ok((await bad({ manifest: { title: 'x', entry: '../up.html' } })).includes('entry'))
   t.ok((await bad({ manifest: { title: 'x', entry: 'missing.html' } })).includes('missing.html'))
   t.ok((await bad({ manifest: { title: 'x', permissions: 'space' } })).includes('permissions'))
+  t.ok((await bad({ manifest: { title: 'x', public: 'no' } })).includes('public'))
+  t.ok((await bad({ manifest: { title: 'x', types: [] } })).includes('types'))
+  t.ok((await bad({ manifest: { title: 'x', types: { profile: { fields: { x: 'string' } } } } })).startsWith('INVALID_TYPE'), "SwarmFS's own type names are refused")
   t.is(await codeOf(e.rpc.request('site.publish', { folder: path.join(e.dir, 'no-such-folder') })), 'NO_MANIFEST')
 })
 

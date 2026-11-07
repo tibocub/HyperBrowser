@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forum thread</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+@font-face{font-family:'Cozette';src:url(/_blob/019d08e55f6b6ea36523c01c4a46a5b6) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Cozette';src:url(/_blob/d5125c7cc7b3facb2efad1209ab38e17) format('woff2');font-weight:700;font-display:swap}
+.hb-text{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:14px;line-height:1.6}
+body{margin:0;background:#fff}
+a{color:#000}a:hover{color:#000}
+button,textarea{font:inherit;color:inherit}
+.hb-btn:focus-visible,.hb-link:focus-visible,textarea:focus-visible{outline:2px solid #000;outline-offset:2px}
+.hb-seg{background-image:linear-gradient(#000,#000);background-repeat:no-repeat;background-position:calc(0.5ch - 0.5px) 0}
+</style>
+</helmet>
+<div style="min-height: 1240px; box-sizing: border-box; padding-bottom: 40px; font-family: 'Cozette', 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; line-height: 1.6; color: #000; background-color: #fff; background-image: repeating-conic-gradient(#000 0 25%, #fff 0 50%); background-size: 2px 2px; filter: {{filter}}">
+
+<nav aria-label="Menu bar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; padding: 3px 16px; background: #fff; border-bottom: 1px solid #000; font-weight: 600">
+<span style="display: flex; align-items: center; gap: 8px">
+<svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#000" d="M3 0h2v1H3zM1 1h2v1H1zM5 1h2v1H5zM0 2h1v4H0zM7 2h1v4H7zM3 3h2v2H3zM1 6h2v1H1zM5 6h2v1H5zM3 7h2v1H3z"/></svg>
+HyperBrowser
+</span>
+<span>File</span><span>Edit</span><span>View</span><span>Forum</span>
+<span style="flex: 1 1 auto"></span>
+<a class="hb-link" href="#mentions" style="text-decoration: none; display: flex; align-items: center; gap: 6px">Mentions <span aria-label="2 unread" style="color: {{accent}}">■</span></a>
+<span style="display: flex; align-items: center; gap: 6px">
+<svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#000" d="M1 0h6v1H1zM0 1h1v6H0zM7 1h1v6H7zM1 7h6v1H1zM2 2h1v2H2zM5 2h1v2H5zM2 5h4v1H2z"/></svg>
+tibo
+</span>
+</nav>
+
+<div style="max-width: 980px; margin: 32px auto 0; padding: 0 16px; box-sizing: border-box">
+<section aria-label="Thread window" style="background: #fff; border: 1px solid #000; box-shadow: 2px 2px 0 #000">
+
+<div style="display: flex; align-items: center; gap: 10px; height: 22px; padding: 4px 8px; border-bottom: 1px solid #000; background-image: repeating-linear-gradient(to bottom, #fff 0 2px, #000 2px 3px); background-clip: content-box">
+<button class="hb-btn" aria-label="Close window" style="width: 14px; height: 14px; padding: 0; border: 1px solid #000; background: #fff; flex: 0 0 auto; cursor: pointer"></button>
+<span style="flex: 1 1 auto"></span>
+<span style="padding: 0 12px; background: #fff; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Getting started</span>
+<span style="flex: 1 1 auto"></span>
+<span style="width: 14px; flex: 0 0 auto"></span>
+</div>
+
+<div style="padding: 20px 24px 8px">
+<a class="hb-link" href="Main.dc.html" style="text-decoration: none">◂ Getting started</a>
+
+<article style="margin-top: 14px">
+<h1 style="margin: 0; font-size: 26px; line-height: 1.3; font-weight: 700">What stays on my disk after I visit a site?</h1>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; font-size: 13px">
+<span style="display: flex; align-items: center; gap: 6px"><svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#000" d="M3 0h2v1H3zM2 1h4v1H2zM1 2h6v1H1zM1 3h1v5H1zM6 3h1v5H6zM2 7h4v1H2zM3 4h2v3H3z"/></svg>sol</span>
+<span>1 h ago</span>
+<span>31 replies</span>
+</div>
+<div class="hb-text" style="margin-top: 14px; max-width: 72ch">
+<p style="margin: 0 0 10px">I visited a few sites yesterday and my disk usage went up. Does HyperBrowser keep <strong>everything</strong> I opened, or only parts of it?</p>
+<p style="margin: 0">And if I close the app, do other people still download those files from me? I would like to know before I leave it in the tray.</p>
+</div>
+<div style="display: flex; align-items: center; gap: 4px; margin-top: 12px">
+<button class="hb-btn" onClick="{{opUp}}" aria-label="Vote up" aria-pressed="{{opIsUp}}" style="min-width: 32px; min-height: 32px; border: 0; background: transparent; cursor: pointer; color: {{opUpColor}}">▲</button>
+<span style="min-width: 3ch; text-align: center">{{opScore}}</span>
+<button class="hb-btn" aria-label="Vote down" style="min-width: 32px; min-height: 32px; border: 0; background: transparent; cursor: pointer">▼</button>
+<span style="width: 12px"></span>
+<button class="hb-btn" style="min-height: 32px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; text-decoration: underline">Reply</button>
+<button class="hb-btn" style="min-height: 32px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; text-decoration: underline">Quote</button>
+</div>
+</article>
+</div>
+
+<div aria-hidden="true" style="padding: 0 24px; white-space: pre; overflow: hidden">── Replies · sorted by Activity ─────────────────────────────────────────────────────────────────────────</div>
+
+<ol aria-label="Replies" style="list-style: none; margin: 0; padding: 12px 24px 8px">
+<sc-for list="{{comments}}" as="c" hint-placeholder-count="6">
+<sc-if value="{{c.visible}}" hint-placeholder-val="{{ true }}">
+<li style="display: flex; align-items: stretch">
+<sc-for list="{{c.segs}}" as="s" hint-placeholder-count="2">
+<span aria-hidden="true" class="hb-seg" style="flex: 0 0 2ch; white-space: pre; background-size: {{s.line}}">{{s.glyph}}</span>
+</sc-for>
+<div style="flex: 1 1 auto; min-width: 0; padding: 0 0 14px 4px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: 13px">
+<button class="hb-btn" onClick="{{c.toggle}}" aria-expanded="{{c.expanded}}" aria-label="{{c.toggleLabel}}" style="min-width: 28px; min-height: 28px; padding: 0; border: 0; background: transparent; cursor: pointer">{{c.toggleGlyph}}</button>
+<span style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: {{c.nameColor}}"><svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#000" d="{{c.icon}}"/></svg>{{c.author}}</span>
+<span>{{c.when}}</span>
+<span style="color: {{accent}}" aria-label="{{c.newLabel}}">{{c.newMark}}</span>
+</div>
+<sc-if value="{{c.open}}" hint-placeholder-val="{{ true }}">
+<div class="hb-text" style="max-width: 72ch">
+<sc-if value="{{c.hasQuote}}" hint-placeholder-val="{{ false }}">
+<blockquote style="margin: 4px 0 6px; padding: 2px 10px; border-left: 1px solid #000; font-size: 13px">{{c.quote}}</blockquote>
+</sc-if>
+<p style="margin: 2px 0 0">
+<sc-if value="{{c.hasMention}}" hint-placeholder-val="{{ false }}"><a class="hb-link" href="#member" title="{{c.mentionTitle}}" style="color: {{accent}}; text-decoration: underline dotted">{{c.mention}}</a> </sc-if>{{c.body}}<sc-if value="{{c.hasCode}}" hint-placeholder-val="{{ false }}"> <code style="padding: 0 4px; border: 1px solid #000">{{c.code}}</code></sc-if>
+</p>
+<div style="display: flex; align-items: center; gap: 2px; margin-top: 4px; font-size: 13px">
+<button class="hb-btn" onClick="{{c.up}}" aria-label="Vote up" aria-pressed="{{c.isUp}}" style="min-width: 32px; min-height: 32px; border: 0; background: transparent; cursor: pointer; color: {{c.upColor}}">▲</button>
+<span style="min-width: 3ch; text-align: center">{{c.score}}</span>
+<button class="hb-btn" onClick="{{c.down}}" aria-label="Vote down" aria-pressed="{{c.isDown}}" style="min-width: 32px; min-height: 32px; border: 0; background: transparent; cursor: pointer; color: {{c.downColor}}">▼</button>
+<button class="hb-btn" style="min-height: 32px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; text-decoration: underline">Reply</button>
+<button class="hb-btn" style="min-height: 32px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; text-decoration: underline">Quote</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{c.closed}}" hint-placeholder-val="{{ false }}">
+<div style="font-size: 13px">{{c.hidden}}</div>
+</sc-if>
+</div>
+</li>
+</sc-if>
+</sc-for>
+</ol>
+
+<form aria-label="Reply" style="margin: 0 24px 24px; padding: 14px 16px 16px; border: 1px solid #000">
+<label for="reply" style="display: block; font-weight: 600; margin-bottom: 6px">Reply to the thread</label>
+<textarea class="hb-text" id="reply" rows="5" placeholder="Write here. @name to mention someone." style="display: block; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #000; background: #fff; resize: vertical"></textarea>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 10px">
+<span style="font-size: 13px; flex: 1 1 320px">**bold** · _italic_ · `code` · &gt; quote · [link](key) · @name</span>
+<button class="hb-btn" type="button" style="padding: 6px 16px; min-height: 36px; border: 1px solid #000; border-radius: 8px; background: #fff; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #000; font-weight: 600; cursor: pointer">Post reply</button>
+</div>
+</form>
+
+<div style="display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 4px 12px; border-top: 1px solid #000; font-size: 13px">
+<span>6 of 31 replies shown · 2 new</span>
+<span style="flex: 1 1 auto"></span>
+<span>complete: every reply is here</span>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1f4fd1","options":["#1f4fd1","#c2410c","#0b7a52"]},"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1240}}'>
+class Component extends DCLogic {
+  constructor (props) {
+    super(props)
+    this.state = { votes: {}, closed: {} }
+  }
+  renderVals () {
+    var accent = this.props.accent ?? '#1f4fd1'
+    var dark = !!this.props.dark
+    var darkOf = { '#1f4fd1': '#8fb0ff', '#c2410c': '#ff9a5c', '#0b7a52': '#4fd1a0' }
+    var inv = function (hex) {
+      var h = hex.replace('#', '')
+      var out = '#'
+      for (var i = 0; i < 6; i += 2) out += (255 - parseInt(h.slice(i, i + 2), 16)).toString(16).padStart(2, '0')
+      return out
+    }
+    var shown = dark ? inv(darkOf[accent.toLowerCase()] || accent) : accent
+    var self = this
+    var icons = {
+      mara: 'M3 0h2v1H3zM2 1h4v1H2zM1 2h6v1H1zM0 3h8v2H0zM1 5h6v1H1zM2 6h4v1H2zM3 7h2v1H3z',
+      jun: 'M0 0h4v4H0zM4 4h4v4H4z',
+      sol: 'M3 0h2v1H3zM2 1h4v1H2zM1 2h6v1H1zM1 3h1v5H1zM6 3h1v5H6zM2 7h4v1H2zM3 4h2v3H3z',
+      ana: 'M0 0h8v1H0zM0 2h8v1H0zM0 4h8v1H0zM0 6h8v1H0z',
+      tibo: 'M1 0h6v1H1zM0 1h1v6H0zM7 1h1v6H7zM1 7h6v1H1zM2 2h1v2H2zM5 2h1v2H5zM2 5h4v1H2z'
+    }
+    // the tree, written out: segs per level (pipe: an ancestor goes on, tee/elbow: this reply)
+    var tree = [
+      { id: 'c1', parent: null, author: 'tibo', when: '58 min ago', score: 18, segs: ['tee'], body: 'Only what you looked at. A page or an image you never opened is not downloaded. Everything a site sends you goes into a cache with a size cap, oldest first out.', code: 'Settings > Storage' },
+      { id: 'c2', parent: 'c1', author: 'sol', when: '51 min ago', score: 4, segs: ['pipe', 'tee'], body: 'So the images in a forum count too?' },
+      { id: 'c3', parent: 'c2', author: 'mara', when: '44 min ago', score: 6, segs: ['pipe', 'pipe', 'elbow'], mention: '@sol', body: 'yes, but only the ones you scrolled past. Text is tiny next to them.' },
+      { id: 'c4', parent: 'c1', author: 'jun', when: '30 min ago', score: 3, segs: ['pipe', 'elbow'], quote: 'Everything a site sends you goes into a cache with a size cap', body: 'Can I set that cap lower? My laptop has a small disk.' },
+      { id: 'c5', parent: 'c4', author: 'tibo', when: '12 min ago', score: 5, segs: ['pipe', 'blank', 'elbow'], fresh: true, mention: '@jun', body: 'yes, down to 200 MB. Your own posts and files never count against it.' },
+      { id: 'c6', parent: null, author: 'ana', when: '6 min ago', score: 2, segs: ['elbow'], fresh: true, body: 'On my phone the app closes when I leave it, so it only shares while I read. Is that expected?' }
+    ]
+    var glyph = { pipe: '│ ', blank: '  ', tee: '├─', elbow: '└─' }
+    var line = { pipe: '1px 100%', blank: '0 0', tee: '1px 100%', elbow: '1px 0.8em' }
+    var closed = this.state.closed
+    var votes = this.state.votes
+    var hiddenBy = function (c) {
+      for (var p = c.parent; p; p = tree.find(function (x) { return x.id === p }).parent) if (closed[p]) return true
+      return false
+    }
+    var kids = function (id) { return tree.filter(function (x) { return x.parent === id }).length }
+    var count = function (id) { var n = 0; tree.forEach(function (x) { if (x.parent === id) n += 1 + count(x.id) }); return n }
+    var comments = tree.map(function (c) {
+      var v = votes[c.id] || 0
+      var setVote = function (n) {
+        var next = Object.assign({}, votes)
+        next[c.id] = v === n ? 0 : n
+        self.setState({ votes: next })
+      }
+      var isClosed = !!closed[c.id]
+      var n = count(c.id)
+      return {
+        visible: !hiddenBy(c),
+        segs: c.segs.map(function (s) { return { glyph: glyph[s], line: line[s] } }),
+        author: c.author, when: c.when, icon: icons[c.author],
+        nameColor: c.author === 'tibo' ? shown : '#000',
+        newMark: c.fresh ? '■ new' : '', newLabel: c.fresh ? 'new since your last visit' : '',
+        body: c.body,
+        hasQuote: !!c.quote, quote: c.quote || '',
+        hasMention: !!c.mention, mention: c.mention || '', mentionTitle: c.mention ? c.mention.slice(1) + ' · key 9fk3…a2qe' : '',
+        hasCode: !!c.code, code: c.code || '',
+        score: c.score + v,
+        isUp: v === 1 ? 'true' : 'false', isDown: v === -1 ? 'true' : 'false',
+        upColor: v === 1 ? shown : '#000', downColor: v === -1 ? shown : '#000',
+        up: function () { setVote(1) }, down: function () { setVote(-1) },
+        open: !isClosed, closed: isClosed,
+        hidden: n ? '(' + (n + 1) + ' replies folded)' : '(folded)',
+        expanded: isClosed ? 'false' : 'true',
+        toggleGlyph: isClosed ? '[+]' : '[−]',
+        toggleLabel: isClosed ? 'Unfold' : 'Fold',
+        toggle: function () {
+          var next = Object.assign({}, closed)
+          next[c.id] = !isClosed
+          self.setState({ closed: next })
+        },
+        kids: kids(c.id)
+      }
+    })
+    var op = votes.op || 0
+    return {
+      accent: shown,
+      filter: dark ? 'invert(1)' : 'none',
+      comments: comments,
+      opScore: 41 + op,
+      opIsUp: op === 1 ? 'true' : 'false',
+      opUpColor: op === 1 ? shown : '#000',
+      opUp: function () { self.setState({ votes: Object.assign({}, votes, { op: op === 1 ? 0 : 1 }) }) }
+    }
+  }
+}
+</script>
+</body>
+</html>
