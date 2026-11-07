@@ -11,6 +11,7 @@ event    { v, event, data }
 
 A message whose `v` isn't 1: a request gets `BAD_VERSION`, anything else is dropped. Not JSON, or no
 `method`/`event`/known `id`: dropped. Unknown method: `UNKNOWN_METHOD`. Before `init`: `NOT_READY`.
+A param of the wrong kind: `INVALID_PARAMS`; a key that isn't 52 z32 characters: `INVALID_KEY`.
 Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`, `INVALID_TYPE`…).
 
 ## Requests (shell → engine)
@@ -20,8 +21,8 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 | `init` | `{ dir, bootstrap?, heartbeat?, appStorageMax? }` | `{ identity, version: 1 }`; `ALREADY` if done |
 | `ping` | `{}` | `true` (any message also counts as a heartbeat) |
 | `site.publish` | `{ folder }` | `{ key, created, manifest }` (`NO_MANIFEST`, `INVALID_MANIFEST`) |
-| `site.open` | `{ key }` (z32 key, or an `hg:` invite / public link) | `{ key, manifest, dynamic }` |
-| `site.read` | `{ key, path }` (`''` = entry) | `{ bytes, path }` (`NOT_FOUND`, `NOT_AVAILABLE`) |
+| `site.open` | `{ key, timeout? }` (z32 key, or an `hg:` invite / public link; timeout ms, default 30000) | `{ key, manifest, dynamic }` |
+| `site.read` | `{ key, path, timeout? }` (`''` or `/` = entry) | `{ bytes, path }` (`NOT_FOUND`, `NOT_AVAILABLE`) |
 | `site.consent` | `{ key, allow }` | `true` |
 | `site.call` | `{ key, sub?, method, args?, chain? }` | the call's result |
 | `site.live` | `{ key, sub?, args, chain, opts? }` | `{ id }`; then `live` events |
