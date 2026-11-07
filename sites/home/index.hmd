@@ -1,0 +1,19 @@
+::page{title="HyperBrowser" description="A peer-to-peer browser: sites live with their owner and their visitors."}
+
+# HyperBrowser
+
+A browser for sites that live with their owner and their visitors, not on a server.
+
+You open a site by its **key**. Your computer gets the site from the other people who have it, and while you have it open, you help serve it too. When the owner changes a page, the change reaches you by itself.
+
+## What you can do today
+
+- open a site by its key, in tabs
+- keep sites on your desktop: installed (kept whole on your computer) or as a bookmark
+- publish your own site from a folder
+
+[Get started](start.hmd) · [Publish a site](publish.hmd) · [News](news.hmd)
+
+:::note
+HyperBrowser is not released yet. Today you run it from its source code, on Windows. Linux is coming (not tested yet). Downloads that update themselves are coming.
+:::

@@ -8,9 +8,10 @@ A peer-to-peer browser: sites live with their owner and their visitors, not on a
 - Milestone 1: the official HyperBrowser site and the official forum, opened by key.
   Design: [docs/design-milestone-1.md](docs/design-milestone-1.md).
 
-Status: early work. Spec 001: the engine and serving sites; spec 002: the shell's interface.
+Status: early work. Spec 001: the engine and serving sites; spec 002: the shell's interface; spec 003: install;
+spec 005: the official site (`sites/home`).
 Using the shell: [docs/shell.md](docs/shell.md); the engine and the command line: [docs/engine.md](docs/engine.md);
-writing a site: [docs/site-api.md](docs/site-api.md).
+writing a site: [docs/site-api.md](docs/site-api.md); the official site: [docs/home-site.md](docs/home-site.md).
 
 ## Launch
 

@@ -22,6 +22,8 @@
     "test": "node scripts/test-runner.js",
     "test:bare": "node scripts/test-runner.js --bare",
     "test:sandbox": "node test/sandbox.electron.js",
+    "home:build": "node node_modules/hypermd/bin/hypermd.js build sites/home --out out/home",
+    "home:publish": "npm run home:build && node engine/cli.js publish out/home",
     "test:all": "npm test && npm run test:bare && npm run test:sandbox"
   },
   "dependencies": {
@@ -41,7 +43,8 @@
     "bare-subprocess": "^6.2.2",
     "bare-url": "^2.5.5",
     "brittle": "^4.5.0",
-    "electron": "^42.11.18"
+    "electron": "^42.11.18",
+    "hypermd": "file:../HyperMD"
   },
   "engines": {
     "bare": ">=1.27",

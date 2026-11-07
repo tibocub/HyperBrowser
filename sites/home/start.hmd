@@ -1,0 +1,69 @@
+::page{title="Get started" description="Open a site by its key, tabs, the desktop, install or bookmark." order=1}
+
+# Get started
+
+::toc
+
+## Get HyperBrowser
+
+HyperBrowser isn't released yet. To try it, get [its source code](https://github.com/tibocub/HyperBrowser) and run it (you need [Node.js](https://nodejs.org) 22 or newer and git). Put these folders side by side: `hypergraph`, `SwarmFS`, `HyperBrowser`. In each, run `npm install` (hypergraph and SwarmFS first). Then, in `HyperBrowser`:
+
+```
+npm start
+```
+
+## The window
+
+HyperBrowser draws its own window. At the top:
+
+- **HyperBrowser ▾**: your identity, your installed sites, open a site by key, and the look (system, light or dark, and the accent colour).
+- **The tabs**, one per open site. The desktop is always the first tab. `+` opens a new one.
+- Under them, **the toolbar**: back, forward, reload, the address, the bookmark button ☆, and the site's state.
+
+A site only ever draws below these bars. Anything above them is HyperBrowser itself.
+
+## Open a site by its key
+
+A site's key is 52 letters and digits. Paste it in the address and press Enter. The address then shows the site's name and a short key, like `HyperBrowser · 6x99a3…cjy`; click it to see the whole key.
+
+If nobody who has the site is online, the tab says so: try again later.
+
+## Tabs
+
+Each site opens in its own tab, and keeps running when you switch to another one.
+
+| Keys | |
+|---|---|
+| Ctrl+T | the desktop, address ready |
+| Ctrl+W | close the tab |
+| Ctrl+Tab, Ctrl+Shift+Tab | next, previous tab |
+| Ctrl+L | the address |
+| F5, Ctrl+R | reload |
+| Alt+Left, Alt+Right | back, forward |
+
+## The desktop
+
+The desktop is your home: each site's icon and name. Double-click an icon (or press Enter) to open it. Right-click it to install it, make it a bookmark, or remove it. Drag icons to arrange them.
+
+The official site (this one) and the official forum are already there.
+
+## Install or bookmark
+
+There is only one kind of thing in HyperBrowser: a site. You keep it in one of two ways:
+
+- **Installed** (solid frame): every page and file of the site is kept on your computer and never thrown away. Your computer serves it to others, even when the site isn't open.
+- **Bookmark** (dotted frame): an icon to open the site quickly. Its pages are kept for a while, then thrown away to make room. Your computer serves it to others while it's open, and for a short time after you close it.
+
+The ☆ button in the toolbar adds or removes a bookmark.
+
+## What "hosted" means
+
+There is no server. A site is **hosted** by every computer that has it and is online: its owner's, and its visitors'. The more people keep a site, the easier it is to reach.
+
+The right of the toolbar shows the site's state:
+
+- `■ complete` or `□ loading`: whether your computer has the whole site
+- how many **peers** (other computers with the site) you are connected to
+- how much of the site your computer holds, and `kept` when the site is installed
+
+If the owner is offline and nobody else who has the site is online, the site can't be reached until someone comes back.

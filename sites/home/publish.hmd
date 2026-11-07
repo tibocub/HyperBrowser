@@ -1,0 +1,45 @@
+::page{title="Publish a site" description="Make a site from a folder and share its key." order=2}
+
+# Publish a site
+
+::toc
+
+## A site is a folder
+
+Put your pages in a folder, with a `site.json` next to them:
+
+```
+{ "title": "My site", "entry": "index.html", "icon": "icon.png" }
+```
+
+- `title`: the site's name, shown in the address and under its icon
+- `entry`: the first page (default `index.html`)
+- `icon`: shown on the desktop. Small and black and white looks best (32×32).
+
+Pages are HTML, CSS, JavaScript, images: what a web page uses. Your scripts run, but a page can't reach anything outside its own site: no other site, no web, no files on the visitor's computer.
+
+## Publish it
+
+For now, publishing is a command, from the `HyperBrowser` folder:
+
+```
+node engine/cli.js publish path/to/my-site
+```
+
+It prints the site's **key**. Give that key to the people you want to visit your site. Keep the command running: while it runs, your computer serves the site, and the changes you make in the folder reach your visitors by themselves.
+
+The same folder always gets the same key. Your keys live in HyperBrowser's own folder (`.hyperbrowser` in your home folder): keep it.
+
+## Check it
+
+On another computer (or in HyperBrowser on yours), paste the key in the address.
+
+## Write it in HyperMD
+
+This site is written in [HyperMD](https://github.com/tibocub/HyperMD): Markdown, plus a few extras. `hypermd build` turns such a folder into plain HTML: the same files can be published in HyperBrowser and put on the normal web.
+
+## Coming
+
+- Publishing from the HyperBrowser window, without a command.
+- Sites with their own data (a forum, for example), shared between their visitors.
+- Names instead of keys.

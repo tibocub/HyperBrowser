@@ -1,0 +1,16 @@
+::page{title="News" description="What's new in HyperBrowser." order=3}
+
+# News
+
+## 2026-11-07 · The first site
+
+This is HyperBrowser's official site, and the first site made for it. It lives in HyperBrowser, opened by its key, and on the normal web, built from the same pages.
+
+What works so far:
+
+- the engine: your identity, the network, and every site's data
+- the window: tabs, the toolbar, the desktop
+- opening a site by its key; installing or bookmarking it
+- publishing a site from a folder
+
+Next: the official forum, a site whose members write in it together.
