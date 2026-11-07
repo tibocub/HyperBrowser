@@ -1,0 +1,43 @@
+::page{title="The forum" description="HyperBrowser's forum: boards, threads, replies, votes, mentions." order=3}
+
+# The forum
+
+The HyperBrowser forum is a site like any other: it lives on its members' computers, not on a server. While we
+test, it is invite-only.
+
+## Get in
+
+- Someone already in sends you an **invite link** (it starts with `hg:`).
+- Paste it into HyperBrowser's address field and press Enter. Someone who can let people in must be online then.
+- HyperBrowser asks: let the forum use your identity? Say **Allow**: your posts are signed by you.
+- Pick the name people see. Names aren't unique: your icon and your key tell you apart.
+
+## Read
+
+- **Boards** are on the left, the chosen board's **threads** on the right (on a phone: boards, then threads).
+- **Sort** the threads your way: *Activity* (a reply brings a thread back up), *Newest*, *Top* (votes) or
+  *Lively* (most replies and votes in the last two days, counted on your computer).
+- A ■ in the accent colour marks what you haven't read: a board with unread threads, an unread thread, a reply
+  that is **new** since your last visit. What you read is kept on your own devices, never in the forum.
+
+## Write
+
+- **New thread** on a board; **Reply** under the thread or under a reply. Replies form a tree; `[−]` folds a
+  branch, `[+]` opens it again.
+- Text: `**bold**`, `_italic_`, `` `code` ``, a line starting with `>` for a quote, `[text](hyper://key/page)`
+  for a link, `![picture](path)` for a picture of the site. Nothing else becomes formatting.
+- **@name** mentions someone: pick them in the list that opens. The post keeps who they are, and shows their
+  name as it is now. They find it in **Mentions**, a list they open themselves: no badge, no counter.
+- **▲ ▼** vote. Your vote is in the accent colour; click it again to take it back.
+- **Edit** and **Delete** your own posts. An edited post says so; replies under a deleted one stay.
+
+## You
+
+**You** (top right): your name and your 16×16 icon. Draw it pixel by pixel, or keep the one made from your key.
+
+## Moderation
+
+- Anyone can **Report** a post: only moderators see what and why.
+- Moderators **Hide** posts (and show them again from *Moderation*), read reports, **Ban** members.
+- Admins make **boards** (and boards inside a board), **invite** people (*Members → Invite one person*) and
+  give roles (member, moderator, admin).

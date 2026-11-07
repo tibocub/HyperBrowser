@@ -33,6 +33,15 @@ It prints `key: …` and stays online: visitors read the site from you while it 
 folder reach them. The same folder always gets the same key (keep the engine folder: `~/.hyperbrowser` by
 default, `--dir` to choose another; the official site's and forum's keys live in Tibo's).
 
+An invite-only site (`"public": false`) is closed to anyone without an invite. `--invite member` or
+`--invite admin` prints a one-use invite link after the key (dynamic sites):
+
+```bash
+node engine/cli.js publish sites/forum --invite admin
+```
+
+Paste the `hg:` link into HyperBrowser's address field: that HyperBrowser is in, as an admin.
+
 ## Open a site
 
 ```bash
@@ -57,7 +66,7 @@ The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` fro
 ## Tests
 
 ```bash
-npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site
+npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
 npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), then the frame check
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS
