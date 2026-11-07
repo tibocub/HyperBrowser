@@ -17,6 +17,10 @@ const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'linked', 'count', 
   'peers', 'status', 'isComplete', 'completeFrom', 'types'])
 const FILTERS = new Set(['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice'])
 const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'helpers']
+// A site no tab shows, not installed and not the person's own, is left this long after its last tab closes
+// (specs/004-hosting): the same as hypergraph's grace for a closed space's topic, so a tab closed by
+// mistake or a back-and-forth comes back without finding the site's peers again.
+const GRACE = 5 * 60 * 1000
 
 const error = (code, message) => Object.assign(new Error(message), { code })
 
@@ -29,7 +33,11 @@ export function start (ipc) {
   let nextSub = 1
   let answering = Promise.resolve()
   let syncing = null
-  const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null }
+  const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null, tabs }
+  const leaving = new Map() // key -> timer: no tab shows it, left once the grace period is over
+  const departing = new Map() // key -> the leave running
+  let grace = GRACE
+  let opening = 0
   const subs = new Map() // id -> { key, stop }
   let closed
   const done = new Promise((resolve) => { closed = resolve })
@@ -61,12 +69,14 @@ export function start (ipc) {
     }
   }
 
-  async function init ({ dir, bootstrap, heartbeat, appStorageMax }) {
+  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
     starting = SwarmFS.open(dir, { bootstrap, appStorageMax })
     starting.catch(() => { starting = null }) // a failed init may be sent again
+    if (g !== undefined) grace = g
     sfs = await starting
+    await sweep()
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
     if (heartbeat) {
       timer = setInterval(() => { if (Date.now() - last > 3 * heartbeat) shutdown('heartbeat') }, heartbeat)
@@ -96,6 +106,17 @@ export function start (ipc) {
 
   async function open ({ key, timeout = 30000 }) {
     if (typeof key !== 'string') throw error('INVALID_PARAMS', 'site.open needs { key }')
+    opening++
+    try {
+      return await openSite(key, timeout)
+    } finally {
+      opening--
+    }
+  }
+
+  async function openSite (key, timeout) {
+    stay(key)
+    await Promise.all(departing.values()) // a site being left is joined again once it is gone
     let site
     if (key.startsWith('hg:')) site = await sfs.visit(key, { timeout }) // an invite or a public link
     else {
@@ -107,9 +128,10 @@ export function start (ipc) {
     const manifest = parseManifest(await site.read('site.json', { timeout }).catch((err) => {
       throw err.code === 'NOT_FOUND' ? error('NO_MANIFEST', 'this site has no site.json') : err
     }))
+    stay(site.key)
     const known = sites.get(site.key)
-    if (known) known.manifest = manifest
-    else sites.set(site.key, { site, manifest, scope: null })
+    if (known) Object.assign(known, { manifest, tabs: known.tabs + 1 })
+    else sites.set(site.key, { site, manifest, scope: null, tabs: 1 })
     return { key: site.key, manifest, dynamic: isDynamic(manifest) }
   }
 
@@ -249,10 +271,46 @@ export function start (ipc) {
     }
   }
 
+  // One tab (or one site.open) done with the site; the last one starts the grace period.
   async function closeSite (key) {
+    const s = sites.get(key)
+    if (s && --s.tabs > 0) return true
     await release(key)
     sites.delete(key)
+    if (s) leaveLater(key, s.site)
     return true
+  }
+
+  // --- hosting (specs/004-hosting): installed and own sites stay joined; the others only while shown ---
+
+  async function hosted (site) {
+    return (await site.kept()) || (await site.space.getRole(sfs.hg.identity.publicKey)) === 'owner'
+  }
+
+  function stay (key) {
+    clearTimeout(leaving.get(key))
+    leaving.delete(key)
+  }
+
+  function leaveLater (key, site) {
+    stay(key)
+    leaving.set(key, setTimeout(() => {
+      leaving.delete(key)
+      if (closing || sites.has(key)) return
+      if (opening) return leaveLater(key, site) // a link being opened may be this site
+      const left = hosted(site).then((h) => h || sfs.leave(key)).catch(() => {}).finally(() => departing.delete(key))
+      departing.set(key, left)
+    }, grace))
+  }
+
+  // At start: every site held here that isn't installed or the person's own is left (its cached files stay,
+  // served again once it is opened). Not a site, or not readable at once: left alone.
+  async function sweep () {
+    for (const { key, parent } of sfs.hg.spaces()) {
+      if (parent) continue
+      const site = await sfs.site(key, { timeout: 0 }).catch(() => null)
+      if (site && !(await hosted(site).catch(() => true))) await sfs.leave(key).catch(() => {})
+    }
   }
 
   // --- lifecycle ---
@@ -262,7 +320,10 @@ export function start (ipc) {
       closing = (async () => {
         clearInterval(timer)
         if (reason !== 'closed') rpc.emit('closing', { reason })
-        for (const key of [...sites.keys()]) await closeSite(key).catch(() => {})
+        for (const key of [...sites.keys()]) await release(key).catch(() => {})
+        sites.clear()
+        for (const key of [...leaving.keys()]) stay(key)
+        await Promise.all(departing.values())
         const opening = starting
         starting = null
         await syncing // a close() before sync() has started leaks its interval (requests-to-swarmfs F3)

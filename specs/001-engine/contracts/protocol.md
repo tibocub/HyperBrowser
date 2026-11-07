@@ -18,10 +18,10 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 
 | method | params | result |
 |---|---|---|
-| `init` | `{ dir, bootstrap?, heartbeat?, appStorageMax? }` | `{ identity, version: 1 }`; `ALREADY` if done |
+| `init` | `{ dir, bootstrap?, heartbeat?, appStorageMax?, grace? }` (`grace`: ms a site no tab shows stays joined, default 5 min; spec 004) | `{ identity, version: 1 }`; `ALREADY` if done. Sites held here neither installed nor the person's own are left first (spec 004) |
 | `ping` | `{}` | `true` (any message also counts as a heartbeat) |
 | `site.publish` | `{ folder }` | `{ key, created, manifest }` (`NO_MANIFEST`, `INVALID_MANIFEST`) |
-| `site.open` | `{ key, timeout? }` (z32 key, or an `hg:` invite / public link; timeout ms, default 30000) | `{ key, manifest, dynamic }` |
+| `site.open` | `{ key, timeout? }` (z32 key, or an `hg:` invite / public link; timeout ms, default 30000) | `{ key, manifest, dynamic }`. Each open counts as one tab until its `site.close` (spec 004) |
 | `site.read` | `{ key, path, timeout? }` (`''` or `/` = entry) | `{ bytes, path }` (`NOT_FOUND`, `NOT_AVAILABLE`) |
 | `site.state` | `{ key }` (spec 002) | `{ complete, peers }`: the site and its pages complete here; peers on the site's space |
 | `site.keep` | `{ key, keep, timeout? }` (spec 003) | `{ kept }`: installed (kept whole, served, remembered) or back to the cache (`INVALID_PARAMS`) |
@@ -31,7 +31,7 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 | `site.live` | `{ key, sub?, args, chain, opts? }` | `{ id }`; then `live` events |
 | `site.on` | `{ key, sub?, event }` | `{ id }`; then `event` events |
 | `site.off` | `{ id }` | `true` |
-| `site.close` | `{ key }` | `true`: its live views and listeners stop, its handle released |
+| `site.close` | `{ key }` | `true`. The last open's close: its live views and listeners stop, its handle released, and, unless it is installed or the person's own, the site is left after `grace` (spec 004) |
 | `close` | `{}` | `true`: everything closed; the engine then ends its stream |
 
 `site.read`, `site.call`, `site.live`, `site.on` need the site opened (`site.open`) in this engine first

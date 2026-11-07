@@ -112,6 +112,7 @@ async function openSite (key, query = '') {
   viewOf.set(v.webContents.id, real)
   v.webContents.on('destroyed', () => {
     for (const [id, wc] of subscribers) if (wc === v.webContents) { subscribers.delete(id); rpc.request('site.off', { id }).catch(() => {}) }
+    rpc?.request('site.close', { key: real }).catch(() => {}) // the engine leaves it a while later unless installed (spec 004)
   })
   return { key: real, manifest, ...v }
 }

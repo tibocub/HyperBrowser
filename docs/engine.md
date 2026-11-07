@@ -42,10 +42,22 @@ npm start -- --open <key>              # the site in a tab of the shell
 
 The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` from this repo).
 
+## Which sites this device serves (spec 004)
+
+- **Installed** (`site.keep(true)`) and **your own** sites: joined and served from engine start, tab or not.
+- **Any other site**: joined while a tab shows it (`site.open` … `site.close`), and for a grace period after
+  its last tab closes (5 min: `init`'s `grace`). Then the engine leaves its space (SwarmFS `leave`, hypergraph
+  `leaveSpace`): it is no longer announced or served, and its records go from this device. Its files stay
+  in app storage; opening it again joins it again (someone must be online) and reuses them.
+- **At start**: before anything else, every site held here that is neither installed nor yours is left
+  (sites joined by older versions, which never left one).
+- **Eviction** (app storage over its cap) deletes cached files whether the space is joined or not; a site
+  that isn't installed is left within the grace period of its last tab anyway.
+
 ## Tests
 
 ```bash
-npm test               # Node: protocol, engine, sites, site API, two engines, the worker's heartbeat
+npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
 npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), then the frame check
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS
