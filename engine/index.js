@@ -48,6 +48,7 @@ export function start (ipc) {
       case 'site.publish': return publish(p)
       case 'site.open': return open(p)
       case 'site.read': return read(p)
+      case 'site.state': return state(p)
       case 'site.consent': return consent(p)
       case 'site.call': return call(p)
       case 'site.live': return live(p)
@@ -115,6 +116,13 @@ export function start (ipc) {
     const clean = p === '' || p === '/' ? s.manifest.entry : sitePath(p)
     if (!clean) throw error('NOT_FOUND', `no page ${p}`)
     return { bytes: await s.site.read(clean, { timeout }), path: clean }
+  }
+
+  // For the shell's toolbar: the site and its pages complete here, and the peers on the site's space.
+  // Bytes held per site: not in SwarmFS yet (requests-to-swarmfs F5).
+  function state ({ key }) {
+    const { site } = opened(keyOf({ key }))
+    return { complete: site.space.isComplete() && site.pages.space.isComplete(), peers: site.space.peers().length }
   }
 
   function keyOf ({ key }) {

@@ -1,0 +1,4 @@
+[
+  { "id": "preset:hb", "key": null, "title": "HyperBrowser", "glyph": "hb", "kind": "installed" },
+  { "id": "preset:forum", "key": null, "title": "HyperBrowser Forum", "glyph": "forum", "kind": "installed" }
+]

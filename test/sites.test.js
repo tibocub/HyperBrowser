@@ -71,3 +71,18 @@ test('a static site, a site not opened, a key nobody has', async (t) => {
   const nobody = 'y'.repeat(52)
   t.ok(await codeOf(visitor.rpc.request('site.open', { key: nobody, timeout: 2000 })), 'refused, not a hang')
 })
+
+test('site.state: complete and peers, for the shell toolbar (spec 002 FR-006)', async (t) => {
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t) })
+  const visitor = await engine(t)
+  t.is(await codeOf(visitor.rpc.request('site.state', { key })), 'NOT_FOUND', 'open it first')
+  t.is(await codeOf(visitor.rpc.request('site.state', { key: 'nope' })), 'INVALID_KEY')
+  await visitor.rpc.request('site.open', { key })
+  const state = await visitor.rpc.request('site.state', { key })
+  t.is(typeof state.complete, 'boolean')
+  t.ok(await eventually(async () => (await visitor.rpc.request('site.state', { key })).peers >= 1, 20000, 250), 'the owner is a peer')
+  t.ok(await eventually(async () => (await visitor.rpc.request('site.state', { key })).complete, 20000, 250), 'complete once synced')
+  await owner.rpc.request('site.open', { key })
+  t.is((await owner.rpc.request('site.state', { key })).complete, true, "the owner's own site")
+})

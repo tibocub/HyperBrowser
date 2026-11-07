@@ -13,6 +13,7 @@ const CSP = "default-src 'self' 'unsafe-inline' data: blob:"
 export function createSiteView (key, { dynamic, serve, guards = true, persist = true, query = '' }) {
   const ses = session.fromPartition((persist ? 'persist:' : '') + 'site-' + key)
   const origin = 'hyper://' + key + '/'
+  if (ses.protocol.isProtocolHandled('hyper')) ses.protocol.unhandle('hyper') // the site opened again
   ses.protocol.handle('hyper', async (req) => {
     const url = new URL(req.url)
     if (guards && url.host !== key) return new Response('not this site', { status: 404 })

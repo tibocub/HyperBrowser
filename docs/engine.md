@@ -5,7 +5,7 @@ HyperBrowser has two parts:
 - **the engine** (`engine/`): holds your identity, the network and every site's data (hypergraph + SwarmFS).
   It runs on Bare in the app, or on Node/Bare without a window (the command line).
 - **the shell** (`shell/`): the window. Each site opens in its own sandboxed view; only the shell talks to the
-  engine for a site. Its real interface (tabs, address bar, desktop) is spec 002.
+  engine for a site. Its interface (tabs, address bar, desktop): [shell.md](shell.md).
 
 How they talk: `specs/001-engine/contracts/protocol.md`. What a site's page gets: [site-api.md](site-api.md).
 
@@ -37,7 +37,7 @@ default, `--dir` to choose another; the official site's and forum's keys live in
 
 ```bash
 node engine/cli.js open <key>          # prints the title and the entry page's size, stays online
-npm start -- --open <key>              # the site in a window
+npm start -- --open <key>              # the site in a tab of the shell
 ```
 
 The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` from this repo).

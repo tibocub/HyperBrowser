@@ -8,13 +8,29 @@ A peer-to-peer browser: sites live with their owner and their visitors, not on a
 - Milestone 1: the official HyperBrowser site and the official forum, opened by key.
   Design: [docs/design-milestone-1.md](docs/design-milestone-1.md).
 
-Status: early work (spec 001: the engine and serving sites). How to run it: [docs/engine.md](docs/engine.md);
+Status: early work. Spec 001: the engine and serving sites; spec 002 (in progress): the shell's interface.
+Using the shell: [docs/shell.md](docs/shell.md); the engine and the command line: [docs/engine.md](docs/engine.md);
 writing a site: [docs/site-api.md](docs/site-api.md).
+
+## Launch
 
 ```bash
 npm i
-node engine/cli.js publish <folder>     # prints the site's key
-npm start -- --open <key>               # the site in a window
+npm start
+```
+
+`npm start` opens HyperBrowser on its desktop; paste a site key in the address field. To have a site to open,
+publish the demo site in another terminal (it prints its key and stays online):
+
+```bash
+node engine/cli.js publish sites/demo
+```
+
+`npm start -- --open <key>` opens that site in a tab at launch.
+
+## Tests
+
+```bash
 npm test && npm run test:bare && npm run test:sandbox
 ```
 

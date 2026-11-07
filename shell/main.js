@@ -1,7 +1,7 @@
-// The shell, minimal (spec 001; its interface is spec 002): runs the engine as a Bare worker (pear-runtime),
-// keeps it alive with heartbeats, serves hyper://<key>/ from the engine, and shows each site in its own
-// sandboxed view. Only this file bridges a site to the engine, and it names the site from the view.
-//   npm start -- --open <key> [--dir <engine folder>]
+// The shell: runs the engine as a Bare worker (pear-runtime), keeps it alive with heartbeats, serves
+// hyper://<key>/ from the engine, and shows each site in its own sandboxed view inside the frame
+// (frame.js, spec 002). Only this file bridges a site to the engine, and it names the site from the view.
+//   npm start [-- --open <key>] [-- --dir <engine folder>]
 //   npm run selftest [-- --no-guards]      (the sandbox self-test; --no-guards is its control run: must fail)
 import { app, BaseWindow, ipcMain, protocol, dialog } from 'electron'
 import fs from 'fs'
@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url'
 import PearRuntime from 'pear-runtime'
 import { connect } from '../engine/protocol.js'
 import { createSiteView } from './views.js'
+import { startFrame } from './frame.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SELFTEST = process.argv.includes('--selftest')
@@ -110,7 +111,16 @@ async function openSite (key, query = '') {
   v.webContents.on('destroyed', () => {
     for (const [id, wc] of subscribers) if (wc === v.webContents) { subscribers.delete(id); rpc.request('site.off', { id }).catch(() => {}) }
   })
-  return { key: real, ...v }
+  return { key: real, manifest, ...v }
+}
+
+const IMAGES = new Set(['png', 'gif', 'svg', 'webp', 'jpg', 'jpeg', 'ico'])
+
+// A site's icon (site.json `icon`) as a data URL for the frame, or null.
+async function readIcon (key, manifest) {
+  if (!manifest.icon || !IMAGES.has(manifest.icon.split('.').pop().toLowerCase())) return null
+  const { bytes, type } = await serve(key, manifest.icon)
+  return 'data:' + type + ';base64,' + Buffer.from(bytes).toString('base64')
 }
 
 async function shutdown () {
@@ -182,15 +192,7 @@ app.whenReady().then(async () => {
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
   console.log('engine up, identity', identity)
   if (SELFTEST) return selftest(dir)
-  const key = arg('--open')
-  if (!key) {
-    console.log('usage: npm start -- --open <site key> [--dir <engine folder>]')
-    await shutdown()
-    return app.exit(1)
-  }
-  const v = await openSite(key)
-  const win = new BaseWindow({ width: 1200, height: 800, title: sites.get(v.key).manifest.title + ' · HyperBrowser' })
-  layout(win, [v])
+  startFrame({ rpc, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open') })
 }).catch((err) => { console.error(err); app.exit(1) })
 
 app.on('window-all-closed', async () => {

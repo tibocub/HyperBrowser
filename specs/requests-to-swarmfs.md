@@ -2,6 +2,27 @@
 
 What HyperBrowser needs from SwarmFS and doesn't work around (constitution IV). Newest first.
 
+## F5. Bytes held of a site on this device (2026-11-07, spec 002)
+
+- **Need**: the shell's toolbar shows what this device holds of the open site ("12.4 MB"), next to complete
+  and peers.
+- **Today**: SwarmFS knows each file it holds (`held` records, app storage) but has no count per site; the
+  shell would have to read SwarmFS's private records.
+- **Ask**: `site.held()` (or a field of a site's status) → bytes of that site's files held here (pages and
+  uploads, inline ones included or not: say which).
+- **Here meanwhile**: the toolbar shows complete/loading and peers only.
+
+## F4. Keep a visited site whole: "install" (2026-11-07, spec 002)
+
+- **Need**: HyperBrowser's "install" (Tibo): a site kept whole on disk, never evicted from app storage, and
+  seeded; a bookmark stays cached and evicted as usual.
+- **Today**: a visitor's files land in app storage and are evicted least-recently-read first; only an
+  owner's uploads are kept (`_keep`).
+- **Ask**: `site.keep(true | false)`: fetch every page and upload of the site, keep them out of eviction, and
+  keep them as they change; `false` hands them back to app storage's usual rules. Remembered across restarts.
+- **Here meanwhile**: the shell records installed sites and opens them in the engine at launch (joined, so
+  served while HyperBrowser runs); their files are still evicted as usual.
+
 ## F3. `close()` right after `sync()` leaks `sync()`'s interval (2026-11-07, spec 001)
 
 - **Seen**: an engine closed within a moment of opening never lets its process exit. `sync()` sets its 10 s

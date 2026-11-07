@@ -23,6 +23,7 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 | `site.publish` | `{ folder }` | `{ key, created, manifest }` (`NO_MANIFEST`, `INVALID_MANIFEST`) |
 | `site.open` | `{ key, timeout? }` (z32 key, or an `hg:` invite / public link; timeout ms, default 30000) | `{ key, manifest, dynamic }` |
 | `site.read` | `{ key, path, timeout? }` (`''` or `/` = entry) | `{ bytes, path }` (`NOT_FOUND`, `NOT_AVAILABLE`) |
+| `site.state` | `{ key }` (spec 002) | `{ complete, peers }`: the site and its pages complete here; peers on the site's space |
 | `site.consent` | `{ key, allow }` | `true` |
 | `site.call` | `{ key, sub?, method, args?, chain? }` | the call's result |
 | `site.live` | `{ key, sub?, args, chain, opts? }` | `{ id }`; then `live` events |
