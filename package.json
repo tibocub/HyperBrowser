@@ -24,6 +24,7 @@
     "test:sandbox": "node test/sandbox.electron.js",
     "home:build": "node node_modules/hypermd/bin/hypermd.js build sites/home --out out/home",
     "home:publish": "npm run home:build && node engine/cli.js publish out/home",
+    "forum:publish": "node engine/cli.js publish sites/forum",
     "test:all": "npm test && npm run test:bare && npm run test:sandbox"
   },
   "dependencies": {
