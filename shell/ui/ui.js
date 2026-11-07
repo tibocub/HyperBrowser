@@ -64,6 +64,14 @@ const send = async (op, args) => {
 }
 const currentTab = () => S.tabs.find((t) => t.id === S.current)
 
+function size (n) {
+  if (n < 1024) return n + ' B'
+  const u = ['KB', 'MB', 'GB', 'TB']
+  let i = -1
+  do { n /= 1024; i++ } while (n >= 1024 && i < u.length - 1)
+  return n.toFixed(n < 100 ? 1 : 0) + ' ' + u[i]
+}
+
 function say (text) {
   note = text
   clearTimeout(say.t)
@@ -133,7 +141,8 @@ function render () {
   else if (!tab.state) st.textContent = 'loading'
   else {
     st.replaceChildren(el('span', tab.state.complete ? 'on' : '', tab.state.complete ? '■ ' : '□ '),
-      tab.state.complete ? 'complete' : 'loading', ' · ' + tab.state.peers + (tab.state.peers === 1 ? ' peer' : ' peers'))
+      tab.state.complete ? 'complete' : 'loading', ' · ' + tab.state.peers + (tab.state.peers === 1 ? ' peer' : ' peers'),
+      tab.held ? ' · ' + size(tab.held.bytes) + (tab.held.kept ? ' kept' : '') : '')
   }
 
   // the area under the bars: the desktop, or the panel of a tab without a page yet

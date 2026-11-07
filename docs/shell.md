@@ -14,7 +14,8 @@ below them):
   double-click it to maximize. Tabs share the width; other tabs keep running in the background. The desktop is
   always the first tab.
 - **The toolbar**: back, forward, reload, the address, the bookmark button, and the site's state on the right
-  (`■ complete` or `□ loading`, peers).
+  (`■ complete` or `□ loading`, peers, what this device holds of the site, and `kept` when it is installed;
+  the bytes refresh about every 10 s).
 
 ## Opening a site
 
@@ -26,9 +27,11 @@ site is online, the tab says so: "Try again" or "Close tab".
 
 Each site's icon (from its `site.json`), its title under it.
 
-- **Installed** (solid frame, shadow): kept and seeded. For now: opened in the engine at launch, so served
-  while HyperBrowser runs; kept whole on disk comes with SwarmFS (request F4).
+- **Installed** (solid frame, shadow): every page and upload kept on this device, never evicted, and served
+  to others. Remembered across restarts. An install that couldn't be done (the site unreachable) is tried
+  again at the next launch.
 - **Bookmark** (dotted frame): cached and evicted as usual. The toolbar's bookmark button adds or removes one.
+  Making an installed site a bookmark, or removing its icon, hands its files back to the cache.
 - Double-click (or Enter) opens; right-click: open, install or bookmark, remove; drag to another cell.
 - The official site and forum are preset; until their keys are published they say "not published".
 
@@ -56,5 +59,4 @@ window manager (some Wayland desktops give none).
 
 ## Not yet
 
-"What you hold" in the state (SwarmFS request F5), install keeping a site whole (F4), Mentions, folders on the
-desktop, the tray, `hyper://` links from the system, phone layout.
+Mentions, folders on the desktop, the tray, `hyper://` links from the system, phone layout.

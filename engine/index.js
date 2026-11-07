@@ -49,6 +49,8 @@ export function start (ipc) {
       case 'site.open': return open(p)
       case 'site.read': return read(p)
       case 'site.state': return state(p)
+      case 'site.keep': return keep(p)
+      case 'site.held': return held(p)
       case 'site.consent': return consent(p)
       case 'site.call': return call(p)
       case 'site.live': return live(p)
@@ -119,10 +121,24 @@ export function start (ipc) {
   }
 
   // For the shell's toolbar: the site and its pages complete here, and the peers on the site's space.
-  // Bytes held per site: not in SwarmFS yet (requests-to-swarmfs F5).
   function state ({ key }) {
     const { site } = opened(keyOf({ key }))
     return { complete: site.space.isComplete() && site.pages.space.isComplete(), peers: site.space.peers().length }
+  }
+
+  // Install (true: kept whole here, never evicted, served; remembered) or back to the cache (SwarmFS F4).
+  async function keep ({ key, keep, timeout }) {
+    const { site } = opened(keyOf({ key }))
+    if (typeof keep !== 'boolean') throw error('INVALID_PARAMS', 'site.keep needs { keep: true | false }')
+    await site.keep(keep, { timeout })
+    return { kept: keep }
+  }
+
+  // The bytes of the site on this device, and whether it is installed (SwarmFS F5). Reads every held
+  // file record: the shell asks every few seconds, not more.
+  async function held ({ key }) {
+    const { site } = opened(keyOf({ key }))
+    return { bytes: await site.held(), kept: await site.kept() }
   }
 
   function keyOf ({ key }) {

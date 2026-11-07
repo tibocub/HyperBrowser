@@ -52,7 +52,7 @@ Built with Phase 2 (one page); checked through the frame's messages, not yet by 
 
 - [x] T020 Ctrl+Tab / Ctrl+Shift+Tab while a site has the focus; narrow tabs (icon only) when there are many
 
-Open, waiting on SwarmFS: FR-008's "kept whole on disk" (request F4) and FR-006's "what you hold" (request F5).
+FR-008's "kept whole on disk" (SwarmFS F4) and FR-006's "what you hold" (F5): done in spec 003.
 
 
 - [x] T015 the frame check (T019): a site's view starts under the bars (SC-004), a site's page has no door to

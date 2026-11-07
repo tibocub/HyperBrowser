@@ -86,3 +86,23 @@ test('site.state: complete and peers, for the shell toolbar (spec 002 FR-006)', 
   await owner.rpc.request('site.open', { key })
   t.is((await owner.rpc.request('site.state', { key })).complete, true, "the owner's own site")
 })
+
+test('site.keep and site.held: install a site, the bytes held here (spec 003; SwarmFS F4, F5)', async (t) => {
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, { files: { 'index.html': '<h1>hi</h1>', 'a.html': 'aaaa' } }) })
+  const visitor = await engine(t)
+  t.is(await codeOf(visitor.rpc.request('site.held', { key })), 'NOT_FOUND', 'open it first')
+  t.is(await codeOf(visitor.rpc.request('site.keep', { key, keep: true })), 'NOT_FOUND', 'open it first')
+  await visitor.rpc.request('site.open', { key })
+  t.is(await codeOf(visitor.rpc.request('site.keep', { key, keep: 'yes' })), 'INVALID_PARAMS')
+
+  const before = await visitor.rpc.request('site.held', { key })
+  t.is(before.kept, false, 'a visited site is not installed')
+  t.is(typeof before.bytes, 'number')
+  t.alike(await visitor.rpc.request('site.keep', { key, keep: true }), { kept: true })
+  const installed = await visitor.rpc.request('site.held', { key })
+  t.is(installed.kept, true)
+  t.ok(await eventually(async () => (await visitor.rpc.request('site.held', { key })).bytes >= 'aaaa'.length + '<h1>hi</h1>'.length, 20000, 250), 'every page held')
+  t.alike(await visitor.rpc.request('site.keep', { key, keep: false }), { kept: false })
+  t.is((await visitor.rpc.request('site.held', { key })).kept, false, 'handed back to the cache')
+})

@@ -11,6 +11,7 @@ import { parseAddress, shortKey, upsert, move, remove } from './model.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const POLL = 2000
+const HELD = 10000 // site.held reads every file record of the site: every 10 s, not every poll
 const KINDS = new Set(['installed', 'bookmark'])
 const THEMES = new Set(['system', 'light', 'dark'])
 const ACCENTS = new Set(['#1f4fd1', '#c2410c', '#0b7a52'])
@@ -70,7 +71,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       current,
       tabs: tabs.map((t) => ({
         id: t.id, key: t.key, short: t.key ? shortKey(t.key) : '', title: t.title, icon: t.icon || null, status: t.status,
-        error: t.error || null, canBack: !!t.canBack, canForward: !!t.canForward, loading: !!t.loading, state: t.state || null,
+        error: t.error || null, canBack: !!t.canBack, canForward: !!t.canForward, loading: !!t.loading, state: t.state || null, held: t.held || null,
         kind: t.key ? iconOf(t.key)?.kind || null : null
       })),
       desktop: data.desktop,
@@ -187,13 +188,17 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   }
 
   let polling = false
-  async function poll () {
+  let heldAt = 0
+  async function poll (held = Date.now() - heldAt >= HELD) {
     if (polling) return
     polling = true
+    if (held) heldAt = Date.now()
     try {
       for (const t of tabs.filter((t) => t.view)) {
         const s = await rpc.request('site.state', { key: t.key }).catch(() => null)
         if (s) t.state = s
+        const h = held && await rpc.request('site.held', { key: t.key }).catch(() => null)
+        if (h) t.held = h
       }
     } finally {
       polling = false
@@ -201,6 +206,19 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     push()
   }
   const timer = setInterval(poll, POLL)
+
+  // Installed = kept whole here and served (SwarmFS site.keep, remembered by SwarmFS); the icon's `kept` says
+  // the engine confirmed it, so a site that couldn't be reached is tried again at the next launch.
+  function keepSite (key, on) {
+    rpc.request('site.open', { key })
+      .then(() => rpc.request('site.keep', { key, keep: on, timeout: 30000 }))
+      .then(() => {
+        const icon = iconOf(key)
+        if (icon && (icon.kind === 'installed') === on) setIcons(upsert(data.desktop.icons, { id: icon.id, kept: on }))
+        heldAt = 0
+        poll()
+      }, (err) => console.error('could not ' + (on ? 'install ' : 'uninstall ') + key + ':', err.message))
+  }
 
   function setIcons (icons) {
     data.desktop.icons = icons
@@ -232,11 +250,19 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         return openKey(icon.key)
       }
       case 'icon.move': setIcons(move(data.desktop.icons, a.id, a.col, a.row)); return { result: true }
-      case 'icon.kind':
-        if (!KINDS.has(a.kind) || !data.desktop.icons.some((i) => i.id === a.id)) return { error: { code: 'INVALID_PARAMS', message: 'installed or bookmark' } }
+      case 'icon.kind': {
+        const icon = data.desktop.icons.find((i) => i.id === a.id)
+        if (!KINDS.has(a.kind) || !icon) return { error: { code: 'INVALID_PARAMS', message: 'installed or bookmark' } }
         setIcons(upsert(data.desktop.icons, { id: a.id, kind: a.kind }))
+        if (icon.key && icon.kind !== a.kind) keepSite(icon.key, a.kind === 'installed')
         return { result: true }
-      case 'icon.remove': setIcons(remove(data.desktop.icons, a.id)); return { result: true }
+      }
+      case 'icon.remove': {
+        const icon = data.desktop.icons.find((i) => i.id === a.id)
+        setIcons(remove(data.desktop.icons, a.id))
+        if (icon?.key && icon.kept) keepSite(icon.key, false)
+        return { result: true }
+      }
       case 'settings':
         if (THEMES.has(a.theme)) data.settings.theme = a.theme
         if (ACCENTS.has(a.accent)) data.settings.accent = a.accent
@@ -277,8 +303,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   })
   layout()
 
-  // installed sites are opened in the engine, so seeded while HyperBrowser runs (FR-008; whole: SwarmFS F4)
-  for (const i of data.desktop.icons) if (i.kind === 'installed' && i.key) rpc.request('site.open', { key: i.key }).catch(() => {})
+  // an install (or uninstall) the engine never confirmed: again (a site unreachable then, a desktop from 002)
+  for (const i of data.desktop.icons) if (i.key && !!i.kept !== (i.kind === 'installed')) keepSite(i.key, i.kind === 'installed')
   if (open) openKey(open)
   // for the frame check (npm run test:sandbox): where everything is
   const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc })

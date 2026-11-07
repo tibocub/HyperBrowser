@@ -227,7 +227,7 @@ const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContent
 app.whenReady().then(async () => {
   worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
   worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
-  rpc = connect(worker, { onEvent })
+  rpc = connect(worker, { onEvent, onclose: () => { if (!quitting) { console.error('engine stopped without a word'); app.exit(1) } } })
   const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST || FRAMECHECK ? 'selftest-' + process.pid : 'engine')
   const { identity } = await rpc.request('init', { dir, heartbeat: HEARTBEAT })
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)

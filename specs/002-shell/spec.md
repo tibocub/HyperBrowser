@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-07
 
-**Status**: Built (2026-11-07), except what waits on SwarmFS F4 and F5
+**Status**: Built (2026-11-07); FR-006's bytes held and FR-008's kept whole: spec 003
 
 **Input**: "Spec 002, the shell's interface" (lead session, 2026-11-07), from the milestone-1 design
 (hypergraph `specs/research/hyperbrowser-milestone-1.md`, "Visual identity" and "The shell", Tibo
