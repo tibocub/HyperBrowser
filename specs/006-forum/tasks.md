@@ -4,7 +4,7 @@ Slices: each one commit, with its tests and docs. `[test]` = written first, fail
 
 ## Slice 1 — engine additions, boards and threads (US1, US3.1–2)
 
-- [x] T001 [test] `test/engine.test.js`: `site.json` `types` and `public` checked (`INVALID_MANIFEST`)
+- [x] T001 [test] `test/sites.test.js`: `site.json` `types` and `public` checked (`INVALID_MANIFEST`)
 - [x] T002 [test] `test/site-api.test.js`: a site's own types written by a visitor-member; `public: false` keeps
   strangers out, an invite lets them in; `mine.all` / `mine.set` on the person's settings, refused before consent
 - [x] T003 `engine/manifest.js`, `engine/index.js` (publish with types, declare on republish, public),
@@ -37,8 +37,19 @@ Slices: each one commit, with its tests and docs. `[test]` = written first, fail
 
 - [x] T013 `docs/forum.md`, `sites/home/forum.hmd` (+ menu), README; screenshots light and dark (front page,
   thread)
-- [ ] T014 `npm test`, `npm run test:bare`, `npm run test:sandbox`, one after another
+- [x] T014 `npm test`, `npm run test:bare`, `npm run test:sandbox`, one after another
 
 ## Left
 
-(filled at the end)
+- [ ] T015 Devices: the forum needs nothing of its own (posts are the identity's, read state is in the person's
+  settings), but HyperBrowser has no device pairing yet (engine `init` takes no join code, no shell UI): so
+  "devices" isn't tested through the forum. Its own spec (engine + shell).
+- [ ] T016 Tibo: try it in the real shell (quickstart.md), edit the texts (`sites/home/forum.hmd`), publish the
+  official forum from his machine and put its key in `shell/preset.json`.
+- [ ] T017 Past the live views' limits (500 threads, 2000 replies, 5000 votes): counts and scores of old threads
+  per shown thread with `count()` / `sum()` (research R4).
+- [ ] T018 Not built (spec assumptions): private sub-forums (sub-spaces), moving threads, images uploaded with a
+  post.
+- [ ] T019 Perf: HyperBrowser has no perf setup (no `perf/`); no forum scenario added.
+- Note: slices 2–5 landed as one commit (`88889b8`), not one commit each: the page and `lib/` were written
+  together.

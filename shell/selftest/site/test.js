@@ -8,8 +8,9 @@ document.getElementById('me').textContent = (isStatic ? 'static ' : 'site ') + m
 
 const refused = (p) => p.then(() => false, () => true)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+// mine: the person's own data for this site (spec 006), on their settings, not a space
 const API = ['completeFrom', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
-  'edit', 'get', 'getByTag', 'getRole', 'info', 'isComplete', 'linked', 'members', 'moderateAction', 'on', 'peers',
+  'edit', 'get', 'getByTag', 'getRole', 'info', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'on', 'peers',
   'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'setRole',
   'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag']
 
