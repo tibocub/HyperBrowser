@@ -67,3 +67,11 @@ test('a closed stream rejects what is waiting with CLOSED', async (t) => {
   t.is(await codeOf(waiting), 'CLOSED')
   t.is(await codeOf(client.request('after')), 'CLOSED')
 })
+
+test('the other side ending its stream: what is waiting, and what comes after, get CLOSED', async (t) => {
+  const { server, client } = both(() => new Promise(() => {}))
+  const waiting = client.request('forever')
+  server.end()
+  t.is(await codeOf(waiting), 'CLOSED')
+  t.is(await codeOf(client.request('after')), 'CLOSED')
+})

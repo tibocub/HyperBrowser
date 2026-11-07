@@ -49,6 +49,7 @@ export function connect (stream, { handle = null, onEvent = null, onmessage = nu
     waiting.clear()
     if (onclose) onclose()
   })
+  framed.on('end', () => framed.destroy()) // the other side ended: nothing more will answer
   framed.on('error', () => {})
 
   function send (m) {

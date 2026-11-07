@@ -1,0 +1,14 @@
+{
+  "test/protocol.test.js": 243,
+  "test/site-api.test.js": 5511,
+  "test/sites.test.js": 7891,
+  "test/two-engines.test.js": 5179,
+  "test/worker.test.js": 10603,
+  "test/engine.test.js": 4777,
+  "bare:test/protocol.test.js": 9060,
+  "bare:test/engine.test.js": 13438,
+  "bare:test/site-api.test.js": 8151,
+  "bare:test/sites.test.js": 10378,
+  "bare:test/worker.test.js": 3580,
+  "bare:test/two-engines.test.js": 11191
+}

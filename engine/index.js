@@ -27,6 +27,8 @@ export function start (ipc) {
   let last = Date.now()
   let closing = null
   let nextSub = 1
+  let answering = Promise.resolve()
+  let syncing = null
   const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null }
   const subs = new Map() // id -> { key, stop }
   let closed
@@ -62,7 +64,7 @@ export function start (ipc) {
     starting = SwarmFS.open(dir, { bootstrap, appStorageMax })
     starting.catch(() => { starting = null }) // a failed init may be sent again
     sfs = await starting
-    sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
+    syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
     if (heartbeat) {
       timer = setInterval(() => { if (Date.now() - last > 3 * heartbeat) shutdown('heartbeat') }, heartbeat)
     }
@@ -132,8 +134,13 @@ export function start (ipc) {
   async function consent ({ key, allow }) {
     key = keyOf({ key })
     if (typeof allow !== 'boolean') throw error('INVALID_PARAMS', 'site.consent needs { allow: true | false }')
-    const answers = (await sfs.hg.settings())[ANSWERS] || {}
-    await sfs.hg.setSetting(ANSWERS, { ...answers, [key]: allow })
+    // one read-and-write at a time: two answers at once would each drop the other's
+    const write = answering.then(async () => {
+      const answers = (await sfs.hg.settings())[ANSWERS] || {}
+      await sfs.hg.setSetting(ANSWERS, { ...answers, [key]: allow })
+    })
+    answering = write.catch(() => {})
+    await write
     if (!allow) await release(key)
     return true
   }
@@ -234,6 +241,7 @@ export function start (ipc) {
         for (const key of [...sites.keys()]) await closeSite(key).catch(() => {})
         const opening = starting
         starting = null
+        await syncing // a close() before sync() has started leaks its interval (requests-to-swarmfs F3)
         if (opening) await opening.then((s) => s.close(), () => {})
         sfs = null
         setTimeout(() => rpc.end(), 0) // after the reply to 'close'

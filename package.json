@@ -20,7 +20,8 @@
     "selftest": "electron . --selftest",
     "test": "node scripts/test-runner.js",
     "test:bare": "node scripts/test-runner.js --bare",
-    "test:all": "npm test && npm run test:bare"
+    "test:sandbox": "node test/sandbox.electron.js",
+    "test:all": "npm test && npm run test:bare && npm run test:sandbox"
   },
   "dependencies": {
     "b4a": "^1.9.0",
