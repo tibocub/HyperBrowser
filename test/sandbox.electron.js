@@ -43,7 +43,8 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
   for (const check of [
     "other site's files: <script src=hyper://<other>/probe.js> doesn't run",
     'no web: <img src=https://...> fails to load (needs internet to mean anything)',
-    'the page names no space: hyper.subspace(<other site>) is refused'
+    'the page names no space: hyper.subspace(<other site>) is refused',
+    'the page names no space: hyper.instance(<other site>) is refused'
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
 })
 

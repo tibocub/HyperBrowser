@@ -158,7 +158,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     select(tab.id)
     openSite(a.key).then((v) => {
       if (!tabs.includes(tab)) return v.close() // closed while opening
-      Object.assign(tab, { key: v.key, title: v.manifest.title, status: 'ready', view: v.view, wc: v.webContents, close: v.close })
+      // key: the address (an app's instance shows its own key, spec 009); site: the site whose pages run
+      Object.assign(tab, { key: v.instance || v.key, site: v.key, title: v.manifest.title, status: 'ready', view: v.view, wc: v.webContents, close: v.close })
       const sync = () => {
         // canGoBack() answers false here while there is a page to go back to (Electron 42, Windows)
         tab.canBack = v.webContents.navigationHistory.canGoToOffset(-1)
@@ -222,9 +223,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     if (held) heldAt = Date.now()
     try {
       for (const t of tabs.filter((t) => t.view)) {
-        const s = await rpc.request('site.state', { key: t.key }).catch(() => null)
+        const s = await rpc.request('site.state', { key: t.site }).catch(() => null)
         if (s) t.state = s
-        const h = held && await rpc.request('site.held', { key: t.key }).catch(() => null)
+        const h = held && await rpc.request('site.held', { key: t.site }).catch(() => null)
         if (h) t.held = h
       }
     } finally {
@@ -235,10 +236,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   const timer = setInterval(poll, POLL)
 
   // Installed = kept whole here and served (SwarmFS site.keep, remembered by SwarmFS); the icon's `kept` says
-  // the engine confirmed it, so a site that couldn't be reached is tried again at the next launch.
+  // the engine confirmed it, so a site that couldn't be reached is tried again at the next launch. An app's
+  // instance (spec 009) installs its app: the instance itself always stays joined.
   function keepSite (key, on) {
     rpc.request('site.open', { key })
-      .then(() => rpc.request('site.keep', { key, keep: on, timeout: 30000 }).finally(() => rpc.request('site.close', { key }).catch(() => {})))
+      .then(({ key: site }) => rpc.request('site.keep', { key: site, keep: on, timeout: 30000 }).finally(() => rpc.request('site.close', { key: site }).catch(() => {})))
       .then(() => {
         const icon = iconOf(key)
         if (icon && (icon.kind === 'installed') === on) setIcons(upsert(data.desktop.icons, { id: icon.id, kept: on }))

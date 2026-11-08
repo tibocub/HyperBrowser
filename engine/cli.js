@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The engine without a window (specs/001-engine/contracts/cli.md): the same start() as the shell's
 // worker, on one end of an in-process stream. Node or Bare:
-//   node engine/cli.js publish <folder> [--dir d] [--bootstrap host:port,...] [--invite member|admin] [--once]
+//   node engine/cli.js publish <folder> [--dir d] [--bootstrap host:port,...] [--instance name] [--invite member|admin] [--once]
 //   node engine/cli.js open <key> [--dir d] [--bootstrap host:port,...] [--once]
 import process from 'process'
 import os from 'os'
@@ -13,9 +13,11 @@ const USAGE = `usage:
   publish <folder>   publish a site folder (made the first time; same key after), then stay online
   open <key>         open a site by its key (or an hg: link), then stay online
 options: --dir <engine folder> (default ~/.hyperbrowser)  --bootstrap host:port,...  --once
-  --invite member|admin   (publish) then print a one-use invite link to the site (an invite-only site's way in)`
+  --invite member|admin   (publish) then print a one-use invite link to the site (an invite-only site's way in)
+  --instance <name>       (publish) an app's instance owned by this engine (spec 009): made once, the same one after;
+                          the app's \`official\` record names it if the app has that type; --invite is then to it`
 
-const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), bootstrap: undefined, once: false, invite: null }
+const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), bootstrap: undefined, once: false, invite: null, instance: null }
 const args = []
 const argv = process.argv.slice(2)
 for (let i = 0; i < argv.length; i++) {
@@ -23,6 +25,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (argv[i] === '--bootstrap') opts.bootstrap = argv[++i].split(',').map((hp) => ({ host: hp.split(':')[0], port: Number(hp.split(':')[1]) }))
   else if (argv[i] === '--once') opts.once = true
   else if (argv[i] === '--invite') opts.invite = argv[++i]
+  else if (argv[i] === '--instance') opts.instance = argv[++i]
   else args.push(argv[i])
 }
 const [cmd, target] = args
@@ -54,12 +57,22 @@ async function run (rpc) {
   if (cmd === 'publish') {
     const { key, created } = await rpc.request('site.publish', { folder: target })
     console.log(`key: ${key}${created ? ' (created)' : ''}`)
+    if (!opts.invite && !opts.instance) return
+    // the owner's engine has no window to ask: running this command is the owner saying yes
+    await rpc.request('site.open', { key })
+    await rpc.request('site.consent', { key, allow: true })
+    const call = (method, args, instance = null) => rpc.request('site.call', { key, instance, method, args })
+    let instance = null
+    if (opts.instance) {
+      const mine = (await call('instances.list', [])).find((i) => i.name === opts.instance && i.role === 'owner')
+      instance = mine ? mine.key : (await call('instances.create', [opts.instance])).key
+      console.log(`instance: ${instance}${mine ? '' : ' (created)'}`)
+      const types = await call('types', [])
+      if (types.official && (await rpc.request('site.call', { key, method: 'query', args: ['official'], chain: [['latest', [1]]] })).items?.[0]?.instance !== instance) await call('put', ['official', { instance }])
+    }
     if (opts.invite) {
-      // the owner's engine has no window to ask: running this command is the owner saying yes
-      await rpc.request('site.open', { key })
-      await rpc.request('site.consent', { key, allow: true })
-      const link = await rpc.request('site.call', { key, method: 'createInvite', args: [{ role: opts.invite, uses: 1 }] })
-      console.log(`invite (${opts.invite}, one use): ${link}`)
+      const link = await call('createInvite', [{ role: opts.invite, uses: 1 }], instance)
+      console.log(`invite (${opts.invite}, one use${instance ? ', to the instance' : ''}): ${link}`)
     }
     return
   }

@@ -1,8 +1,10 @@
-# The official forum (spec 006)
+# The forum app and the official forum (specs 006, 009)
 
-`sites/forum`: HyperBrowser's forum, a dynamic site on the site API ([site-api.md](site-api.md)). Invite-only while
-testing; a fresh public forum replaces it at release. What members see and do: `sites/home/forum.hmd` (the
-official site's "The forum" page). Spec, plan, data model and screenshots: `specs/006-forum/`.
+`sites/forum`: HyperBrowser's forum **app**, a dynamic site on the site API ([site-api.md](site-api.md)). Anyone
+makes forums with it (its **instances**, spec 009): each forum is a space of its own, owned by whoever made it;
+the app's author has no say in it. The **official forum** is Tibo's instance, "HyperBrowser" (invite-only while
+testing). What members see and do: `sites/home/forum.hmd` (the official site's "The forum" page). Specs:
+`specs/006-forum/` (the forum), `specs/009-federated-apps/` (instances).
 
 ## Publish it (owner)
 
@@ -10,13 +12,21 @@ official site's "The forum" page). Spec, plan, data model and screenshots: `spec
 npm run forum:publish -- --invite admin
 ```
 
-It prints the forum's key and a one-use admin invite, and stays online (it is the forum's owner: keep its engine
+It publishes the app (public: its code loads for everyone), makes the "HyperBrowser" forum with it the first time
+(the same one after), names it the app's official forum, and prints the app's key, the forum's key (`instance:`)
+and a one-use admin invite **to the forum**. It stays online (it owns the app and the forum: keep its engine
 folder, `~/.hyperbrowser` by default, `--dir` to choose). Paste the invite into your own HyperBrowser's address
-field: you are an admin there, and make the boards and the next invites from the forum's Members page.
-Publishing again (same folder, same engine folder) sends the edited pages and adds new record types.
+field: the app opens on the forum, you are an admin there, and make the boards and the next invites from its
+Members page. Publishing again (same folder, same engine folder) sends the edited pages to **every** forum made
+with the app, and adds new record types (each forum gets them when its owner or an admin opens it).
+
+The preset's forum icon (`shell/preset.json`) holds the official forum's key (the `instance:` line), not the
+app's: opening a forum's key or link opens the app on it.
 
 ## How it is made
 
+- `?instance=<forum key>` says which forum the page shows; with none, the start page: your forums, the
+  official one (the app's `official` record, written by `publish --instance`), make a forum, join one by link.
 - One page (`index.html`, `app.js`), hash routes (`#/b/<board>`, `#/t/<thread>`, `#/mentions`, `#/you`,
   `#/members`, `#/mod`, `#/new/<board>`, `#/board/<id>`), redrawn from live views of each record type.
 - `lib/forum.js`: every write (boards, threads, replies with their mentions, votes, names, icons, moderation,
@@ -25,15 +35,16 @@ Publishing again (same folder, same engine folder) sends the edited pages and ad
   `lib/icon.js`: 16×16 1-bit icons (32 bytes), made from a key or drawn.
 - Record types in `site.json` (`board`, `thread`, `comment`, `vote`, `mention`, `avatar`; names are SwarmFS's
   `profile`): see `specs/006-forum/data-model.md`. Only additions between versions.
-- Read state, the sort and mentions seen: `hyper.mine` (the person's settings, on their devices). Bounded: one
+- Read state, the sort and mentions seen: the forum's `hyper.instance(key).mine` (the person's settings, on their
+  devices; each forum's apart, under the app's one cap). Bounded: one
   `read/<thread>` entry (~90 bytes) per thread read among the ones shown; entries of threads no longer shown
   (deleted, hidden, past the newest 500) are dropped once per visit, so at most ~45 KB of the site's 1 MB.
 - Moderation and roles: hypergraph's (`moderateAction`, `report`, `reports`, `setRole`).
 
 ## Tests
 
-`test/forum.test.js` runs `lib/` on the site API of engines on a local DHT (`siteApi()` in `test/helpers.js`
-is the page's `window.hyper`): invite-only, boards, threads, the tree, votes, edit and delete, moderation,
+`test/forum.test.js` runs `lib/` on a forum made with the app, through the site API of engines on a local DHT
+(`siteApi(e, app).instance(forum)` in `test/helpers.js` is the page's `window.hyper.instance(...)`): invite-only, boards, threads, the tree, votes, edit and delete, moderation,
 sorting, unread across a restart, mentions, names and icons, and the text subset. Node and Bare.
 
 ## Limits (milestone 1)

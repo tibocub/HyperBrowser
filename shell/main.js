@@ -74,12 +74,14 @@ function ask (key) {
 async function bridge (wc, msg) {
   let key = viewOf.get(wc.id)
   let sub = msg.sub ?? null
+  let instance = msg.instance ?? null // one of the app's instances (spec 009): the engine checks it is
   if (!GUARDS && sites.has(sub)) { key = sub; sub = null } // control run: trusts a key from the page
+  if (!GUARDS && sites.has(instance)) { key = instance; instance = null }
   if (msg.op === 'off') return rpc.request('site.off', { id: msg.id })
   const method = { call: 'site.call', live: 'site.live', on: 'site.on' }[msg.op]
   if (!method) throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
   // only the fields of that call; the key is the view's
-  const params = { key, sub, method: msg.method, args: msg.args, chain: msg.chain, opts: msg.opts, event: msg.event }
+  const params = { key, sub, instance, method: msg.method, args: msg.args, chain: msg.chain, opts: msg.opts, event: msg.event }
   let result
   try {
     result = await rpc.request(method, params)
@@ -106,15 +108,16 @@ ipcMain.handle('site', async (evt, msg) => {
 })
 
 async function openSite (key, query = '') {
-  const { manifest, dynamic, key: real } = await rpc.request('site.open', { key })
+  const { manifest, dynamic, key: real, instance = null } = await rpc.request('site.open', { key })
   sites.set(real, { manifest, dynamic })
+  if (instance) query = '?instance=' + instance // an app's instance (spec 009): the app's pages, told which one
   const v = createSiteView(real, { dynamic, serve, guards: GUARDS, persist: !SELFTEST, query })
   viewOf.set(v.webContents.id, real)
   v.webContents.on('destroyed', () => {
     for (const [id, wc] of subscribers) if (wc === v.webContents) { subscribers.delete(id); rpc.request('site.off', { id }).catch(() => {}) }
     rpc?.request('site.close', { key: real }).catch(() => {}) // the engine leaves it a while later unless installed (spec 004)
   })
-  return { key: real, manifest, ...v }
+  return { key: real, instance, manifest, ...v }
 }
 
 const IMAGES = new Set(['png', 'gif', 'svg', 'webp', 'jpg', 'jpeg', 'ico'])

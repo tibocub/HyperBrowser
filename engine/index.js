@@ -1,7 +1,7 @@
 // The engine: one entry, start(ipc), over a duplex byte stream (specs/001-engine/contracts/protocol.md).
 // Bare modules only, no Electron or Pear calls; its config arrives as the 'init' message. One SwarmFS,
-// so one hypergraph: one identity, one swarm, every site. A site reaches its own space only, through
-// hg.scope(); the shell names the site, never the page.
+// so one hypergraph: one identity, one swarm, every site. A site reaches its own space, through hg.scope(),
+// and the instances made with it or joined through it (spec 009); the shell names the site, never the page.
 import fs from 'fs'
 import path from 'path'
 import { SwarmFS } from 'swarmfs'
@@ -16,6 +16,9 @@ const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'linked', 'count', 
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces', 'redemptions',
   'peers', 'status', 'isComplete', 'completeFrom', 'types'])
 const MINE = new Set(['mine.all', 'mine.set'])
+const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join', 'instances.leave'])
+const APP_PREFIX = 'hyperbrowser/app/' // + key + '/instances': { [instance key]: true }, written by the engine only
+const INSTANCES_MAX = 1000 // per app: the list is a setting every device of the person keeps
 const MINE_PREFIX = 'hyperbrowser/site/' // + key + '/' + name: a site's own settings
 // What a site may keep in the person's settings, which every device of theirs replicates (site code is untrusted).
 // The forum's use: read state ~90 bytes per thread opened, pruned to the threads it shows (<= 500): ~45 KB.
@@ -40,7 +43,7 @@ export function start (ipc) {
   let answering = Promise.resolve()
   let keeping = Promise.resolve() // mine.set one at a time: two at once would each pass the cap
   let syncing = null
-  const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null, tabs }
+  const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null, instances: Map<key, Promise<Scope>>, tabs }
   const leaving = new Map() // key -> timer: no tab shows it, left once the grace period is over
   const departing = new Map() // key -> the leave running
   let grace = GRACE
@@ -136,13 +139,17 @@ export function start (ipc) {
       try { sfs.hg.space(key) } catch { held = false }
       site = held ? await sfs.site(key, { timeout }) : await sfs.visit('hg:' + key, { timeout }) // a public site's link is its key
     }
+    if (site.app) { // an app's instance (spec 009): its app opens on it, and the app may reach it from now on
+      await listInstance(site.app, site.key, true)
+      return { ...(await openSite(site.app, timeout)), instance: site.key }
+    }
     const manifest = parseManifest(await site.read('site.json', { timeout }).catch((err) => {
       throw err.code === 'NOT_FOUND' ? error('NO_MANIFEST', 'this site has no site.json') : err
     }))
     stay(site.key)
     const known = sites.get(site.key)
     if (known) Object.assign(known, { manifest, tabs: known.tabs + 1 })
-    else sites.set(site.key, { site, manifest, scope: null, tabs: 1 })
+    else sites.set(site.key, { site, manifest, scope: null, instances: new Map(), tabs: 1 })
     return { key: site.key, manifest, dynamic: isDynamic(manifest) }
   }
 
@@ -202,7 +209,7 @@ export function start (ipc) {
     return true
   }
 
-  async function target ({ key, sub }) {
+  async function target ({ key, sub, instance }) {
     const s = opened(keyOf({ key }))
     if (!isDynamic(s.manifest)) throw error('NOT_ALLOWED', 'a static site has no API')
     const answer = ((await sfs.hg.settings())[ANSWERS] || {})[key]
@@ -212,8 +219,98 @@ export function start (ipc) {
       s.scope = sfs.hg.scope(key, { identity: 'main' })
       s.scope.catch(() => { s.scope = null })
     }
-    const scope = await s.scope
+    const scope = instance === undefined || instance === null ? await s.scope : await instanceScope(s, key, instance)
     return sub === undefined || sub === null ? scope : scope.subspace(sub)
+  }
+
+  // --- instances (spec 009): spaces of their own, owned by their creator, running an app's code ---
+
+  async function listed (app) {
+    return (await sfs.hg.settings())[APP_PREFIX + app + '/instances'] || {}
+  }
+
+  // One read-and-write of an app's list at a time (as the consent answers).
+  function listInstance (app, key, on) {
+    const write = answering.then(async () => {
+      const list = await listed(app)
+      if (!on) delete list[key]
+      else if (!list[key] && Object.keys(list).length >= INSTANCES_MAX) throw error('TOO_BIG', `an app keeps at most ${INSTANCES_MAX} instances`)
+      else list[key] = true
+      await sfs.hg.setSetting(APP_PREFIX + app + '/instances', list)
+    })
+    answering = write.catch(() => {})
+    return write
+  }
+
+  // The handle on one of the app's instances: listed for this app, and the instance itself names this app.
+  async function instanceScope (s, app, key) {
+    keyOf({ key })
+    if (!(await listed(app))[key]) throw error('NOT_ALLOWED', "not one of this app's instances: create or join it first")
+    if (!s.instances.has(key)) {
+      const opening = (async () => {
+        const site = await sfs.site(key)
+        if (site.app !== app) throw error('NOT_ALLOWED', 'that instance runs another app')
+        return { site, scope: await sfs.hg.scope(key, { identity: 'main' }), types: null }
+      })()
+      s.instances.set(key, opening)
+      opening.catch(() => s.instances.delete(key))
+    }
+    const i = await s.instances.get(key)
+    if (s.manifest.types && i.types !== s.manifest.types) { // the app's types, and those a new version added: owner, admins only
+      i.types = s.manifest.types
+      await i.site.declareTypes(i.types).catch(() => {})
+    }
+    return i.scope
+  }
+
+  async function instances (s, app, method, [a, b]) {
+    if (method === 'instances.list') {
+      const out = []
+      for (const key of Object.keys(await listed(app))) {
+        let space
+        try { space = sfs.hg.space(key) } catch { continue } // left on another device: not held here
+        out.push({ key, name: space.name ?? null, role: await space.getRole(sfs.hg.identity.publicKey), public: !!space.isPublic })
+      }
+      return out
+    }
+    if (method === 'instances.create') {
+      if (typeof a !== 'string' || !a.trim() || a.length > 200) throw error('INVALID_PARAMS', "an instance's name is 1 to 200 characters")
+      const pub = b?.public ?? false
+      if (typeof pub !== 'boolean') throw error('INVALID_PARAMS', 'public is true or false')
+      if (Object.keys(await listed(app)).length >= INSTANCES_MAX) throw error('TOO_BIG', `an app keeps at most ${INSTANCES_MAX} instances`)
+      const site = await sfs.createSite(a.trim(), { app, types: s.manifest.types })
+      if (pub) await site.makePublic()
+      await listInstance(app, site.key, true)
+      return { key: site.key, name: a.trim() }
+    }
+    if (method === 'instances.join') {
+      if (typeof a !== 'string' || !a.startsWith('hg:')) throw error('INVALID_PARAMS', "join takes an instance's link (hg:...)")
+      const before = new Set(sfs.hg.spaces().map((x) => x.key))
+      let site = null
+      try {
+        site = await sfs.visit(a)
+      } catch (err) {
+        if (err.code !== 'NOT_FOUND') throw err // a space that isn't a site: refused below
+      }
+      if (!site || site.app !== app) {
+        for (const x of sfs.hg.spaces()) if (!before.has(x.key) && !x.parent) await sfs.leave(x.key).catch(() => {}) // joined for nothing
+        throw error('NOT_ALLOWED', "that link is not to one of this app's instances")
+      }
+      await listInstance(app, site.key, true)
+      return { key: site.key, name: site.space.name ?? null }
+    }
+    // instances.leave: off the list first, so nothing reaches it while it goes
+    keyOf({ key: a })
+    if (!(await listed(app))[a]) throw error('NOT_ALLOWED', "not one of this app's instances")
+    await listInstance(app, a, false)
+    for (const [id, x] of subs) if (x.instance === a) off({ id })
+    const scope = s.instances.get(a)
+    s.instances.delete(a)
+    if (scope) await scope.then((i) => i.scope.close(), () => {})
+    await sfs.leave(a)
+    const names = `${MINE_PREFIX}${app}/@${a}/` // its mine names: out of the app's cap
+    for (const n of Object.keys(await sfs.hg.settings())) if (n.startsWith(names)) await sfs.hg.setSetting(n, null)
+    return true
   }
 
   function query (t, args, chain = []) {
@@ -226,14 +323,22 @@ export function start (ipc) {
     return q
   }
 
-  async function call ({ key, sub, method, args = [], chain }) {
-    if (method !== 'info' && !MINE.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
+  async function call ({ key, sub, instance, method, args = [], chain }) {
+    if (method !== 'info' && !MINE.has(method) && !INSTANCES.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
     if (!Array.isArray(args)) throw error('INVALID_PARAMS', 'args is a list')
-    const t = await target({ key, sub })
-    if (MINE.has(method)) return mine(keyOf({ key }), method, args)
+    if (MINE.has(method)) {
+      await target({ key, instance }) // an instance's: checked as any call on it
+      return mine(key, method, args, instance)
+    }
+    if (INSTANCES.has(method)) { // the app's own, whatever instance the page names
+      await target({ key })
+      return instances(opened(key), key, method, args)
+    }
+    const t = await target({ key, sub, instance })
     if (method === 'info') {
       const out = { identity: t.identity.publicKey }
       for (const name of INFO) out[name] = t[name] ?? null
+      out.app = instance ? key : null
       return plain(out)
     }
     if (method === 'query') {
@@ -247,23 +352,28 @@ export function start (ipc) {
   }
 
   // The person's own data for this site (spec 006 R2): one setting per name, on every device of the person,
-  // never in the site's space. Another site's names are out of reach (the prefix is this site's key).
-  async function mine (key, method, [name, value]) {
-    const prefix = `${MINE_PREFIX}${key}/`
+  // never in the site's space. Another site's names are out of reach (the prefix is this site's key). Each of
+  // an app's instances has its own names (spec 009: '@<instance>/' + name), under the app's one cap.
+  async function mine (key, method, [name, value], instance) {
+    const site = `${MINE_PREFIX}${key}/`
+    const prefix = instance ? `${site}@${instance}/` : site
     if (method === 'mine.all') {
       const out = {}
-      for (const [n, v] of Object.entries(await sfs.hg.settings())) if (n.startsWith(prefix) && v !== null) out[n.slice(prefix.length)] = v
+      for (const [n, v] of Object.entries(await sfs.hg.settings())) {
+        if (n.startsWith(prefix) && v !== null && (instance || n[prefix.length] !== '@')) out[n.slice(prefix.length)] = v
+      }
       return out
     }
     if (typeof name !== 'string' || !name || name.length > 200) throw error('INVALID_PARAMS', 'mine.set needs a name of 1 to 200 characters')
+    if (!instance && name[0] === '@') throw error('INVALID_PARAMS', "a name doesn't start with @ (an instance's names do)")
     if (value === undefined) value = null
     const size = JSON.stringify(value).length
     if (size > MINE_VALUE_MAX) throw error('TOO_BIG', `a value is at most ${MINE_VALUE_MAX} bytes as JSON (this one: ${size})`)
     const write = keeping.then(async () => {
       if (value !== null) {
-        let total = name.length + size
+        let total = prefix.length - site.length + name.length + size
         for (const [n, v] of Object.entries(await sfs.hg.settings())) {
-          if (n.startsWith(prefix) && n !== prefix + name && v !== null) total += n.length - prefix.length + JSON.stringify(v).length
+          if (n.startsWith(site) && n !== prefix + name && v !== null) total += n.length - site.length + JSON.stringify(v).length
         }
         if (total > MINE_SITE_MAX) throw error('TOO_BIG', `a site keeps at most ${MINE_SITE_MAX} bytes here: remove some names first`)
       }
@@ -274,21 +384,21 @@ export function start (ipc) {
     return true
   }
 
-  async function live ({ key, sub, args = [], chain = [], opts }) {
-    const t = await target({ key, sub })
+  async function live ({ key, sub, instance, args = [], chain = [], opts }) {
+    const t = await target({ key, sub, instance })
     const q = query(t, args, chain)
     const id = nextSub++
     const stop = q.live((r) => rpc.emit('live', { id, items: plain(r.items), complete: r.complete }), opts)
-    subs.set(id, { key, stop })
+    subs.set(id, { key, instance, stop })
     return { id }
   }
 
-  async function listen ({ key, sub, event }) {
-    const t = await target({ key, sub })
+  async function listen ({ key, sub, instance, event }) {
+    const t = await target({ key, sub, instance })
     const id = nextSub++
     const fn = (data) => rpc.emit('event', { id, data: plain(data) })
     t.on(event, fn) // NOT_ALLOWED for events a site may not hear
-    subs.set(id, { key, stop: () => t.off(event, fn) })
+    subs.set(id, { key, instance, stop: () => t.off(event, fn) })
     return { id }
   }
 
@@ -309,6 +419,11 @@ export function start (ipc) {
       s.scope = null
       await scope.then((h) => h.close(), () => {})
     }
+    if (s) {
+      const open = [...s.instances.values()]
+      s.instances.clear()
+      for (const scope of open) await scope.then((i) => i.scope.close(), () => {})
+    }
   }
 
   // One tab (or one site.open) done with the site; the last one starts the grace period.
@@ -323,8 +438,10 @@ export function start (ipc) {
 
   // --- hosting (specs/004-hosting): installed and own sites stay joined; the others only while shown ---
 
+  // An app's instance stays joined too (spec 009 Q7: an invite-only forum isn't lost when its tab closes); it is
+  // online while used (hypergraph opens spaces while used). Only instances.leave drops one.
   async function hosted (site) {
-    return (await site.kept()) || (await site.space.getRole(sfs.hg.identity.publicKey)) === 'owner'
+    return !!site.app || (await site.kept()) || (await site.space.getRole(sfs.hg.identity.publicKey)) === 'owner'
   }
 
   function stay (key) {

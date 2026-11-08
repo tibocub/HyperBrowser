@@ -29,14 +29,14 @@ export async function engine (t, { init = true, dir = tmpDir(t, 'hb'), ...opts }
 }
 
 // A site's `window.hyper` as shell/site-preload.cjs makes it, on an engine of the tests (the site opened and
-// allowed there): sites' own code (sites/forum/lib) runs on it unchanged.
+// allowed there): sites' own code (sites/forum/lib) runs on it unchanged. `instance`: hyper.instance(key) (spec 009).
 const METHODS = ['put', 'get', 'edit', 'del', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
   'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info']
 const FILTERS = ['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice']
 
-export function siteApi (e, key) {
+export function siteApi (e, key, instance = null) {
   const handlers = new Map()
   const early = new Map()
   e.listeners.add((event, data) => {
@@ -45,9 +45,9 @@ export function siteApi (e, key) {
     if (handlers.has(data.id)) handlers.get(data.id)(out)
     else early.set(data.id, [...(early.get(data.id) || []), out])
   })
-  const call = (method, args) => e.rpc.request('site.call', { key, method, args })
+  const call = (method, args) => e.rpc.request('site.call', { key, instance, method, args })
   const subscribe = (method, params, fn) => {
-    const started = e.rpc.request(method, { key, ...params }).then(({ id }) => {
+    const started = e.rpc.request(method, { key, instance, ...params }).then(({ id }) => {
       handlers.set(id, fn)
       for (const d of early.get(id) || []) fn(d)
       early.delete(id)
@@ -62,12 +62,21 @@ export function siteApi (e, key) {
     const chain = []
     const q = {}
     for (const f of FILTERS) q[f] = (...a) => { chain.push([f, a]); return q }
-    q.latest = (...a) => e.rpc.request('site.call', { key, method: 'query', args, chain: [...chain, ['latest', a]] })
+    q.latest = (...a) => e.rpc.request('site.call', { key, instance, method: 'query', args, chain: [...chain, ['latest', a]] })
     q.live = (fn, opts) => subscribe('site.live', { args, chain, opts }, fn)
     return q
   }
   api.on = (event, fn) => subscribe('site.on', { event }, fn)
   api.mine = { all: () => call('mine.all', []), set: (name, value) => call('mine.set', [name, value ?? null]) }
+  if (instance === null) {
+    api.instances = {
+      list: () => call('instances.list', []),
+      create: (name, opts) => call('instances.create', [name, opts]),
+      join: (link) => call('instances.join', [link]),
+      leave: (k) => call('instances.leave', [k])
+    }
+    api.instance = (k) => siteApi(e, key, String(k))
+  }
   return api
 }
 

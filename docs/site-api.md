@@ -60,3 +60,38 @@ stop(); off()
   Show it as "loading" and keep a live view: it fires again when records arrive.
 - Errors have a `code` (`NOT_ALLOWED`, `NOT_FOUND`, `INVALID_TYPE`…). Bytes fields are `Uint8Array`.
 - The official forum (`sites/forum`) is a full example: [forum.md](forum.md).
+
+## Apps with instances: communities anyone can start
+
+Your site is the **app** (the code); each **instance** is one community run by it (one forum, one club), a
+space of its own, owned by whoever created it. You, the app's author, have no say in an instance you didn't
+create. Every instance runs the code you publish: a fix reaches all of them, nothing to do per instance.
+
+```js
+const list = await hyper.instances.list()                  // [{ key, name, role, public }]: the person's
+const f = await hyper.instances.create('Woodworkers')      // { key, name }: invite-only, they are its owner
+const p = await hyper.instances.create('Open club', { public: true })   // public for good
+const g = await hyper.instances.join(link)                 // an instance's invite or public link (hg:...)
+await hyper.instances.leave(f.key)                         // gone from this device and the list
+
+const forum = hyper.instance(f.key)          // every call of `hyper` above, on that instance
+await forum.put('thread', { title: 'Hello' })
+forum.query('thread').live(render)
+const link = await forum.createInvite({ role: 'member' })  // send it: pasted in HyperBrowser, it opens your app
+                                                           // on that instance
+new URLSearchParams(location.search).get('instance')       // the instance a link opened, or null
+```
+
+- An instance has your `site.json` types; types a new version adds reach it when its owner or an admin opens it
+  (until then, writing a new type there is `INVALID_TYPE`).
+- Your app reaches only the instances made with it or joined through it: any other key, link or space is
+  `NOT_ALLOWED`. The person's "use your identity?" answer covers your app and all its instances.
+- `hyper` itself stays your site's own space. `hyper.mine` is the app's; `hyper.instance(key).mine` is that
+  instance's (read state of one forum), apart from the others, all under the app's one 1 MB cap; leaving an
+  instance drops its names. Make your app public (leave `public` out of `site.json`): its code must load for
+  everyone; each instance has its own privacy.
+- Instances the person joined stay on their device until they leave them; at most 1000 per app (`TOO_BIG`).
+- Publishing: `node engine/cli.js publish <folder> --instance "<name>" [--invite admin]` also makes an instance
+  owned by the publisher (once; the same one after) and prints its key and an invite to it. If your app declares
+  an `official` type (`{ "fields": { "instance": "string" }, "put": { "permission": "decide" } }`), it records that
+  instance there, for your start page to show (the forum does).

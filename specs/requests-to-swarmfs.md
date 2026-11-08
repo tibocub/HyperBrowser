@@ -2,6 +2,19 @@
 
 What HyperBrowser needs from SwarmFS and doesn't work around (constitution IV). Newest first.
 
+## F7. A site that runs another site's code: an app's instance (2026-11-08, spec 009) — fixed on a branch, not merged
+
+- **Done** on SwarmFS branch `007-app-instances` (worktree `.claude/worktrees/app-instances`), test
+  `test/app-instances.test.js`. Shortcut: an instance keeps an empty pages sub-space (no special case in
+  `site()`, `keep`, `held`); drop it if many instances per person ever cost too much.
+
+- **Need**: federated apps (spec 009): an instance (one forum) is a space owned by its creator that runs an app's
+  code. The engine must know, unforgeably, which app an instance belongs to, so an app reaches only its own
+  instances and opening an instance's link loads the right code.
+- **Ask**: the `site` record type gains `app` (string, at the end: an addition); `createSite(name, { app, types })`
+  writes `{ app }` and makes no pages sub-space; `site(key)` of such a space gives a Site with `app` set and no
+  pages (`read()` → `NOT_FOUND`). Only who may decide writes the `site` record (already so).
+
 ## F6. `leave()` then a visit: installing again keeps nothing (2026-11-07, spec 004) — fixed on a branch, not merged
 
 - **Seen**: install, uninstall, `sfs.leave(key)`, visit again, `site.keep(true)`: `kept()` true, nothing in
