@@ -66,13 +66,15 @@ The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` fro
   (sites joined by older versions, which never left one).
 - **Eviction** (app storage over its cap) deletes cached files whether the space is joined or not; a site
   that isn't installed is left within the grace period of its last tab anyway.
+- **How many**: `hosting` → `{ sites }`, the sites joined here right now (the tray's "hosting 3 sites",
+  spec 010).
 
 ## Tests
 
 ```bash
 npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
-npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %
+npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %, the tray (spec 010)
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS
 npm run framecheck     # the frame alone (no OS frame, no app menu, sites under the bars): FRAMECHECK PASS
 ```

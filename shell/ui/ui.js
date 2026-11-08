@@ -213,6 +213,7 @@ function drawMenu () {
     })
     : [el('div', 'empty', 'Nothing installed yet')]))
   for (const b of document.querySelectorAll('[data-theme]')) b.setAttribute('aria-pressed', String(b.dataset.theme === S.settings.theme))
+  for (const b of document.querySelectorAll('[data-tray]')) b.setAttribute('aria-pressed', String((b.dataset.tray === 'on') === S.settings.tray))
   for (const b of document.querySelectorAll('[data-accent]')) {
     b.setAttribute('aria-pressed', String(b.dataset.accent === S.settings.accent))
     b.firstElementChild.style.background = b.dataset.accent
@@ -220,6 +221,7 @@ function drawMenu () {
 }
 for (const b of document.querySelectorAll('[data-theme]')) b.onclick = () => send('settings', { theme: b.dataset.theme })
 for (const b of document.querySelectorAll('[data-accent]')) b.onclick = () => send('settings', { accent: b.dataset.accent })
+for (const b of document.querySelectorAll('[data-tray]')) b.onclick = () => send('settings', { tray: b.dataset.tray === 'on' })
 $('m-open').onclick = () => { closeMenus(); toAddress() }
 $('m-about').onclick = () => { closeMenus(); say('HyperBrowser 0.0.1: sites live with their owner and their visitors.') }
 

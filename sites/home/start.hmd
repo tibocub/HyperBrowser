@@ -16,11 +16,19 @@ npm start
 
 HyperBrowser draws its own window. At the top:
 
-- **HyperBrowser ▾**: your identity, your installed sites, open a site by key, and the look (system, light or dark, and the accent colour).
+- **HyperBrowser ▾**: your identity, your installed sites, open a site by key, the look (system, light or dark, and the accent colour), and what closing the window does.
 - **The tabs**, one per open site. The desktop is always the first tab. `+` opens a new one.
 - Under them, **the toolbar**: back, forward, reload, the address, the bookmark button ☆, and the site's state.
 
 A site only ever draws below these bars. Anything above them is HyperBrowser itself.
+
+## Closing the window
+
+Closing the window doesn't stop HyperBrowser: it stays in the tray (by the clock) so your computer keeps hosting your installed sites, your own sites and the forums you joined. Right-click its icon to open the window again, see how many sites it hosts, or **Quit**.
+
+Rather have it quit? In **HyperBrowser ▾**, under "When the window closes", choose **Quit**.
+
+On Linux, the tray depends on your desktop (GNOME needs the AppIndicator extension). Without one, closing the window quits.
 
 ## Open a site by its key
 

@@ -4,6 +4,7 @@
 //   npm start [-- --open <key>] [-- --dir <engine folder>]
 //   npm run selftest [-- --no-guards]      (the sandbox self-test; --no-guards is its control run: must fail)
 //   npm run framecheck                     (the frame: no OS frame, no app menu, sites under the bars)
+//   electron . --user-data-dir=<tmp> --traycheck quit|off   (the tray, spec 010: npm run test:sandbox runs it)
 import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme } from 'electron'
 import fs from 'fs'
 import os from 'os'
@@ -18,6 +19,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SELFTEST = process.argv.includes('--selftest')
 const FRAMECHECK = process.argv.includes('--framecheck')
 const GUARDS = !process.argv.includes('--no-guards')
+const TRAYCHECK = process.argv.includes('--traycheck') ? process.argv[process.argv.indexOf('--traycheck') + 1] : null
 const HEARTBEAT = 2000
 const arg = (name) => { const i = process.argv.indexOf(name); return i === -1 ? null : process.argv[i + 1] }
 
@@ -28,6 +30,13 @@ const TYPES = {
   txt: 'text/plain; charset=utf-8', md: 'text/markdown; charset=utf-8', wasm: 'application/wasm'
 }
 const typeOf = (p) => TYPES[p.split('.').pop().toLowerCase()] || 'application/octet-stream'
+
+// One HyperBrowser a data folder (spec 010): a second launch shows the first one's window (maybe in the tray)
+// instead of a second engine on the same folder. Another --dir is another HyperBrowser (two-peer testing).
+const FIRST = SELFTEST || FRAMECHECK || !!arg('--dir') || app.requestSingleInstanceLock()
+if (!FIRST) app.quit()
+let ui = null // startFrame's { win, inspect, show }
+app.on('second-instance', () => ui?.show())
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'hyper', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
 
@@ -244,9 +253,46 @@ async function framecheck (dir) {
   app.exit(ok ? 0 : 1)
 }
 
+// The tray check (spec 010): the app itself, in a data folder of its own (--user-data-dir). It ends the way
+// `mode` says, and npm run test:sandbox checks the process really ends: 'quit' (closed to the tray, launched
+// again, then the tray's Quit) or 'off' (the setting turned off in the menu, then the window closed).
+async function traycheck ({ win, inspect, show }, mode) {
+  const ok = (name, pass) => console.log((pass ? 'PASS ' : 'FAIL ') + 'tray  ' + name)
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const until = async (f, ms = 30000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await wait(100)) if (await f()) return true
+    return false
+  }
+  const { fwc } = inspect()
+  await until(() => !fwc.isLoading())
+  if (mode === 'quit') {
+    ok('on by default: an icon in the tray', !!inspect().tray && inspect().settings.tray === true)
+    win.close()
+    ok('closing the window hides it; HyperBrowser keeps running', await until(() => !win.isVisible()) && !win.isDestroyed())
+    await wait(HEARTBEAT * 2)
+    ok('the engine still answers, past its heartbeat', await rpc.request('ping').catch(() => false))
+    ok('the tray says how many sites it hosts', await until(() => /^hosting \d+ sites?$/.test(inspect().tray.status())))
+    ok('the first time: the notice', inspect().notices === 1 && inspect().settings.trayNoticed === true)
+    show()
+    win.close()
+    ok('only the first time', await until(() => !win.isVisible()) && inspect().notices === 1)
+    console.log('TRAYCHECK WAITING') // the test launches HyperBrowser again, on the same data folder
+    ok('a second launch shows this window', await until(() => win.isVisible(), 60000))
+    console.log('TRAYCHECK QUIT')
+    inspect().tray.item('Quit').click()
+  } else {
+    ok('the notice was remembered: not shown again', inspect().settings.trayNoticed === true && inspect().notices === 0)
+    await fwc.executeJavaScript("document.querySelector('[data-tray=\"off\"]').click()")
+    ok('turned off in the menu: no tray', await until(() => !inspect().tray && inspect().settings.tray === false))
+    console.log('TRAYCHECK CLOSE')
+    win.close()
+  }
+}
+
 const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContents.fromId(id)).find(Boolean)
 
 app.whenReady().then(async () => {
+  if (!FIRST) return
   worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
   worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
   rpc = connect(worker, { onEvent, onclose: () => { if (!quitting) { console.error('engine stopped without a word'); app.exit(1) } } })
@@ -256,7 +302,8 @@ app.whenReady().then(async () => {
   console.log('engine up, identity', identity)
   if (SELFTEST) return selftest(dir)
   if (FRAMECHECK) return framecheck(dir)
-  startFrame({ rpc, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open') })
+  ui = startFrame({ rpc, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open') })
+  if (TRAYCHECK) traycheck(ui, TRAYCHECK)
 }).catch((err) => { console.error(err); app.exit(1) })
 
 app.on('window-all-closed', async () => {

@@ -55,6 +55,7 @@ test('a site only visited is left after its grace period, and at the next start'
   const { owner, key } = await published(t)
   const visitor = await engine(t, { grace: GRACE })
   t.is(await reads(visitor, key), '<h1>hosted</h1>')
+  t.is((await visitor.rpc.request('hosting')).sites, 1, 'hosting (the tray count, spec 010): the one open site')
   await owner.rpc.request('close')
 
   const v1 = await engine(t)
@@ -68,6 +69,7 @@ test('a site only visited is left after its grace period, and at the next start'
   await visitor.rpc.request('site.close', { key })
   await sleep(GRACE * 4)
   t.ok(await unreachable(t, key), 'not served once the grace period is over')
+  t.is((await visitor.rpc.request('hosting')).sites, 0, 'hosting: none once it is left')
   t.ok(await codeOf(visitor.rpc.request('site.state', { key })), 'closed here')
   await visitor.rpc.request('close')
 })
