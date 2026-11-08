@@ -13,7 +13,8 @@ spec 004: installing decides which sites this device serves; spec 005: the offic
 the official forum (`sites/forum`).
 Using the shell: [docs/shell.md](docs/shell.md); the engine and the command line: [docs/engine.md](docs/engine.md);
 writing a site: [docs/site-api.md](docs/site-api.md); the official site: [docs/home-site.md](docs/home-site.md);
-the forum: [docs/forum.md](docs/forum.md).
+the forum: [docs/forum.md](docs/forum.md); building, releasing and updates (spec 011):
+[docs/packaging.md](docs/packaging.md).
 
 ## Launch
 
@@ -30,6 +31,11 @@ node engine/cli.js publish sites/demo
 ```
 
 `npm start -- --open <key>` opens that site in a tab at launch.
+
+## Install without git
+
+`npm run build` makes `out/dist/HyperBrowser.zip` (Windows: a folder to extract) or
+`out/dist/HyperBrowser.AppImage` (Linux). Either updates itself over P2P through Pear. Releasing: [docs/packaging.md](docs/packaging.md).
 
 ## Tests
 

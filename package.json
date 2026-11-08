@@ -25,7 +25,10 @@
     "home:build": "node node_modules/hypermd/bin/hypermd.js build sites/home --out out/home",
     "home:publish": "npm run home:build && node engine/cli.js publish out/home",
     "forum:publish": "node engine/cli.js publish sites/forum --instance HyperBrowser",
-    "test:all": "npm test && npm run test:bare && npm run test:sandbox"
+    "test:all": "npm test && npm run test:bare && npm run test:sandbox",
+    "build": "node scripts/build.js",
+    "release": "node scripts/release.js",
+    "test:update": "node scripts/update-check.js"
   },
   "dependencies": {
     "b4a": "^1.9.0",

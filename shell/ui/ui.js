@@ -212,6 +212,8 @@ function drawMenu () {
       return b
     })
     : [el('div', 'empty', 'Nothing installed yet')]))
+  $('m-update').hidden = !S.update // an update is installed: it starts at the next launch, or now (spec 011)
+  $('m-update').textContent = S.update ? 'Update ready (' + S.update + '): restart' : ''
   for (const b of document.querySelectorAll('[data-theme]')) b.setAttribute('aria-pressed', String(b.dataset.theme === S.settings.theme))
   for (const b of document.querySelectorAll('[data-tray]')) b.setAttribute('aria-pressed', String((b.dataset.tray === 'on') === S.settings.tray))
   for (const b of document.querySelectorAll('[data-accent]')) {
@@ -223,7 +225,8 @@ for (const b of document.querySelectorAll('[data-theme]')) b.onclick = () => sen
 for (const b of document.querySelectorAll('[data-accent]')) b.onclick = () => send('settings', { accent: b.dataset.accent })
 for (const b of document.querySelectorAll('[data-tray]')) b.onclick = () => send('settings', { tray: b.dataset.tray === 'on' })
 $('m-open').onclick = () => { closeMenus(); toAddress() }
-$('m-about').onclick = () => { closeMenus(); say('HyperBrowser 0.0.1: sites live with their owner and their visitors.') }
+$('m-update').onclick = () => { closeMenus(); send('restart') }
+$('m-about').onclick = () => { closeMenus(); say('HyperBrowser ' + S.version + ': sites live with their owner and their visitors.') }
 
 let ctxIcon = null
 function openCtx (icon, x, y) {

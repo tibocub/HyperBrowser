@@ -44,7 +44,8 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
 }
 
 // openSite(key) → { key, manifest, view, webContents, close }; readIcon(key, manifest) → data URL or null.
-export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null }) {
+// update() → the version an update is ready for, or null; restart() starts it (spec 011).
+export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null }) {
   const preset = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
   let data = load()
   const glyphs = readGlyphs()
@@ -106,6 +107,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       desktop: data.desktop,
       settings: data.settings,
       identity,
+      version: app.getVersion(),
+      update: update(),
       open: tabs.length - 1,
       ready: !!tab?.view,
       maximized: win.isMaximized()
@@ -302,6 +305,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         save()
         push()
         return { result: true }
+      case 'restart': if (restart && update()) restart(); return { result: true }
       case 'cover': cover = !!a.full; layout(); return { result: true }
       case 'window':
         if (a.act === 'minimize') win.minimize()

@@ -5,8 +5,10 @@
 //   npm run selftest [-- --no-guards]      (the sandbox self-test; --no-guards is its control run: must fail)
 //   npm run framecheck                     (the frame: no OS frame, no app menu, sites under the bars)
 //   electron . --user-data-dir=<tmp> --traycheck quit|off   (the tray, spec 010: npm run test:sandbox runs it)
+// Installed (npm run build, spec 011), it also follows its release channel: see startUpdates().
 import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme } from 'electron'
 import fs from 'fs'
+import { spawnSync } from 'child_process'
 import os from 'os'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -30,6 +32,18 @@ const TYPES = {
   txt: 'text/plain; charset=utf-8', md: 'text/markdown; charset=utf-8', wasm: 'application/wasm'
 }
 const typeOf = (p) => TYPES[p.split('.').pop().toLowerCase()] || 'application/octet-stream'
+const PKG = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf-8'))
+
+// An installed HyperBrowser has no console: what it says also goes to <data folder>/hyperbrowser.log.
+const LOG = app.isPackaged ? path.join(app.getPath('userData'), 'hyperbrowser.log') : null
+function log (line) {
+  console.log(line)
+  if (!LOG) return
+  try {
+    if (fs.statSync(LOG, { throwIfNoEntry: false })?.size > 1e6) fs.rmSync(LOG) // shortcut: one file, cut at 1 MB
+    fs.appendFileSync(LOG, new Date().toISOString() + ' ' + line + '\n')
+  } catch {}
+}
 
 // One HyperBrowser a data folder (spec 010): a second launch shows the first one's window (maybe in the tray)
 // instead of a second engine on the same folder. Another --dir is another HyperBrowser (two-peer testing).
@@ -42,6 +56,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'hyper', privileges: { standard:
 
 let rpc = null
 let worker = null
+let updater = null
+let update = null // the version installed by an update, started at the next launch (spec 011)
 let quitting = false
 const sites = new Map() // key -> { manifest, dynamic }
 const viewOf = new Map() // webContents id -> site key
@@ -140,6 +156,7 @@ async function readIcon (key, manifest) {
 
 async function shutdown () {
   quitting = true
+  if (updater) { updater.end(); updater = null } // it closes by itself (or dies with the app)
   if (rpc) await rpc.request('close').catch(() => {})
   if (worker) {
     const exited = new Promise((resolve) => { if (worker._exited) resolve(); else worker.once('exit', resolve) })
@@ -289,6 +306,75 @@ async function traycheck ({ win, inspect, show }, mode) {
   }
 }
 
+// P2P updates (spec 011): only an installed build that follows a channel, never from source (npm start).
+// What pear-runtime replaces: the .AppImage, the .app, or on Windows the folder (HyperBrowser\, its .exe
+// and files). The data folder is the same one either way.
+function installed () {
+  if (!app.isPackaged || !PKG.upgrade) return null
+  if (process.platform === 'win32') return path.dirname(process.execPath)
+  if (process.platform === 'linux') return process.env.APPIMAGE || null
+  return path.join(process.resourcesPath, '..', '..')
+}
+
+function startUpdates () {
+  const file = installed()
+  log('HyperBrowser ' + PKG.version + (file ? ', channel ' + PKG.upgrade : ', no updates'))
+  if (!file) return
+  const name = PKG.productName + (process.platform === 'win32' ? '' : path.extname(file)) // its name in the release
+  const args = [app.getPath('userData'), PKG.version, PKG.upgrade, name, file, process.env.HYPERBROWSER_UPDATE_BOOTSTRAP || '', process.env.HYPERBROWSER_UPDATE_DELAY || '']
+  updater = PearRuntime.run(fileURLToPath(new URL('./updater.js', import.meta.url)), args)
+  let rest = ''
+  updater.on('data', (d) => {
+    const lines = (rest + d).split('\n')
+    rest = lines.pop()
+    for (const line of lines) {
+      log('update: ' + line)
+      if (!line.startsWith('ready ')) continue
+      const [version, ...folder] = line.slice(6).split(' ')
+      update = version
+      incoming = folder.join(' ') || null
+    }
+  })
+  updater.stderr.on('data', (d) => log('updater: ' + String(d).trim()))
+  updater.on('error', () => {})
+}
+
+// Windows: the downloaded folder takes the installed folder's place once HyperBrowser (and its Bare workers,
+// whose files are in it) has quit: a PowerShell step renames the installed folder away (retrying while files
+// are still in use), moves the new one in, puts the old one back if that fails, else deletes it; for restart
+// it then starts the new HyperBrowser.exe. Started through WMI, not as our child, so nothing that ends with
+// HyperBrowser takes it along. If it never runs (power cut), the next launch gets the update again.
+let incoming = null
+let relaunch = false
+const ps = (s) => "'" + s.replace(/'/g, "''") + "'"
+app.on('will-quit', () => {
+  if (!incoming) return
+  const dir = path.dirname(process.execPath)
+  const old = dir + '-' + PKG.version
+  const exe = ps(path.join(dir, path.basename(process.execPath)))
+  const start = relaunch ? `Start-Process ${exe}` + (process.argv.length > 1 ? ' -ArgumentList ' + process.argv.slice(1).map((a) => ps('"' + a + '"')).join(',') : '') : ''
+  const script = `Wait-Process -Id ${process.pid} -ErrorAction SilentlyContinue
+$moved = $false
+for ($i = 0; $i -lt 120 -and -not $moved; $i++) { try { Rename-Item -LiteralPath ${ps(dir)} -NewName ${ps(path.basename(old))} -ErrorAction Stop; $moved = $true } catch { Start-Sleep -Milliseconds 500 } }
+if ($moved) {
+  try { Move-Item -LiteralPath ${ps(incoming)} -Destination ${ps(dir)} -ErrorAction Stop; Remove-Item -LiteralPath ${ps(old)} -Recurse -Force }
+  catch { if (-not (Test-Path -LiteralPath ${ps(dir)})) { Rename-Item -LiteralPath ${ps(old)} -NewName ${ps(path.basename(dir))} } }
+}
+${start}`
+  const line = 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ' + Buffer.from(script, 'utf16le').toString('base64')
+  const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${ps(line)} }).ReturnValue`], { windowsHide: true, timeout: 15000 })
+  log('update: ' + update + ' takes the place of ' + PKG.version + ' once HyperBrowser has quit (' + (String(r.stdout).trim() === '0' ? 'started' : 'could not start: ' + (r.error?.message || String(r.stderr).trim())) + ')')
+})
+
+// The new version now: the same file again (swapped by now, or at the quit on Windows), the same arguments.
+function restart () {
+  const args = process.argv.slice(1)
+  if (process.platform === 'linux') app.relaunch({ execPath: process.env.APPIMAGE, args: ['--appimage-extract-and-run', ...args.filter((a) => a !== '--appimage-extract-and-run')] })
+  else if (process.platform === 'win32') relaunch = true // started by the swap, after the quit
+  else app.relaunch()
+  ui.win.destroy() // the tray's Quit path: window-all-closed, shutdown(), app.quit()
+}
+
 const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContents.fromId(id)).find(Boolean)
 
 app.whenReady().then(async () => {
@@ -299,10 +385,11 @@ app.whenReady().then(async () => {
   const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST || FRAMECHECK ? 'selftest-' + process.pid : 'engine')
   const { identity } = await rpc.request('init', { dir, heartbeat: HEARTBEAT })
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
-  console.log('engine up, identity', identity)
+  log('engine up, identity ' + identity)
   if (SELFTEST) return selftest(dir)
   if (FRAMECHECK) return framecheck(dir)
-  ui = startFrame({ rpc, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open') })
+  if (!TRAYCHECK) startUpdates()
+  ui = startFrame({ rpc, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open'), update: () => update, restart })
   if (TRAYCHECK) traycheck(ui, TRAYCHECK)
 }).catch((err) => { console.error(err); app.exit(1) })
 
