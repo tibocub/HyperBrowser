@@ -85,12 +85,24 @@ function api (sub, instance = null) {
       contact: (identity) => people('contact', identity),
       request: (identity, name) => people('request', identity, name)
     }
+    // other sites, through HyperBrowser (spec 014): install and open need a click on the page; install, the person's yes
+    o.apps = {
+      installed: (key) => apps('installed', key),
+      install: (key) => apps('install', key),
+      open: (key) => apps('open', key)
+    }
   }
   return o
 }
 
 async function people (op, identity, name) {
   const r = await ipcRenderer.invoke('people', { op, identity: String(identity), name: name === undefined ? undefined : String(name), activated: navigator.userActivation.isActive })
+  if (r.error) throw failure(r.error)
+  return r.result
+}
+
+async function apps (op, key) {
+  const r = await ipcRenderer.invoke('apps', { op, key: String(key), activated: navigator.userActivation.isActive })
   if (r.error) throw failure(r.error)
   return r.result
 }

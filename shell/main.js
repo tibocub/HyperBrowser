@@ -72,6 +72,9 @@ const asking = new Map() // key -> the identity question in progress
 const asked = [] // keys the question was asked for (the self-test checks: once per site)
 const permits = new Map() // key -> the contacts question in progress (spec 013)
 const peopleOpened = [] // the self-test's record of what hyper.people opened (no frame there)
+const appsInstalled = new Set() // the self-test's installs and opens through hyper.apps (spec 014)
+const appsOpened = []
+let selftestYes = false // the self-test's answer to "Install …?"
 
 async function serve (key, p) {
   const { bytes, path: real } = await rpc.request('site.read', { key, path: p })
@@ -186,6 +189,39 @@ ipcMain.handle('people', async (evt, msg) => {
   }
 })
 
+// hyper.apps (spec 014): any site may offer to install or open another (the Apps store does), through HyperBrowser
+// only. Both need a click on the page; installing, the person's yes to a question naming the app by its own title.
+async function apps (wc, { op, key, activated }) {
+  if (typeof key !== 'string' || !KEY.test(key)) throw Object.assign(new Error("not a site's key"), { code: 'INVALID_PARAMS' })
+  const installed = () => SELFTEST ? appsInstalled.has(key) : !!ui?.installed(key)
+  if (op === 'installed') return installed()
+  if (op !== 'install' && op !== 'open') throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
+  if (GUARDS && !activated) return false // only right after a click on the page
+  if (op === 'open') {
+    if (SELFTEST) return !!appsOpened.push(key)
+    ui?.open(key)
+    return true
+  }
+  if (installed()) return true
+  const { manifest, key: real } = await rpc.request('site.open', { key }) // its own title, not the page's words
+  rpc.request('site.close', { key: real }).catch(() => {})
+  const site = sites.get(viewOf.get(wc.id)).manifest.title
+  const yes = !GUARDS || (SELFTEST ? selftestYes : (await dialog.showMessageBox({ type: 'question', buttons: ['Install', 'Cancel'], defaultId: 1, cancelId: 1, message: `Install "${manifest.title}"?`, detail: `Key ${key.slice(0, 8)}…, from "${site}". Installed, it stays on your desktop, works offline, and your computer serves it to others.` })).response === 0)
+  if (!yes) throw Object.assign(new Error('the person said no'), { code: 'NOT_ALLOWED' })
+  if (SELFTEST) appsInstalled.add(key)
+  else ui.install(key, manifest.title)
+  return true
+}
+
+ipcMain.handle('apps', async (evt, msg) => {
+  if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
+  try {
+    return { result: await apps(evt.sender, msg || {}) }
+  } catch (err) {
+    return { error: { code: err.code || 'ERROR', message: err.message } }
+  }
+})
+
 async function openSite (key, query = '') {
   const { manifest, dynamic, key: real, instance = null } = await rpc.request('site.open', { key })
   sites.set(real, { manifest, dynamic })
@@ -273,6 +309,14 @@ async function selftest (dir) {
   // spec 013: what the pages asked of hyper.people without a click, or refused by the person, did nothing
   out.push({ site: 'shell', name: 'hyper.people: nothing opened without a click', pass: peopleOpened.length === 0 })
   out.push({ site: 'shell', name: 'hyper.people: a request the person refused sent nothing', pass: (await rpc.request('contacts.get', { identity: b })) === null })
+  // spec 014: hyper.apps installs only after a click (executeJavaScript's user gesture) and the person's yes
+  out.push({ site: 'shell', name: 'hyper.apps: nothing installed or opened without a click', pass: appsInstalled.size === 0 && appsOpened.length === 0 })
+  const install = () => views[0].webContents.executeJavaScript(`window.hyper.apps.install(${JSON.stringify(c)}).then(String, (e) => e.code)`, true)
+  const refused = await install()
+  out.push({ site: 'shell', name: "hyper.apps: a click and the person's no install nothing", pass: refused === 'NOT_ALLOWED' && !appsInstalled.has(c) })
+  selftestYes = true
+  const said = await install()
+  out.push({ site: 'shell', name: 'hyper.apps: a click and a yes install it', pass: said === 'true' && appsInstalled.has(c) })
   // the look (spec 008): HyperBrowser's theme reaches sites; a page with no stylesheet gets the default theme
   const dark = async () => { await new Promise((resolve) => setTimeout(resolve, 300)); return views[0].webContents.executeJavaScript("matchMedia('(prefers-color-scheme: dark)').matches") }
   nativeTheme.themeSource = 'dark'

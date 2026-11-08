@@ -425,5 +425,12 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     for (const i of data.desktop.icons) if (i.key && i.kind === 'installed') keepSite(i.key, true)
     follow()
   }
-  return { win, inspect, show, devices, joined: joinedNow, open: openKey }
+  // hyper.apps (spec 014, main.js asked the person): the same install as the desktop's right-click
+  const installed = (key) => data.desktop.icons.some((i) => (i.key === key || i.site === key) && i.kind === 'installed')
+  function install (key, title) {
+    const icon = iconOf(key)
+    setIcons(upsert(data.desktop.icons, { id: icon?.id || key, key, title: icon?.title || title, kind: 'installed' }))
+    keepSite(key, true)
+  }
+  return { win, inspect, show, devices, joined: joinedNow, open: openKey, installed, install }
 }

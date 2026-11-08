@@ -53,8 +53,11 @@ npm run apps:publish -- --dir E:/Code/P2P/hyperbrowser-owner
 ```
 
 Builds the home site, publishes every official app (`scripts/apps.js`: home, the forum with its "HyperBrowser"
-instance, Chat, Contacts) once from that engine folder, writes their keys into `shell/preset.json` (only the `key`
-fields; the forum's is its instance's) and prints what changed. A rerun prints "no change". Run it from the same
+instance, Apps, Chat, Contacts) once from that engine folder, writes their keys into `shell/preset.json` (only the
+`key` fields; the forum's is its instance's), lists each app in the Apps store (spec 014: an `app` entry with its
+`site.json`'s `title`, `description` and icon; updated when they change) and prints what changed. A rerun prints
+"no change". **To add an app**: a line in `scripts/apps.js` (`{ id: 'myapp', folder: 'sites/myapp' }`; an id not
+in `preset.json` is listed in the store only), a `"description"` in its `site.json`, then the command again. Run it from the same
 checkout as before: a folder's key is tied to its path, so another checkout (a worktree) makes new sites. A key
 already in `preset.json` that differs is never overwritten (it says `KEPT`) unless you add `--replace`. It stops
 when done: to stay online for visitors, `node engine/cli.js publish <folder>` as above.
