@@ -110,3 +110,18 @@ quits, rather than leaving a HyperBrowser running that you can't see or stop.
 ## Not yet
 
 Mentions, folders on the desktop, starting with the system, `hyper://` links from the system, phone layout.
+
+## Updates (spec 011)
+
+An installed HyperBrowser (the Windows folder, `HyperBrowser.AppImage`: `npm run build`) follows its
+release channel, `package.json` `"upgrade"`:
+
+- `shell/updater.js`, a Bare worker with pear-runtime's updater, downloads a higher version while
+  HyperBrowser runs. It replaces the installed file at once on Linux, and when HyperBrowser quits on Windows.
+  The next launch runs it.
+- Until then, **HyperBrowser ▾** shows "Update ready (x.y.z): restart", in the accent. About shows the
+  running version.
+- What it did goes to `hyperbrowser.log` in the data folder.
+- From source (`npm start`) there are never updates.
+
+Building, releasing, installing: [packaging.md](packaging.md).
