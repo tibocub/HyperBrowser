@@ -1,5 +1,5 @@
-// The official forum (spec 006): sites/forum's own code (lib/) on the site API, engines on a local DHT playing
-// the flows: create, invite, join, boards, post, reply, vote, edit, delete, moderate, sorting, unread, mentions,
+// The official forum (spec 006): sites/forum's own code (lib/) on the site API, on an instance of the forum app
+// (spec 009), engines on a local DHT playing the flows: create, invite, join, boards, post, reply, vote, edit, delete, moderate, sorting, unread, mentions,
 // names and icons. Node and Bare.
 import test from 'brittle'
 import path from 'path'
@@ -13,25 +13,29 @@ import * as icon from '../sites/forum/lib/icon.js'
 const FORUM = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'forum')
 const WAIT = 20000
 
-async function allowed (e, key) {
+// `key`: the forum app; `inst`: the forum (an instance of it) the lib works on.
+async function allowed (e, key, inst) {
   await e.rpc.request('site.consent', { key, allow: true })
-  return forum(siteApi(e, key))
+  return forum(siteApi(e, key).instance(inst))
 }
 
-// The owner publishes the forum folder as it is in the repo.
+// The owner publishes the forum app as it is in the repo, and makes a forum with it (invite-only).
 async function published (t) {
   const owner = await engine(t)
   const { key } = await owner.rpc.request('site.publish', { folder: FORUM })
   await owner.rpc.request('site.open', { key })
-  return { owner, key, a: await allowed(owner, key) }
+  await owner.rpc.request('site.consent', { key, allow: true })
+  const { key: inst } = await siteApi(owner, key).instances.create('Test forum')
+  return { owner, key, inst, a: await allowed(owner, key, inst) }
 }
 
 // A newcomer with an invite from `by`, pasted as HyperBrowser's address field would (site.open of the link).
-async function invited (t, by, key, role = 'member') {
+async function invited (t, by, key, inst, role = 'member') {
   const e = await engine(t)
   const link = await by.invite({ role })
-  t.is((await e.rpc.request('site.open', { key: link })).key, key, 'in with the invite')
-  return { e, f: await allowed(e, key) }
+  const o = await e.rpc.request('site.open', { key: link })
+  t.alike([o.key, o.instance], [key, inst], 'in with the invite: the forum app, on that forum')
+  return { e, f: await allowed(e, key, inst) }
 }
 
 const items = async (f, type, filters = []) => {
@@ -42,15 +46,15 @@ const items = async (f, type, filters = []) => {
 const has = (f, type, id) => eventually(async () => (await items(f, type)).some((r) => r.id === id), WAIT)
 
 test('invite-only; boards by admins, sub-boards; threads seen by every member, live (US1, US3.1-2)', async (t) => {
-  const { owner, key, a } = await published(t)
+  const { owner, key, inst, a } = await published(t)
   const opened = await owner.rpc.request('site.open', { key })
   t.is(opened.dynamic, true)
-  t.is(opened.manifest.public, false)
+  t.is(opened.manifest.public, undefined, 'the app is public: its code loads for everyone')
 
   const stranger = await engine(t)
-  t.ok(await codeOf(stranger.rpc.request('site.open', { key, timeout: 3000 })), 'no invite: no way in')
+  t.ok(await codeOf(stranger.rpc.request('site.open', { key: inst, timeout: 3000 })), 'the forum is invite-only: no invite, no way in')
 
-  const { e: be, f: b } = await invited(t, a, key)
+  const { e: be, f: b } = await invited(t, a, key, inst)
   t.ok(text((await be.rpc.request('site.read', { key, path: '' })).bytes).includes('app.js'), 'the forum\'s pages reach the member')
   t.is((await b.me()).role, 'member')
 
@@ -78,9 +82,9 @@ test('invite-only; boards by admins, sub-boards; threads seen by every member, l
 })
 
 test('replies in a tree, votes, edit and delete (US2)', async (t) => {
-  const { key, a } = await published(t)
-  const { f: b } = await invited(t, a, key)
-  const { f: c } = await invited(t, a, key)
+  const { key, inst, a } = await published(t)
+  const { f: b } = await invited(t, a, key, inst)
+  const { f: c } = await invited(t, a, key, inst)
   const me = { b: (await b.me()).identity, c: (await c.me()).identity }
   const board = await a.makeBoard({ name: 'General' })
   await has(b, 'board', board.id)
@@ -126,9 +130,9 @@ test('replies in a tree, votes, edit and delete (US2)', async (t) => {
 })
 
 test('moderation: report, hide, reveal, ban; admins make moderators (US3.3-6)', async (t) => {
-  const { key, a } = await published(t)
-  const { f: b } = await invited(t, a, key)
-  const { f: c } = await invited(t, a, key)
+  const { key, inst, a } = await published(t)
+  const { f: b } = await invited(t, a, key, inst)
+  const { f: c } = await invited(t, a, key, inst)
   const me = { b: (await b.me()).identity, c: (await c.me()).identity }
   const board = await a.makeBoard({ name: 'General' })
   await has(c, 'board', board.id)
@@ -159,9 +163,9 @@ test('moderation: report, hide, reveal, ban; admins make moderators (US3.3-6)', 
 })
 
 test('sorting, unread and new, mentions with the current name; names and icons (US4, US5)', async (t) => {
-  const { owner, key, a } = await published(t)
-  const { f: b } = await invited(t, a, key)
-  const { f: c } = await invited(t, a, key)
+  const { owner, key, inst, a } = await published(t)
+  const { f: b } = await invited(t, a, key, inst)
+  const { f: c } = await invited(t, a, key, inst)
   const me = { a: (await a.me()).identity, b: (await b.me()).identity, c: (await c.me()).identity }
   const board = await a.makeBoard({ name: 'General' })
   await has(b, 'board', board.id)
@@ -196,7 +200,7 @@ test('sorting, unread and new, mentions with the current name; names and icons (
   await owner.rpc.request('close')
   const again = await engine(t, { dir: owner.dir })
   await again.rpc.request('site.open', { key })
-  const a2 = forum(siteApi(again, key))
+  const a2 = forum(siteApi(again, key).instance(inst))
   const kept = await a2.mine()
   t.is(kept.sort, 'top', 'the sort chosen, kept')
   const r3 = await c.reply(old.id, old.id, 'one more')

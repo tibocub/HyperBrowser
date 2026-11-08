@@ -3,13 +3,13 @@
   "entry": "index.html",
   "icon": "icon.svg",
   "permissions": ["space"],
-  "public": false,
   "types": {
     "board": { "fields": { "name": "string", "about": "text", "parent": "link", "order": "int" }, "links": { "parent": ["board"] }, "put": { "permission": "decide" }, "editable": { "permission": "decide" } },
     "thread": { "fields": { "title": "string", "text": "text", "board": "link" }, "links": { "board": ["board"] } },
     "comment": { "fields": { "text": "text", "on": "link", "thread": "link" }, "links": { "on": ["thread", "comment"], "thread": ["thread"] } },
     "vote": { "fields": { "on": "link", "value": "int" }, "links": { "on": ["thread", "comment"] }, "onePerMember": true },
     "mention": { "fields": { "who": "string", "on": "link" }, "links": { "on": ["thread", "comment"] }, "index": [["who", "stamp"]] },
-    "avatar": { "fields": { "icon": "bytes" }, "onePerMember": true }
+    "avatar": { "fields": { "icon": "bytes" }, "onePerMember": true },
+    "official": { "fields": { "instance": "string" }, "put": { "permission": "decide" } }
   }
 }

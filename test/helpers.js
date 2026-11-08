@@ -67,8 +67,8 @@ export function siteApi (e, key, instance = null) {
     return q
   }
   api.on = (event, fn) => subscribe('site.on', { event }, fn)
+  api.mine = { all: () => call('mine.all', []), set: (name, value) => call('mine.set', [name, value ?? null]) }
   if (instance === null) {
-    api.mine = { all: () => call('mine.all', []), set: (name, value) => call('mine.set', [name, value ?? null]) }
     api.instances = {
       list: () => call('instances.list', []),
       create: (name, opts) => call('instances.create', [name, opts]),

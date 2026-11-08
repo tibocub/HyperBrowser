@@ -50,13 +50,15 @@ function api (sub, instance = null) {
   for (const m of METHODS) o[m] = (...args) => invoke({ op: 'call', ...at, method: m, args })
   o.query = (...args) => query(at, args)
   o.on = (event, fn) => subscribe({ op: 'on', ...at, event }, fn)
-  if (sub === null) o.subspace = (key) => api(String(key), instance)
-  if (sub === null && instance === null) {
-    // the person's own data for this site, on their devices (spec 006)
+  if (sub === null) {
+    o.subspace = (key) => api(String(key), instance)
+    // the person's own data for this site (spec 006), or for one instance of it (spec 009), on their devices
     o.mine = {
       all: () => invoke({ op: 'call', ...at, method: 'mine.all', args: [] }),
       set: (name, value) => invoke({ op: 'call', ...at, method: 'mine.set', args: [name, value ?? null] })
     }
+  }
+  if (sub === null && instance === null) {
     // the app's instances: communities of their own, owned by whoever made them (spec 009)
     o.instances = {
       list: () => invoke({ op: 'call', ...at, method: 'instances.list', args: [] }),

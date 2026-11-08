@@ -74,3 +74,27 @@ test('publish --invite: an invite-only site and a one-use link into it (spec 006
   const usage = cli(t, ['publish', folder, '--invite', 'king'])
   t.is(await within(usage.exited, 10000, 'timeout'), 1, 'a role other than member or admin: usage')
 })
+
+test('publish --instance: the app\'s instance, made once; its invite opens the app on it; official names it', async (t) => {
+  t.timeout(180000)
+  const folder = siteFolder(t, { manifest: { title: 'App', permissions: ['space'], types: { official: { fields: { instance: 'string' }, put: { permission: 'decide' } } } } })
+  const net = boot(await bootstrap(t))
+  const dir = tmpDir(t, 'owner')
+  const first = cli(t, ['publish', folder, '--dir', dir, '--bootstrap', net, '--instance', 'HyperBrowser', '--invite', 'admin', '--once'])
+  t.is(await within(first.exited, 60000, 'timeout'), 0, first.out.text.trim())
+  const key = /key: ([a-z0-9]{52})/.exec(first.out.text)?.[1]
+  const instance = /instance: ([a-z0-9]{52}) \(created\)/.exec(first.out.text)?.[1]
+  const link = /invite \(admin, one use, to the instance\): (hg:\S+)/.exec(first.out.text)?.[1]
+  t.ok(key && instance && link, first.out.text.trim())
+
+  const again = cli(t, ['publish', folder, '--dir', dir, '--bootstrap', net, '--instance', 'HyperBrowser', '--invite', 'admin'])
+  t.ok(await eventually(() => new RegExp(`instance: ${instance}\\r?\\n`).test(again.out.text), 60000, 100), 'the same instance the second time: ' + again.out.text.trim()) // Bare prints \r\n on Windows
+  await eventually(() => again.out.text.includes('online'), 60000, 100)
+
+  const tibo = await engine(t)
+  const o = await tibo.rpc.request('site.open', { key: link })
+  t.alike([o.key, o.instance], [key, instance], 'the invite opens the app on the instance')
+  await tibo.rpc.request('site.consent', { key, allow: true })
+  t.ok(await eventually(async () => (await tibo.rpc.request('site.call', { key, method: 'query', args: ['official'], chain: [['latest', [1]]] })).items[0]?.instance === instance, 20000), 'the app names its official instance')
+  t.is(await tibo.rpc.request('site.call', { key, instance, method: 'getRole', args: [(await tibo.rpc.request('site.call', { key, method: 'info' })).identity] }), 'admin', 'an admin of the instance')
+})

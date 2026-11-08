@@ -86,6 +86,12 @@ new URLSearchParams(location.search).get('instance')       // the instance a lin
   (until then, writing a new type there is `INVALID_TYPE`).
 - Your app reaches only the instances made with it or joined through it: any other key, link or space is
   `NOT_ALLOWED`. The person's "use your identity?" answer covers your app and all its instances.
-- `hyper` itself stays your site's own space; `hyper.mine` is per app (all instances). Make your app public
-  (leave `public` out of `site.json`): its code must load for everyone; each instance has its own privacy.
+- `hyper` itself stays your site's own space. `hyper.mine` is the app's; `hyper.instance(key).mine` is that
+  instance's (read state of one forum), apart from the others, all under the app's one 1 MB cap; leaving an
+  instance drops its names. Make your app public (leave `public` out of `site.json`): its code must load for
+  everyone; each instance has its own privacy.
 - Instances the person joined stay on their device until they leave them; at most 1000 per app (`TOO_BIG`).
+- Publishing: `node engine/cli.js publish <folder> --instance "<name>" [--invite admin]` also makes an instance
+  owned by the publisher (once; the same one after) and prints its key and an invite to it. If your app declares
+  an `official` type (`{ "fields": { "instance": "string" }, "put": { "permission": "decide" } }`), it records that
+  instance there, for your start page to show (the forum does).

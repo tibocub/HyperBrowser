@@ -68,19 +68,19 @@
 
 ## Phase 7: US5 — the official forum as app + instance (P2) — after the lead's go
 
-- [ ] T019 [US5] `test/forum.test.js` against an instance (`siteApi(e, app).instance(key)`); its checks unchanged
-- [ ] T020 [US5] `sites/forum`: `public` app; start page with no instance (your forums, create, join by link, the
+- [x] T019 [US5] `test/forum.test.js` against an instance (`siteApi(e, app).instance(key)`); its checks unchanged
+- [x] T020 [US5] `sites/forum`: `public` app; start page with no instance (your forums, create, join by link, the
       official forum); `lib/` handed `hyper.instance(key)`; `?instance=`
-- [ ] T021 [US5] `engine/cli.js` `publish --instance "<name>"` (once per folder + engine folder), `--invite` to it;
+- [x] T021 [US5] `engine/cli.js` `publish --instance "<name>"` (once per folder + engine folder), `--invite` to it;
       `package.json` `forum:publish`; report: the preset's forum key changes (Tibo republishes, lead updates)
-- [ ] T022 [US5] `docs/forum.md`, `sites/home/forum.hmd`
+- [x] T022 [US5] `docs/forum.md`, `sites/home/forum.hmd`
 
 ## Phase 8: Polish
 
 - [x] T023 `docs/site-api.md` "Instances" section; `specs/requests-to-swarmfs.md` F7 status
-- [ ] T024 Suites one after another: SwarmFS `npm test` (its worktree), here `npm test`, `npm run test:bare`,
+- [x] T024 Suites one after another: SwarmFS `npm test` (its worktree), here `npm test`, `npm run test:bare`,
       `npm run test:sandbox`; hypergraph unchanged (no HyperBBS/hyperDNS run needed)
-- [ ] T025 Hand-over note in the shared notes folder; report branches (not merged)
+- [x] T025 Hand-over note in the shared notes folder; report branches (not merged)
 
 ## Dependencies
 
@@ -90,3 +90,10 @@ lead's go. No parallel writers: one person, one worktree per repo.
 ## MVP
 
 US1 + US4's guards: an app that makes instances and reaches nothing else.
+
+## Done (2026-11-08)
+
+- Built beyond the tasks: `hyper.instance(key).mine` (each forum's read state apart, under the app's one cap):
+  the forum's pruning of read state would otherwise drop the other forums' entries (fixed in the API, not the app).
+- Not checked: the real shell by hand (`npm start`): the start page was looked at in a browser with a stubbed
+  `window.hyper` only; two shells on one machine.

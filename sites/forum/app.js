@@ -6,7 +6,10 @@ import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/
 import * as icon from './lib/icon.js'
 
 const app = document.getElementById('app')
-const hyper = window.hyper
+// The forum app (spec 009): each forum is an instance of it, owned by whoever made it; ?instance=<key> says which.
+// With none, the start page: your forums, the official one, make one, join one.
+const at = new URLSearchParams(location.search).get('instance')
+const hyper = window.hyper && at ? window.hyper.instance(at) : null
 const SORT_LABELS = { activity: 'Activity', newest: 'Newest', top: 'Top', lively: 'Lively' }
 
 let f = null
@@ -16,6 +19,7 @@ let data = { complete: {}, boards: [], threads: [], comments: [], votes: [], pro
 let names = new Map()
 let peers = 0
 let notice = ''
+let title = 'Forum' // the forum's name, once known
 const drafts = {} // form key → { text, title, picks }
 const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null }
 const opened = {} // thread id → its read stamp when this visit opened it ("new" marks)
@@ -30,12 +34,15 @@ start().catch((err) => {
 })
 
 async function start () {
-  if (!hyper) {
+  if (!window.hyper) {
     app.replaceChildren(windowBox('HyperBrowser Forum', h('p', { class: 'pad' }, 'Open this forum in HyperBrowser: it lives on its members\' computers, not on a server.')))
     return
   }
+  if (!hyper) return startPage()
   f = forum(hyper)
   me = await f.me() // the identity question, once per site
+  title = (await hyper.info()).name || title
+  document.title = title
   mine = await f.mine()
   let pruned = false
   watch(hyper, (state) => {
@@ -128,7 +135,8 @@ function draw () {
 function bar () {
   const p = names.get(me.identity) || {}
   return h('nav', { class: 'bar', 'aria-label': 'Forum' },
-    h('a', { href: '#/', class: 'brand' }, h('img', { src: 'icon.svg', alt: '', width: 16, height: 16 }), 'HyperBrowser Forum'),
+    h('a', { href: '#/', class: 'brand' }, h('img', { src: 'icon.svg', alt: '', width: 16, height: 16 }), title),
+    h('a', { href: './', title: 'Your forums, make one, join one' }, 'All forums'),
     h('span', { class: 'grow' }),
     h('a', { href: '#/mentions', 'aria-current': route().page === 'mentions' ? 'page' : null }, 'Mentions'),
     h('a', { href: '#/members', 'aria-current': route().page === 'members' ? 'page' : null }, 'Members'),
@@ -179,7 +187,7 @@ function frontPage (boardId) {
     h('span', { class: 'grow' }, b.name),
     h('span', { class: 'small' }, String(inBoard(b.id).length))))
 
-  return windowBox('HyperBrowser Forum',
+  return windowBox(title,
     h('div', { class: 'panes' },
       h('aside', { class: 'boards', 'aria-label': 'Boards' },
         h('div', { class: 'rule', 'aria-hidden': 'true' }, '── Boards ' + '─'.repeat(40)),
@@ -542,6 +550,49 @@ function membersPage () {
               : confirmButton('ban' + m.identity, 'Ban', () => act(async () => { await f.ban(m.identity, 'banned from the forum'); await loadMembers() })))
           : null)))),
     status(`${list.length} members`, online()))
+}
+
+// --- the start page (spec 009): your forums, the official one, make one, join one ---
+
+async function startPage () {
+  const root = window.hyper
+  const s = { forums: null, official: null, name: '', public: false, link: '', error: '', busy: false }
+  const open = (key) => { location.search = '?instance=' + key }
+  const run = async (fn) => {
+    s.busy = true
+    s.error = ''
+    paint()
+    try { await fn() } catch (err) { s.error = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
+    s.busy = false
+    paint()
+  }
+  const forumRow = (i) => h('li', { class: 'row' },
+    h('a', { href: '?instance=' + i.key, class: 'grow' }, i.name || shortKey(i.key)),
+    h('span', { class: 'small' }, (i.role || 'not a member yet') + (i.public ? ' · public' : '')))
+  function paint () {
+    const official = s.official && !(s.forums || []).some((i) => i.key === s.official) ? s.official : null
+    app.replaceChildren(h('div', { class: 'desk' }, windowBox('Forums',
+      h('div', { class: 'thread' },
+        s.error ? h('p', { class: 'notice', role: 'alert' }, s.error) : null,
+        h('h3', {}, 'Your forums'),
+        s.forums === null ? h('p', {}, 'Loading…') : s.forums.length ? h('ul', { class: 'members' }, ...s.forums.map(forumRow)) : h('p', { class: 'small' }, 'None yet.'),
+        official ? h('p', {}, h('a', { href: '?instance=' + official }, 'The official HyperBrowser forum')) : null,
+        h('h3', {}, 'Make a forum'),
+        h('p', { class: 'small' }, 'It is yours: you make its boards, its invites and its moderators. It lives on its members\' computers.'),
+        h('form', { class: 'row-end start', onsubmit: (e) => { e.preventDefault(); run(async () => open((await root.instances.create(s.name, { public: s.public })).key)) } },
+          h('input', { 'aria-label': 'Name of the forum', placeholder: 'Name', maxlength: 200, value: s.name, oninput: (e) => { s.name = e.target.value } }),
+          h('label', { class: 'small' }, h('input', { type: 'checkbox', checked: s.public ? '' : null, onchange: (e) => { s.public = e.target.checked } }), ' Public (anyone with its key; for good)'),
+          h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Make forum')),
+        h('h3', {}, 'Join a forum'),
+        h('form', { class: 'row-end start', onsubmit: (e) => { e.preventDefault(); run(async () => open((await root.instances.join(s.link.trim())).key)) } },
+          h('input', { class: 'wide', 'aria-label': 'Invite link', placeholder: 'hg:…', value: s.link, oninput: (e) => { s.link = e.target.value } }),
+          h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Join'))),
+      status('Forums made with this app', ''))))
+  }
+  paint()
+  s.forums = await root.instances.list() // the identity question, once for the app and all its forums
+  s.official = (await root.query('official').latest(1).catch(() => ({ items: [] }))).items[0]?.instance || null
+  paint()
 }
 
 // --- moderation: reports, hidden posts ---

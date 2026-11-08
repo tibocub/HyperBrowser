@@ -18,7 +18,8 @@ await forum.info()                               // { key, name, ..., app: '<app
 new URLSearchParams(location.search).get('instance')   // the instance a link opened, or null
 ```
 
-- `hyper` itself stays the app's own space (unchanged). `hyper.mine` is per app (all instances).
+- `hyper` itself stays the app's own space (unchanged). `hyper.mine` is the app's; `hyper.instance(key).mine` that
+  instance's (stored as `hyperbrowser/site/<app>/@<instance>/<name>`, under the app's one 1 MB cap; dropped on leave).
 - Errors: `NOT_ALLOWED` (not an instance of this app, or not listed: create or join it first; consent refused);
   `INVALID_PARAMS` (name not 1–200 characters, `public` not a boolean, not a link); `INVALID_KEY`;
   `INVITE_*` (hypergraph's refusals of a link); `TOO_BIG` (over 1000 instances of one app).

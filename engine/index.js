@@ -308,6 +308,8 @@ export function start (ipc) {
     s.instances.delete(a)
     if (scope) await scope.then((i) => i.scope.close(), () => {})
     await sfs.leave(a)
+    const names = `${MINE_PREFIX}${app}/@${a}/` // its mine names: out of the app's cap
+    for (const n of Object.keys(await sfs.hg.settings())) if (n.startsWith(names)) await sfs.hg.setSetting(n, null)
     return true
   }
 
@@ -324,9 +326,13 @@ export function start (ipc) {
   async function call ({ key, sub, instance, method, args = [], chain }) {
     if (method !== 'info' && !MINE.has(method) && !INSTANCES.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
     if (!Array.isArray(args)) throw error('INVALID_PARAMS', 'args is a list')
-    if (MINE.has(method) || INSTANCES.has(method)) { // the app's own, whatever instance the page names
+    if (MINE.has(method)) {
+      await target({ key, instance }) // an instance's: checked as any call on it
+      return mine(key, method, args, instance)
+    }
+    if (INSTANCES.has(method)) { // the app's own, whatever instance the page names
       await target({ key })
-      return MINE.has(method) ? mine(key, method, args) : instances(opened(key), key, method, args)
+      return instances(opened(key), key, method, args)
     }
     const t = await target({ key, sub, instance })
     if (method === 'info') {
@@ -346,23 +352,28 @@ export function start (ipc) {
   }
 
   // The person's own data for this site (spec 006 R2): one setting per name, on every device of the person,
-  // never in the site's space. Another site's names are out of reach (the prefix is this site's key).
-  async function mine (key, method, [name, value]) {
-    const prefix = `${MINE_PREFIX}${key}/`
+  // never in the site's space. Another site's names are out of reach (the prefix is this site's key). Each of
+  // an app's instances has its own names (spec 009: '@<instance>/' + name), under the app's one cap.
+  async function mine (key, method, [name, value], instance) {
+    const site = `${MINE_PREFIX}${key}/`
+    const prefix = instance ? `${site}@${instance}/` : site
     if (method === 'mine.all') {
       const out = {}
-      for (const [n, v] of Object.entries(await sfs.hg.settings())) if (n.startsWith(prefix) && v !== null) out[n.slice(prefix.length)] = v
+      for (const [n, v] of Object.entries(await sfs.hg.settings())) {
+        if (n.startsWith(prefix) && v !== null && (instance || n[prefix.length] !== '@')) out[n.slice(prefix.length)] = v
+      }
       return out
     }
     if (typeof name !== 'string' || !name || name.length > 200) throw error('INVALID_PARAMS', 'mine.set needs a name of 1 to 200 characters')
+    if (!instance && name[0] === '@') throw error('INVALID_PARAMS', "a name doesn't start with @ (an instance's names do)")
     if (value === undefined) value = null
     const size = JSON.stringify(value).length
     if (size > MINE_VALUE_MAX) throw error('TOO_BIG', `a value is at most ${MINE_VALUE_MAX} bytes as JSON (this one: ${size})`)
     const write = keeping.then(async () => {
       if (value !== null) {
-        let total = name.length + size
+        let total = prefix.length - site.length + name.length + size
         for (const [n, v] of Object.entries(await sfs.hg.settings())) {
-          if (n.startsWith(prefix) && n !== prefix + name && v !== null) total += n.length - prefix.length + JSON.stringify(v).length
+          if (n.startsWith(site) && n !== prefix + name && v !== null) total += n.length - site.length + JSON.stringify(v).length
         }
         if (total > MINE_SITE_MAX) throw error('TOO_BIG', `a site keeps at most ${MINE_SITE_MAX} bytes here: remove some names first`)
       }

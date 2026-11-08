@@ -5,6 +5,11 @@
 The HyperBrowser forum is a site like any other: it lives on its members' computers, not on a server. While we
 test, it is invite-only.
 
+It is one forum among many: the forum **app** makes as many as people want. Open the app with no forum chosen
+(or click **All forums**) to see yours, **make a forum** of your own, or **join** one with its link. The forum you
+make is yours: you make its boards, its invites and its moderators, and nobody else has a say, not even the app's
+author. When the app gets better, every forum gets the new version.
+
 ## Get in
 
 - Someone already in sends you an **invite link** (it starts with `hg:`).

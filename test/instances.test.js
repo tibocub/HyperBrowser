@@ -82,6 +82,27 @@ test('a third person joins both (invite, public link); leaving drops one', async
   t.ok(key)
 })
 
+test('mine: each instance\'s names apart, under the app\'s one cap; leaving drops them', async (t) => {
+  t.timeout(120000)
+  const { people: [a] } = await app(t, 1)
+  const f1 = await a.hyper.instances.create('One')
+  const f2 = await a.hyper.instances.create('Two')
+  const [i1, i2] = [a.hyper.instance(f1.key), a.hyper.instance(f2.key)]
+  await a.hyper.mine.set('sort', 'top')
+  await i1.mine.set('read/x', 1)
+  await i2.mine.set('read/y', 2)
+  t.alike(await a.hyper.mine.all(), { sort: 'top' }, "the app's own names only")
+  t.alike(await i1.mine.all(), { 'read/x': 1 }, "one instance's")
+  t.alike(await i2.mine.all(), { 'read/y': 2 }, "the other's")
+  t.is(await codeOf(a.hyper.mine.set('@' + f1.key + '/read/x', 9)), 'INVALID_PARAMS', "the app can't write an instance's names")
+  t.is(await codeOf(a.hyper.instance('y'.repeat(52)).mine.set('x', 1)), 'NOT_ALLOWED', 'nor a key that is not its instance')
+  const chunk = 'x'.repeat(60 * 1024)
+  for (let i = 0; i < 17; i++) await i1.mine.set('c' + i, chunk)
+  t.is(await codeOf(i2.mine.set('c', chunk)), 'TOO_BIG', "the app's 1 MB counts every instance")
+  await a.hyper.instances.leave(f1.key)
+  t.ok(await i2.mine.set('c', chunk), 'leaving one frees its room')
+})
+
 test('opening an instance\'s link opens its app on it', async (t) => {
   t.timeout(120000)
   const { key, people: [a] } = await app(t, 1)
