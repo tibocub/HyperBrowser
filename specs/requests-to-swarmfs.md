@@ -2,7 +2,11 @@
 
 What HyperBrowser needs from SwarmFS and doesn't work around (constitution IV). Newest first.
 
-## F7. A site that runs another site's code: an app's instance (2026-11-08, spec 009) — planned
+## F7. A site that runs another site's code: an app's instance (2026-11-08, spec 009) — fixed on a branch, not merged
+
+- **Done** on SwarmFS branch `007-app-instances` (worktree `.claude/worktrees/app-instances`), test
+  `test/app-instances.test.js`. Shortcut: an instance keeps an empty pages sub-space (no special case in
+  `site()`, `keep`, `held`); drop it if many instances per person ever cost too much.
 
 - **Need**: federated apps (spec 009): an instance (one forum) is a space owned by its creator that runs an app's
   code. The engine must know, unforgeably, which app an instance belongs to, so an app reaches only its own

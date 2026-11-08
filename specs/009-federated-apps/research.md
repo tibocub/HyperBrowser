@@ -10,7 +10,7 @@ hypergraph `lib/scope.js` (a site's handle: one space and its sub-spaces), `docs
 ## R1. What an instance is: a SwarmFS site whose `site` record names its app
 
 - **Decision**: an instance is a top space made by `sfs.createSite(name, { app: appKey, types })`: a SwarmFS site
-  with no pages, whose `site` record says `{ app: <the app's key> }`. Owned by its creator (hypergraph's
+  whose pages stay empty, whose `site` record says `{ pages, app: <the app's key> }`. Owned by its creator (hypergraph's
   `createSpace`: the creator is owner), with the app's record types.
 - **Rationale**: the engine must know, unforgeably, which app an instance belongs to, for two things: opening an
   instance's link (which code to run?) and refusing an app that tries to join another site's space (FR-002,
@@ -88,9 +88,9 @@ hypergraph `lib/scope.js` (a site's handle: one space and its sub-spaces), `docs
 
 ## R7. Library changes needed
 
-- **SwarmFS**: `site` type gains `app: 'string'` (at the end); `createSite(name, { app, types })` makes no pages
-  sub-space when `app` is given; `site(key)` accepts a `site` record with `app` and no pages (`site.app`, `site.pages`
-  null; `read()` → `NOT_FOUND`). Requests file: F7. Branch of its own, with its tests.
+- **SwarmFS**: `site` type gains `app: 'string'` (at the end); `createSite(name, { app, types })` records it;
+  `site.app` (null for other sites). Built: the instance keeps an empty pages sub-space (no special case in
+  `site()`, `keep`, `held`; `read()` → `NOT_FOUND`), a shortcut noted in F7. Branch `007-app-instances`.
 - **hypergraph**: none expected (`createSpace`, `redeemInvite`, `scope`, `declareTypes`, `leaveSpace` suffice). If
   that changes during implementation, its forum scenario tests are updated (its CLAUDE.md rule 3).
 

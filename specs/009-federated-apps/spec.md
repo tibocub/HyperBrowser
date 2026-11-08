@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-08
 
-**Status**: Draft — open questions go to Tibo through the lead (see plan.md, "Open questions")
+**Status**: Answered (Tibo, 2026-11-08: every recommendation of plan.md's open questions accepted)
 
 **Input**: lead session, 2026-11-08: make the official forum a federated app. One app (its code, in the app's
 site space, published by Tibo) whose instances anyone can create and own. Each instance is a space of its own,
@@ -14,6 +14,23 @@ never other sites' spaces). Tibo owns only the official "HyperBrowser" instance.
 every instance. Model: hypergraph's forum example (`test/next/forum/`: `createForum` makes forums owned by their
 creator). Goal: the easiest kit for server-less social apps; what is awkward for an app author is fixed in the
 API, not in the app.
+
+## Clarifications
+
+### Session 2026-11-08 (Tibo, through the lead)
+
+- Q1 Finding instances → links (invite, public link, key), "your forums" in the app, the official forum on the
+  app's start page. No directory.
+- Q2 Default page → the app with no instance: your forums, create, join by link, the official forum; the preset's
+  forum icon opens the official instance.
+- Q3 The old test forum → dropped; the app is published fresh and public.
+- Q4 Who creates → anyone who allowed the app.
+- Q5 Types → the app's (and its additions); none of an instance's own.
+- Q6 Consent → once per app, covering its instances.
+- Q7 Joined instances → kept joined, never dropped automatically (not by spec 004's start-up sweep, not after its
+  grace period: they may stop being announced, never be left); online while used. Owned ones always hosted. A
+  test shows it.
+- Q8 New instances → invite-only by default; "public" chosen at creation.
 
 ## Words
 
@@ -175,8 +192,9 @@ sees their own instances, a way to create one, a way to join one by link, and th
 - **FR-009**: The app's author MUST have no role in an instance they didn't create or join.
 - **FR-010**: The person's consent to let an app use their identity MUST be asked once per app and cover its
   instances (recommendation; see plan.md Q6).
-- **FR-011**: Instances the person owns MUST stay hosted (as their own sites today); instances they joined are
-  hosted while the app shows them, plus the grace period (spec 004's rule; see plan.md Q7).
+- **FR-011**: Instances the person owns MUST stay hosted (as their own sites today); instances they joined MUST
+  stay joined on this device (never left by spec 004's start-up sweep or grace period) and be online while used
+  (Q7). Only the person's own "leave" drops one.
 - **FR-012**: The official forum MUST run as the forum app plus Tibo's "HyperBrowser" instance, opened from the
   start page and preset as today.
 - **FR-013**: Docs MUST explain instances to app authors (`docs/site-api.md`), the forum's switch

@@ -34,27 +34,37 @@ function subscribe (msg, fn) {
   return () => { started.then((id) => { handlers.delete(id); return invoke({ op: 'off', id }) }).catch(() => {}) }
 }
 
-function query (sub, args) {
+function query (at, args) {
   const chain = []
   const q = {}
   for (const f of FILTERS) q[f] = (...a) => { chain.push([f, a]); return q }
-  q.latest = (...a) => invoke({ op: 'call', sub, method: 'query', args, chain: [...chain, ['latest', a]] })
-  q.live = (fn, opts) => subscribe({ op: 'live', sub, args, chain, opts }, (d) => fn({ items: d.items, complete: d.complete }))
+  q.latest = (...a) => invoke({ op: 'call', ...at, method: 'query', args, chain: [...chain, ['latest', a]] })
+  q.live = (fn, opts) => subscribe({ op: 'live', ...at, args, chain, opts }, (d) => fn({ items: d.items, complete: d.complete }))
   return q
 }
 
-function api (sub) {
+// The site's own space (instance null), or one of the app's instances (spec 009); `sub`: one of its sub-spaces.
+function api (sub, instance = null) {
+  const at = { sub, instance }
   const o = {}
-  for (const m of METHODS) o[m] = (...args) => invoke({ op: 'call', sub, method: m, args })
-  o.query = (...args) => query(sub, args)
-  o.on = (event, fn) => subscribe({ op: 'on', sub, event }, fn)
-  if (sub === null) {
-    o.subspace = (key) => api(String(key))
+  for (const m of METHODS) o[m] = (...args) => invoke({ op: 'call', ...at, method: m, args })
+  o.query = (...args) => query(at, args)
+  o.on = (event, fn) => subscribe({ op: 'on', ...at, event }, fn)
+  if (sub === null) o.subspace = (key) => api(String(key), instance)
+  if (sub === null && instance === null) {
     // the person's own data for this site, on their devices (spec 006)
     o.mine = {
-      all: () => invoke({ op: 'call', sub, method: 'mine.all', args: [] }),
-      set: (name, value) => invoke({ op: 'call', sub, method: 'mine.set', args: [name, value ?? null] })
+      all: () => invoke({ op: 'call', ...at, method: 'mine.all', args: [] }),
+      set: (name, value) => invoke({ op: 'call', ...at, method: 'mine.set', args: [name, value ?? null] })
     }
+    // the app's instances: communities of their own, owned by whoever made them (spec 009)
+    o.instances = {
+      list: () => invoke({ op: 'call', ...at, method: 'instances.list', args: [] }),
+      create: (name, opts) => invoke({ op: 'call', ...at, method: 'instances.create', args: [name, opts ?? {}] }),
+      join: (link) => invoke({ op: 'call', ...at, method: 'instances.join', args: [link] }),
+      leave: (key) => invoke({ op: 'call', ...at, method: 'instances.leave', args: [key] })
+    }
+    o.instance = (key) => api(null, String(key))
   }
   return o
 }

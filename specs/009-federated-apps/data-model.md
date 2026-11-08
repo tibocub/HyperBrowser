@@ -13,14 +13,14 @@ A top space, created by `sfs.createSite(name, { app, types })`:
 |------|-------|---------------|
 | owner | the person who created it (hypergraph: the creator) | — |
 | name | 1 to 200 characters | owner, admins (hypergraph's name) |
-| `site` record | `{ pages: null, app: '<app key>' }` (SwarmFS type, field `app` added at the end) | who may decide: owner, admins |
+| `site` record | `{ pages: <an empty pages sub-space>, app: '<app key>' }` (SwarmFS type, field `app` added at the end) | who may decide: owner, admins |
 | types | the app's `site.json` types at creation; later additions declared by an owner or admin opening it | owner, admins |
 | public | `false` by default; `create(name, { public: true })` makes it public for good | owner, admins |
 | members, roles, invites, sub-spaces, records | as any hypergraph space | as today |
 
 Rules:
 - An instance is reachable by app A only if its `site` record's `app` is A's key **and** it is in A's list (below).
-- No pages: reading a page of an instance is `NOT_FOUND`; its code is the app's.
+- Its pages stay empty: reading a page of an instance is `NOT_FOUND`; its code is the app's.
 
 ## The person's instances of an app (new)
 

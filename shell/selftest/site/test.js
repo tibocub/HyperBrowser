@@ -9,8 +9,9 @@ document.getElementById('me').textContent = (isStatic ? 'static ' : 'site ') + m
 const refused = (p) => p.then(() => false, () => true)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // mine: the person's own data for this site (spec 006), on their settings, not a space
+// instance, instances: the app's instances (spec 009), checked by the engine
 const API = ['completeFrom', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
-  'edit', 'get', 'getByTag', 'getRole', 'info', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'on', 'peers',
+  'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'on', 'peers',
   'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'setRole',
   'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag']
 
@@ -80,7 +81,14 @@ const dynamics = [
     setTimeout(() => resolve(false), 5000)
   })],
   ['the page names no space: hyper.subspace(<other site>) is refused', () =>
-    refused(window.hyper.subspace(other).query('profile').latest(10))]
+    refused(window.hyper.subspace(other).query('profile').latest(10))],
+  ['the page names no space: hyper.instance(<other site>) is refused', () =>
+    refused(window.hyper.instance(other).query('profile').latest(10))],
+  ['its own instance: created, then reached', async () => {
+    const f = await window.hyper.instances.create('Self-test ' + me.slice(0, 4))
+    await window.hyper.instance(f.key).put('profile', { name })
+    return (await window.hyper.instance(f.key).query('profile').latest(10)).items.some((r) => r.name === name)
+  }]
 ]
 
 ;(async () => {
