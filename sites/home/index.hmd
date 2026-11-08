@@ -11,8 +11,9 @@ You open a site by its **key**. Your computer gets the site from the other peopl
 - open a site by its key, in tabs
 - keep sites on your desktop: installed (kept whole on your computer) or as a bookmark
 - publish your own site from a folder
+- friends and private chats, with no server
 
-[Get started](start.hmd) · [Publish a site](publish.hmd) · [News](news.hmd)
+[Get started](start.hmd) · [Publish a site](publish.hmd) · [Friends and chat](friends.hmd) · [News](news.hmd)
 
 :::note
 HyperBrowser is not released yet. Today you run it from its source code, on Windows. Linux is coming (not tested yet). Downloads that update themselves are coming.

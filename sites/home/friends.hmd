@@ -1,0 +1,47 @@
+::page{title="Friends and chat" description="Contacts, friend requests, private messages and groups, with no server." order=4}
+
+# Friends and chat
+
+::toc
+
+Two apps on your desktop: **Contacts** (your friends) and **Chat** (your conversations). Messages go straight from your computer to your friends' computers: no server holds them, and only the people in a conversation can read it.
+
+## Your name and your key
+
+Open **Contacts**. Under **You**, type the name your friends will see and click **Save**. Your **key** is the long line of letters below it: it is your identity in HyperBrowser. Give it to a friend so they can add you.
+
+## Become friends
+
+Two ways:
+
+- **By key.** Your friend pastes your key in **Add a friend** and clicks **Add**. You get a **friend request** in Contacts: **Accept** or **Decline**. The request reaches you while you are both online; if you are offline, it waits on their computer and comes when you are back (while their HyperBrowser runs).
+- **By contact link.** Click **Make a contact link** and send the link any way you like (another chat, an email). The first person who pastes it in **Add a friend** becomes your friend. It works once.
+
+Other sites may offer **Add friend** too (a forum profile, for example). HyperBrowser always asks you first, and shows the person's key: the name comes from that site, so check the key if it matters. Those sites never see your contacts.
+
+**Private?** Untick **People can find me by my key**: your computer then never answers requests by key (nobody can even check you are online), and friends add you with contact links only.
+
+## Chat with a friend
+
+In Contacts, click **Message** next to a friend: Chat opens on your conversation. Write and press **Enter** (**Shift+Enter** for a new line). You can edit or delete your own messages. Your friend reads them as soon as they are online; your messages wait on your computer until then, so you both need to be online at some point.
+
+## Groups
+
+In Chat, type a name under **New group** and click **Create**: you own the group. Under **Members**, pick a friend and click **Add to the group**: they get an invite in your conversation with them, and click **Join**.
+
+By default only you add people and moderate. Give someone more with the menu next to their name:
+
+| Right | What they can do |
+|---|---|
+| Member | write |
+| Can add people | write, add their own friends |
+| Moderator | delete anyone's messages, remove or ban members |
+| Admin | everything but owning the group: rights, moderation settings |
+
+A member who is removed or banned can't read anything written after that. Click **Leave the group** to leave it.
+
+## Good to know
+
+- A conversation lives on its members' computers. If nobody else in it is online, new messages wait.
+- Accepting a friend request needs the sender online for a moment (they let you in).
+- Removing a friend leaves your conversation with them on this computer.

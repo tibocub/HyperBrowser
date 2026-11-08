@@ -58,7 +58,8 @@ stop(); off()
   `NOT_ALLOWED`.
 - Reads answer at once: right after a visitor opens your site, a list may be empty with `complete: false`.
   Show it as "loading" and keep a live view: it fires again when records arrive.
-- Errors have a `code` (`NOT_ALLOWED`, `NOT_FOUND`, `INVALID_TYPE`…). Bytes fields are `Uint8Array`.
+- Errors have a `code` (`NOT_ALLOWED`, `NOT_FOUND`, `INVALID_TYPE`…) and a `message`; they are plain objects
+  `{ name: 'HyperError', code, message }`, not `Error`s. Bytes fields are `Uint8Array`.
 - The official forum (`sites/forum`) is a full example: [forum.md](forum.md).
 
 ## Apps with instances: communities anyone can start
@@ -95,3 +96,27 @@ new URLSearchParams(location.search).get('instance')       // the instance a lin
   owned by the publisher (once; the same one after) and prints its key and an invite to it. If your app declares
   an `official` type (`{ "fields": { "instance": "string" }, "put": { "permission": "decide" } }`), it records that
   instance there, for your start page to show (the forum does).
+
+## People: friend requests and chats, through HyperBrowser (spec 013)
+
+Any dynamic site may offer "add friend" or "message" next to a person's key (an identity, as `author` or
+`info().identity` give it). HyperBrowser does the work; your site never sees the person's contacts.
+
+```js
+await hyper.people.request(identity, 'Bob')   // HyperBrowser asks "send a friend request to "Bob" (key …)?"
+                                               // a no: NOT_ALLOWED; the name is yours, the key is shown too
+hyper.people.chat(identity)                    // Chat on your conversation with them (their page in Contacts
+                                               // if they aren't a friend yet)
+hyper.people.contact(identity)                 // their page in Contacts
+```
+
+`chat` and `contact` work only while the person is clicking on your page (in a click handler); otherwise they
+resolve `false` and open nothing.
+
+A site whose `site.json` lists `"contacts"` in `permissions` may read and change the contacts, once the person
+allowed it ("Let X see and manage your contacts?"): `hyper.contacts.me()`, `setMe({ name, findable })`, `list()`
+(`[{ identity, name, state: 'friend' | 'incoming' | 'outgoing', chat, at }]`), `request(identity, name)`,
+`accept`, `decline`, `remove`, `rename(identity, name)`, `link()` (a one-use contact link), `add(link)`,
+`on(fn)` (the list may have changed). Without the permission: `NOT_ALLOWED`. Only HyperBrowser's own Contacts and
+Chat ask for it; a site that asks is asking for the person's whole social graph. The whole design:
+`specs/013-contacts-chat/`; the apps: [chat.md](chat.md).

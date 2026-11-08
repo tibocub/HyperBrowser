@@ -25,6 +25,8 @@
     "home:build": "node node_modules/hypermd/bin/hypermd.js build sites/home --out out/home",
     "home:publish": "npm run home:build && node engine/cli.js publish out/home",
     "forum:publish": "node engine/cli.js publish sites/forum --instance HyperBrowser",
+    "chat:publish": "node engine/cli.js publish sites/chat",
+    "contacts:publish": "node engine/cli.js publish sites/contacts",
     "test:all": "npm test && npm run test:bare && npm run test:sandbox",
     "build": "node scripts/build.js",
     "release": "node scripts/release.js",

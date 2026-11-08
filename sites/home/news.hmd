@@ -1,6 +1,10 @@
-::page{title="News" description="What's new in HyperBrowser." order=4}
+::page{title="News" description="What's new in HyperBrowser." order=5}
 
 # News
+
+## 2026-11-08 · Friends and chat
+
+Two new apps on the desktop: **Contacts** and **Chat**. Add friends by their key or with a contact link, talk to them in private, and make groups where you choose who may add people or moderate. No server: see [Friends and chat](friends.hmd).
 
 ## 2026-11-07 · The first site
 
