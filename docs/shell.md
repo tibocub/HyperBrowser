@@ -37,7 +37,16 @@ Each site's icon (from its `site.json`), its title under it.
   tab; then HyperBrowser stops serving it (and at the next launch, it isn't served at all). Its files stay
   in the cache: opening it again reuses them, but needs someone serving it online to find it.
 - Double-click (or Enter) opens; right-click: open, install or bookmark, remove; drag to another cell.
-- The official site and forum are preset; until their keys are published they say "not published".
+- Preset: the official site, the forum, Apps, Chat and Contacts; until their keys are published they say "not
+  published". (A desktop saved before an entry was added doesn't get it: preset icons only fill a new desktop.)
+
+## Apps (spec 014)
+
+Apps (`sites/apps`) is an ordinary site: a list of apps, each with Install (or Open once installed). Its entries
+are `app` records only its owner and admins write (`npm run apps:publish` writes them from each app's
+`site.json`: see [engine.md](engine.md)). Installing goes through HyperBrowser (`hyper.apps`, [site-api.md](site-api.md)):
+a click on the page, then HyperBrowser's own question, "Install "<the app's title>"?", with its key. Yes is the
+same install as the desktop's right-click. Any site may ask the same way; none can install without both.
 
 The desktop, bookmarks and the look are kept in `shell.json` in the app's data folder
 (`%APPDATA%\HyperBrowser` on Windows).

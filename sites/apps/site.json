@@ -1,0 +1,10 @@
+{
+  "title": "Apps",
+  "description": "HyperBrowser's apps: install one in a click.",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "permissions": ["space"],
+  "types": {
+    "app": { "fields": { "key": "string", "title": "string", "about": "text", "icon": "string", "order": "int" }, "put": { "permission": "decide" }, "editable": { "permission": "decide" } }
+  }
+}

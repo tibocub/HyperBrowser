@@ -59,7 +59,11 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     'people: opening a chat without a click opens nothing', // spec 013
     'people: a friend request the person refused is NOT_ALLOWED',
     'hyper.people: nothing opened without a click',
-    'hyper.people: a request the person refused sent nothing'
+    'hyper.people: a request the person refused sent nothing',
+    'apps: installing a site without a click installs nothing', // spec 014
+    'apps: opening a site without a click opens nothing',
+    'hyper.apps: nothing installed or opened without a click',
+    "hyper.apps: a click and the person's no install nothing"
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
 })
 

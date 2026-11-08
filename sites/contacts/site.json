@@ -1,5 +1,6 @@
 {
   "title": "Contacts",
+  "description": "Your friends: send and accept friend requests.",
   "entry": "index.html",
   "icon": "icon.svg",
   "permissions": ["space", "contacts"]

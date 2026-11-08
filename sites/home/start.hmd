@@ -56,7 +56,13 @@ Each site opens in its own tab, and keeps running when you switch to another one
 
 The desktop is your home: each site's icon and name. Double-click an icon (or press Enter) to open it. Right-click it to install it, make it a bookmark, or remove it. Drag icons to arrange them.
 
-The official site (this one) and the official forum are already there.
+The official site (this one), the official forum, Apps, Chat and Contacts are already there.
+
+## Get more apps
+
+Open **Apps** on the desktop: HyperBrowser's apps, each with a line about it. Click **Install**: HyperBrowser asks "Install …?" with the app's name. Say yes and it's on your desktop, installed. Already installed? The button says **Open**.
+
+New apps appear in Apps as they are published: no need to update HyperBrowser. Any site can offer an Install button the same way, and HyperBrowser always asks you first.
 
 ## Use it on two computers
 

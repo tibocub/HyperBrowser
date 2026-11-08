@@ -113,6 +113,26 @@ hyper.people.contact(identity)                 // their page in Contacts
 `chat` and `contact` work only while the person is clicking on your page (in a click handler); otherwise they
 resolve `false` and open nothing.
 
+## Apps: install or open another site, through HyperBrowser (spec 014)
+
+Any dynamic site may offer another site to install or open (the Apps store does). HyperBrowser does it, with its
+own question; your site never installs anything by itself.
+
+```js
+await hyper.apps.installed(key)   // true if this site (a key, or an app's instance key) is installed here
+await hyper.apps.install(key)     // HyperBrowser asks "Install "<the site's own title>"?" with its key:
+                                  // true once installed (or already was); a no: NOT_ALLOWED
+await hyper.apps.open(key)        // the site in a tab of its own: true
+```
+
+- `install` and `open` work only while the person is clicking on your page (in a click handler); otherwise they
+  resolve `false` and do nothing. The question names the site by its own `site.json` title, never by your
+  page's words; installing then is the desktop's install (kept whole, served to others, spec 004).
+- `key`: a 52-character site key (`INVALID_PARAMS` otherwise). A site nobody serves: the error of opening it.
+- `installed` tells your site about the keys it names only (not the person's list); it needs no click.
+
+## Contacts (spec 013)
+
 A site whose `site.json` lists `"contacts"` in `permissions` may read and change the contacts, once the person
 allowed it ("Let X see and manage your contacts?"): `hyper.contacts.me()`, `setMe({ name, findable })`, `list()`
 (`[{ identity, name, state: 'friend' | 'incoming' | 'outgoing', chat, at }]`), `request(identity, name)`,

@@ -1,5 +1,6 @@
 {
   "title": "HyperBrowser Forum",
+  "description": "Forums anyone can start; the official HyperBrowser forum.",
   "entry": "index.html",
   "icon": "icon.svg",
   "permissions": ["space"],

@@ -1,5 +1,6 @@
 {
   "title": "Chat",
+  "description": "Private conversations with your friends, and groups.",
   "entry": "index.html",
   "icon": "icon.svg",
   "permissions": ["space", "contacts"],

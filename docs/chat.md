@@ -6,17 +6,14 @@ and do: `sites/home/friends.hmd`. The design and Tibo's choices: `specs/013-cont
 ## Publish them (owner)
 
 ```bash
-npm run chat:publish
+npm run apps:publish -- --dir E:/Code/P2P/hyperbrowser-owner
 ```
 
-```bash
-npm run contacts:publish
-```
-
-Each prints its key. Put them in `shell/preset.json` (`preset:chat`, `preset:contacts`): the shell tells the engine
-which app owns friends' conversations (`apps.set`) and opens Contacts on a person (`?person=<key>`). Until then the
-desktop icons say "not published yet" and `hyper.people.contact` answers `NOT_PUBLISHED`. Publishing again sends
-the edited pages to everyone; Chat's new record types reach a conversation when its owner opens it.
+It publishes both (with the other official apps) and writes their keys into `shell/preset.json` (`preset:chat`,
+`preset:contacts`; see [engine.md](engine.md)): the shell tells the engine which app owns friends' conversations
+(`apps.set`) and opens Contacts on a person (`?person=<key>`). Until then the desktop icons say "not published
+yet", Chat says "no chat app yet" and its Contacts links show "Contacts is not published yet" (`NOT_PUBLISHED`).
+Publishing again sends the edited pages to everyone; Chat's new record types reach a conversation when its owner opens it.
 
 ## How it is made
 
