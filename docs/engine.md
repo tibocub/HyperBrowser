@@ -42,6 +42,10 @@ node engine/cli.js publish sites/forum --invite admin
 
 Paste the `hg:` link into HyperBrowser's address field: that HyperBrowser is in, as an admin.
 
+An invite-only site stays invite-only: if a folder first published with `"public": false` later drops that line,
+publishing refuses (`PRIVATE_SITE`), since public can't be undone and its records would become readable. `--new`
+gives the folder a fresh site with a new key (public unless `"public": false`) and leaves the old one.
+
 ## Open a site
 
 ```bash

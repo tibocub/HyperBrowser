@@ -96,7 +96,7 @@ export function start (ipc) {
 
   // --- sites ---
 
-  async function publish ({ folder }) {
+  async function publish ({ folder, fresh = false }) {
     if (typeof folder !== 'string' || !folder) throw error('INVALID_PARAMS', 'site.publish needs { folder }')
     const full = path.resolve(folder)
     let text
@@ -107,9 +107,16 @@ export function start (ipc) {
     }
     // a folder published before is linked to its site's pages (SwarmFS keeps the links): same site, same key
     const link = (await sfs.links()).find((l) => l.path === full)
-    if (link) {
+    if (link && fresh) { // a new site for this folder: the old one is left (its key stops working once nobody holds it)
+      const old = sfs.hg.space(link.space).parent
+      await sfs.unlink(full)
+      await sfs.leave(old)
+    } else if (link) {
       const key = sfs.hg.space(link.space).parent
-      if (manifest.types) await (await sfs.site(key)).declareTypes(manifest.types) // types added since (additions only)
+      const site = await sfs.site(key)
+      // an invite-only site never turns public by itself: public can't be undone, and its records would be read
+      if (manifest.public !== false && !site.isPublic) throw error('PRIVATE_SITE', `this folder's site (${key}) is invite-only and site.json doesn't say "public": false; publish with --new for a fresh public site`)
+      if (manifest.types) await site.declareTypes(manifest.types) // types added since (additions only)
       return { key, created: false, manifest }
     }
     const site = await sfs.createSite(manifest.title, { types: manifest.types })

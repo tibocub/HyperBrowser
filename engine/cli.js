@@ -15,9 +15,10 @@ const USAGE = `usage:
 options: --dir <engine folder> (default ~/.hyperbrowser)  --bootstrap host:port,...  --once
   --invite member|admin   (publish) then print a one-use invite link to the site (an invite-only site's way in)
   --instance <name>       (publish) an app's instance owned by this engine (spec 009): made once, the same one after;
-                          the app's \`official\` record names it if the app has that type; --invite is then to it`
+                          the app's \`official\` record names it if the app has that type; --invite is then to it
+  --new                   (publish) a fresh site for this folder, with a new key; the folder's old site is left`
 
-const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), bootstrap: undefined, once: false, invite: null, instance: null }
+const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), bootstrap: undefined, once: false, invite: null, instance: null, fresh: false }
 const args = []
 const argv = process.argv.slice(2)
 for (let i = 0; i < argv.length; i++) {
@@ -26,6 +27,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (argv[i] === '--once') opts.once = true
   else if (argv[i] === '--invite') opts.invite = argv[++i]
   else if (argv[i] === '--instance') opts.instance = argv[++i]
+  else if (argv[i] === '--new') opts.fresh = true
   else args.push(argv[i])
 }
 const [cmd, target] = args
@@ -55,7 +57,7 @@ if (!['publish', 'open'].includes(cmd) || !target || (opts.invite !== null && ![
 async function run (rpc) {
   await rpc.request('init', { dir: opts.dir, bootstrap: opts.bootstrap })
   if (cmd === 'publish') {
-    const { key, created } = await rpc.request('site.publish', { folder: target })
+    const { key, created } = await rpc.request('site.publish', { folder: target, fresh: opts.fresh })
     console.log(`key: ${key}${created ? ' (created)' : ''}`)
     if (!opts.invite && !opts.instance) return
     // the owner's engine has no window to ask: running this command is the owner saying yes

@@ -20,7 +20,7 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 |---|---|---|
 | `init` | `{ dir, bootstrap?, heartbeat?, appStorageMax?, grace? }` (`grace`: ms a site no tab shows stays joined, default 5 min; spec 004) | `{ identity, version: 1 }`; `ALREADY` if done. Sites held here neither installed nor the person's own are left first (spec 004) |
 | `ping` | `{}` | `true` (any message also counts as a heartbeat) |
-| `site.publish` | `{ folder }` | `{ key, created, manifest }` (`NO_MANIFEST`, `INVALID_MANIFEST`) |
+| `site.publish` | `{ folder, fresh? }` | `{ key, created, manifest }` (`NO_MANIFEST`, `INVALID_MANIFEST`, `PRIVATE_SITE`: the folder's site is invite-only and `site.json` asks public; `fresh: true` makes a new site, leaving the old) |
 | `site.open` | `{ key, timeout? }` (z32 key, or an `hg:` invite / public link; timeout ms, default 30000) | `{ key, manifest, dynamic }`. Each open counts as one tab until its `site.close` (spec 004) |
 | `site.read` | `{ key, path, timeout? }` (`''` or `/` = entry) | `{ bytes, path }` (`NOT_FOUND`, `NOT_AVAILABLE`) |
 | `site.state` | `{ key }` (spec 002) | `{ complete, peers }`: the site and its pages complete here; peers on the site's space |

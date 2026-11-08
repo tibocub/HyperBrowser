@@ -109,3 +109,21 @@ test('site.keep and site.held: install a site, the bytes held here (spec 003; Sw
   t.alike(await visitor.rpc.request('site.keep', { key, keep: false }), { kept: false })
   t.is((await visitor.rpc.request('site.held', { key })).kept, false, 'handed back to the cache')
 })
+
+// Tibo's forum (2026-11-08): its folder was first published invite-only; a later site.json without "public": false
+// reused that site silently, so nobody could load the app. Now it's refused, and --new (fresh) makes a public site.
+test('an invite-only site is never made public by a republish; fresh makes a new public site', async (t) => {
+  const owner = await engine(t)
+  const folder = siteFolder(t, { manifest: { title: 'Forum', public: false } })
+  const { key: old } = await owner.rpc.request('site.publish', { folder })
+  fs.writeFileSync(path.join(folder, 'site.json'), JSON.stringify({ title: 'Forum' }))
+  t.is(await codeOf(owner.rpc.request('site.publish', { folder })), 'PRIVATE_SITE', 'refused: public is never implied')
+
+  const { key, created } = await owner.rpc.request('site.publish', { folder, fresh: true })
+  t.ok(created && key !== old, 'a new site, a new key')
+  const visitor = await engine(t)
+  const opened = await visitor.rpc.request('site.open', { key })
+  t.is(opened.manifest.title, 'Forum', 'a stranger opens it: it is public')
+  const again = await owner.rpc.request('site.publish', { folder })
+  t.is(again.key, key, 'the folder now publishes to the new site')
+})
