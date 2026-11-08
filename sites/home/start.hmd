@@ -19,7 +19,7 @@ To run it from its [source code](https://github.com/tibocub/HyperBrowser) instea
 
 HyperBrowser draws its own window. At the top:
 
-- **HyperBrowser ▾**: your identity, your installed sites, open a site by key, the look (system, light or dark, and the accent colour), and what closing the window does.
+- **HyperBrowser ▾**: your identity, your installed sites, open a site by key, your devices, the look (system, light or dark, and the accent colour), and what closing the window does.
 - **The tabs**, one per open site. The desktop is always the first tab. `+` opens a new one.
 - Under them, **the toolbar**: back, forward, reload, the address, the bookmark button ☆, and the site's state.
 
@@ -57,6 +57,15 @@ Each site opens in its own tab, and keeps running when you switch to another one
 The desktop is your home: each site's icon and name. Double-click an icon (or press Enter) to open it. Right-click it to install it, make it a bookmark, or remove it. Drag icons to arrange them.
 
 The official site (this one) and the official forum are already there.
+
+## Use it on two computers
+
+Your PC and your laptop can be **one identity**: the same you everywhere, the same forums and roles, the same installed sites.
+
+1. On the computer you already use: **HyperBrowser ▾** → **Devices…** → **Add a device**. Copy the code and send it to yourself.
+2. On the other computer: **HyperBrowser ▾** → **Devices…** → **Join with a code**, paste it, **Join**.
+
+The second computer's own identity is set aside (kept, not deleted). Lost a computer? **Remove** it from the Devices window of another one. Write down your **recovery phrase** (Devices → Recovery phrase): it is your identity.
 
 ## Install or bookmark
 

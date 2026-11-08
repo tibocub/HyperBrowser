@@ -45,6 +45,23 @@
   </div>
 </section>
 
+<section id="devices" class="window" role="dialog" aria-labelledby="dv-title" hidden>
+  <div class="title"><span id="dv-title">Devices</span></div>
+  <div class="body">
+    <p id="dv-note" class="note" hidden></p>
+    <div class="head">Your devices</div>
+    <ul id="dv-list"></ul>
+    <div id="dv-pass-row" class="field" hidden><label for="dv-pass">Password</label><input id="dv-pass" type="password" autocomplete="off"></div>
+    <div class="row left">
+      <button id="dv-add" class="push">Add a device</button>
+      <button id="dv-join" class="push">Join with a code</button>
+      <button id="dv-phrase" class="push">Recovery phrase</button>
+    </div>
+    <div id="dv-out"></div>
+    <div class="row"><button id="dv-close" class="push">Close</button></div>
+  </div>
+</section>
+
 <div id="backdrop" hidden></div>
 <div id="menu" role="menu" aria-label="HyperBrowser" hidden>
   <div class="who"><span class="g" data-g="me"></span><strong>You</strong><span class="fill"></span><span id="me"></span></div>
@@ -53,6 +70,7 @@
   <div id="installed"></div>
   <div class="sep" aria-hidden="true">────────────────────────────────────</div>
   <button class="item" role="menuitem" id="m-open">Open a site by key…</button>
+  <button class="item" role="menuitem" id="m-devices">Devices…</button>
   <div class="head">Look</div>
   <div class="choices" role="group" aria-label="Theme">
     <button class="choice" data-theme="system">System</button><button class="choice" data-theme="light">Light</button><button class="choice" data-theme="dark">Dark</button>

@@ -225,6 +225,7 @@ for (const b of document.querySelectorAll('[data-theme]')) b.onclick = () => sen
 for (const b of document.querySelectorAll('[data-accent]')) b.onclick = () => send('settings', { accent: b.dataset.accent })
 for (const b of document.querySelectorAll('[data-tray]')) b.onclick = () => send('settings', { tray: b.dataset.tray === 'on' })
 $('m-open').onclick = () => { closeMenus(); toAddress() }
+$('m-devices').onclick = () => { closeMenus(); openDevices() }
 $('m-update').onclick = () => { closeMenus(); send('restart') }
 $('m-about').onclick = () => { closeMenus(); say('HyperBrowser ' + S.version + ': sites live with their owner and their visitors.') }
 
@@ -242,6 +243,97 @@ $('ctx').onclick = (e) => {
   if (act === 'open') send('icon.open', { id })
   if (act === 'kind') send('icon.kind', { id, kind: ctxIcon.kind === 'installed' ? 'bookmark' : 'installed' })
   if (act === 'remove') send('icon.remove', { id })
+}
+
+// --- the Devices window (spec 012): one identity on several computers ---
+
+let D = null // the last devices.list: { identity, devices, removed, phrase, owns }
+const out = $('dv-out')
+const show = (...nodes) => out.replaceChildren(...nodes)
+const line = (text, cls) => el('p', cls, text)
+function push (text, fn) {
+  const b = el('button', 'push', text)
+  b.onclick = fn
+  return b
+}
+const password = () => $('dv-pass').value || undefined
+
+function openDevices (note = null) {
+  $('devices').hidden = false
+  frame.send('cover', { full: true })
+  show(...(note ? [line(note)] : []))
+  devices()
+}
+function closeDevices () {
+  $('devices').hidden = true
+  if (!menuOpen) frame.send('cover', { full: false })
+}
+$('dv-close').onclick = closeDevices
+frame.onDevices(() => { if (!$('devices').hidden) devices() })
+
+async function devices () {
+  const r = await frame.send('devices')
+  if (r?.error) return
+  D = r.result
+  $('dv-note').hidden = !D.removed
+  $('dv-note').textContent = 'This computer was removed from your identity: what it does no longer counts. Join with a code to use it again.'
+  $('dv-pass-row').hidden = D.phrase !== 'protected'
+  $('dv-list').replaceChildren(...D.devices.map((d) => {
+    const li = el('li')
+    li.append(el('span', '', d.name || 'a device'), el('span', 'dim', d.current ? '(this computer)' : d.publicKey.slice(0, 6) + '…'))
+    if (!d.current) {
+      const b = el('button', 'choice', 'Remove')
+      b.onclick = () => show(line('Remove "' + (d.name || 'this device') + '"? Nothing it does from now on counts as you, anywhere. This cannot be undone.'),
+        push('Remove', async () => {
+          const r = await frame.send('devices.remove', { publicKey: d.publicKey, password: password() })
+          show(line(r?.error ? r.error.message : 'Removed.'))
+          devices()
+        }))
+      li.append(b)
+    }
+    return li
+  }))
+}
+
+$('dv-add').onclick = async () => {
+  const r = await frame.send('devices.add', { password: password() })
+  if (r?.error) return show(line(r.error.message))
+  const code = r.result.code
+  show(line('On the other computer: HyperBrowser ▾ → Devices → Join with a code, and paste this code (send it to yourself). It works once, for 10 minutes.'),
+    line(code, 'code'), push('Copy', () => navigator.clipboard.writeText(code).then(() => say('Code copied'), () => say('Select the code and copy it'))))
+}
+
+$('dv-join').onclick = () => {
+  const box = el('textarea')
+  box.setAttribute('aria-label', 'The code')
+  box.spellcheck = false
+  const owns = D?.owns || []
+  show(line('This computer becomes a device of the identity whose code you paste. Its own identity is replaced: its folder is kept (engine-before-join-<date>), nothing is deleted.'),
+    ...(owns.length ? [line('It owns ' + owns.length + (owns.length === 1 ? ' site' : ' sites') + ' (' + owns.map((o) => o.name || o.key.slice(0, 6)).join(', ') + '): nobody will update ' + (owns.length === 1 ? 'it' : 'them') + ' from here until you switch back.')] : []),
+    box, push('Join', async () => {
+      const r = await frame.send('devices.join', { code: box.value })
+      show(line(r?.error ? r.error.message : 'Joining… (up to a minute)'))
+    }))
+  box.focus()
+}
+
+$('dv-phrase').onclick = async () => {
+  const r = await frame.send('devices.phrase', { password: password() })
+  if (r?.error) return show(line(D?.phrase === 'protected' ? 'Type your password above first. (' + r.error.message + ')' : r.error.message))
+  if (!r.result.words) return show(line('This computer no longer keeps the recovery phrase.'))
+  const nodes = [line('Your recovery phrase: write these 24 words down. Anyone with them is you; adding or removing a device needs them.'), line(r.result.words, 'code')]
+  if (D?.phrase === 'plain') {
+    const box = el('input')
+    box.type = 'password'
+    box.setAttribute('aria-label', 'A password for the phrase')
+    nodes.push(line('Keep it on this computer behind a password (then asked to show it, and to add or remove a device):'), box,
+      push('Protect', async () => {
+        const p = await frame.send('devices.protect', { password: box.value })
+        show(line(p?.error ? p.error.message : 'Protected: this computer now asks for that password.'))
+        devices()
+      }))
+  }
+  show(...nodes)
 }
 
 // --- toolbar ---
@@ -273,6 +365,7 @@ document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey
   const k = e.key.toLowerCase()
   if (e.key === 'Escape' && menuOpen) { closeMenus(); return }
+  if (e.key === 'Escape' && !$('devices').hidden) { closeDevices(); return }
   if (mod && k === 'l') { e.preventDefault(); toAddress() }
   else if (mod && k === 't') { e.preventDefault(); send('select', { id: 0 }); toAddress() }
   else if (mod && k === 'w') { e.preventDefault(); send('close', { id: S.current }) }
@@ -316,7 +409,16 @@ function measure () {
 new ResizeObserver(measure).observe(bars)
 document.fonts.ready.then(measure)
 
-frame.onState((s) => { S = s; render() })
+let joinedSeen = 0
+frame.onState((s) => {
+  S = s
+  render()
+  // a join ended (spec 012): main now runs the engine of whichever identity is in place
+  if (S.joined && S.joined.n !== joinedSeen) {
+    joinedSeen = S.joined.n
+    openDevices(S.joined.said === 'joined' ? 'This computer is now a device of your identity.' : 'Could not join: ' + S.joined.said + '. This computer is as it was.')
+  }
+})
 frame.onFocusAddress(toAddress)
 frame.send('glyphs').then((r) => {
   GLYPHS = r.result

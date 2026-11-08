@@ -8,7 +8,7 @@ The window has no OS frame and no menu bar: two bars drawn by HyperBrowser itsel
 below them):
 
 - **The top bar** is the window's title bar: "HyperBrowser ▾" (your identity, installed sites, open a site by
-  key, the look: system, light or dark, and the accent, and what closing the window does), then **the tabs** as a taskbar, `+` right after the
+  key, your devices, the look: system, light or dark, and the accent, and what closing the window does), then **the tabs** as a taskbar, `+` right after the
   last tab (goes to the desktop with the address ready), empty space, and the window's buttons (minimize,
   maximize/restore, close). Drag the empty space to move the window (Windows snaps it to screen edges);
   double-click it to maximize. Tabs share the width; other tabs keep running in the background. The desktop is
@@ -41,6 +41,32 @@ Each site's icon (from its `site.json`), its title under it.
 
 The desktop, bookmarks and the look are kept in `shell.json` in the app's data folder
 (`%APPDATA%\HyperBrowser` on Windows).
+
+## Devices: one identity on two computers (spec 012)
+
+"HyperBrowser ▾" → **Devices…**: this computer and your other devices, one identity.
+
+- **Add a device** (on the computer already set up): a code (about 100 letters), valid once, for 10 minutes.
+  **Copy** it and send it to yourself (mail, a chat), or type it.
+- **Join with a code** (on the other computer): paste it, **Join**. This computer becomes a device of that
+  identity, without a restart: the key in the menu changes, open tabs close, then within a minute the forums
+  you joined, your roles there, your answers to "use your identity?", sites' own data and your installed
+  sites arrive (installed sites appear on the desktop and are kept on this computer too).
+- **What doesn't follow**: bookmarks, the look and the tray choice stay per computer.
+- **This computer's own identity is replaced**: its engine folder is renamed `engine-before-join-<date>` in the
+  data folder (`%APPDATA%\HyperBrowser` on Windows, `~/.config/HyperBrowser` on Linux); nothing is deleted.
+  The window warns first, and lists the sites that identity owns: nobody updates them from here any more.
+  **To switch back**: quit HyperBrowser (tray → Quit), rename `engine` to anything, rename the
+  `engine-before-join-…` folder to `engine`, start HyperBrowser.
+- A failed join (bad or expired code, the other computer offline): the old folder is put back, nothing changes.
+- **Remove** (next to another device): for a lost or given-away computer. What it does from then on counts for
+  nobody; that computer's Devices window says it was removed.
+- **Recovery phrase**: 24 words that are your identity; adding or removing a device needs them. Show them,
+  write them down; **Protect** keeps them on this computer behind a password (asked from then on, in the
+  Password field).
+- Install or uninstall on one computer: the other follows within about 10 s while it runs.
+- Wait a minute after joining before quitting: a quit in the first seconds can hang (a hypergraph issue,
+  `specs/requests-to-hypergraph.md` B4).
 
 ## The tray (spec 010)
 

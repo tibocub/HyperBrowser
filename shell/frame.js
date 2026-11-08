@@ -45,7 +45,9 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
 
 // openSite(key) → { key, manifest, view, webContents, close }; readIcon(key, manifest) → data URL or null.
 // update() → the version an update is ready for, or null; restart() starts it (spec 011).
-export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null }) {
+// join(code): this computer joins another device's identity; then main calls joined() (spec 012).
+export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null, join = null }) {
+  let joined = null // { said, n }: what the last join did, for the Devices window
   const preset = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
   let data = load()
   const glyphs = readGlyphs()
@@ -107,6 +109,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       desktop: data.desktop,
       settings: data.settings,
       identity,
+      joined,
       version: app.getVersion(),
       update: update(),
       open: tabs.length - 1,
@@ -245,14 +248,36 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   // instance (spec 009) installs its app: the instance itself always stays joined.
   function keepSite (key, on) {
     rpc.request('site.open', { key })
-      .then(({ key: site }) => rpc.request('site.keep', { key: site, keep: on, timeout: 30000 }).finally(() => rpc.request('site.close', { key: site }).catch(() => {})))
-      .then(() => {
+      .then(({ key: site }) => rpc.request('site.keep', { key: site, keep: on, timeout: 30000 }).then(() => site).finally(() => rpc.request('site.close', { key: site }).catch(() => {})))
+      .then((site) => {
         const icon = iconOf(key)
-        if (icon && (icon.kind === 'installed') === on) setIcons(upsert(data.desktop.icons, { id: icon.id, kept: on }))
+        if (icon && (icon.kind === 'installed') === on) setIcons(upsert(data.desktop.icons, { id: icon.id, kept: on, site }))
         heldAt = 0
         poll()
       }, (err) => console.error('could not ' + (on ? 'install ' : 'uninstall ') + key + ':', err.message))
   }
+
+  // Installs follow the person (spec 012): a site installed on another of their devices is installed here
+  // too, one uninstalled there is a bookmark here. `site`: the key keepSite installed (an instance's app).
+  async function follow () {
+    const r = await rpc.request('site.installed').catch(() => null)
+    if (!r) return
+    for (const s of r.sites) {
+      const icon = data.desktop.icons.find((i) => i.key === s.key || i.site === s.key)
+      if (icon?.kind === 'installed') continue
+      setIcons(upsert(data.desktop.icons, { id: icon?.id || s.key, key: s.key, title: icon?.title || s.title || shortKey(s.key), kind: 'installed' }))
+      keepSite(icon?.key || s.key, true)
+    }
+    for (const i of data.desktop.icons) {
+      if (i.kind !== 'installed' || !i.kept || !r.uninstalled.includes(i.site || i.key)) continue
+      setIcons(upsert(data.desktop.icons, { id: i.id, kind: 'bookmark' }))
+      keepSite(i.key, false)
+    }
+  }
+  const following = setInterval(follow, HELD)
+
+  // The Devices window's calls (spec 012): the engine's devices.*, its errors as they are.
+  const engine = (method, params) => rpc.request(method, params).then((result) => ({ result }), (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
 
   function setIcons (icons) {
     data.desktop.icons = icons
@@ -306,6 +331,15 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         push()
         return { result: true }
       case 'restart': if (restart && update()) restart(); return { result: true }
+      case 'devices': return engine('devices.list')
+      case 'devices.add': return engine('devices.add', { password: a.password || undefined })
+      case 'devices.remove': return engine('devices.remove', { publicKey: a.publicKey, password: a.password || undefined })
+      case 'devices.phrase': return engine('devices.phrase', { password: a.password || undefined })
+      case 'devices.protect': return engine('devices.protect', { password: a.password })
+      case 'devices.join':
+        if (!join || typeof a.code !== 'string' || !a.code.trim()) return { error: { code: 'INVALID_PARAMS', message: 'Paste the code first.' } }
+        join(a.code.trim())
+        return { result: true }
       case 'cover': cover = !!a.full; layout(); return { result: true }
       case 'window':
         if (a.act === 'minimize') win.minimize()
@@ -363,6 +397,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   win.on('unmaximize', push)
   win.on('closed', () => {
     clearInterval(timer)
+    clearInterval(following)
     if (tray) tray.destroy()
     ipcMain.removeHandler('frame')
     for (const t of tabs) if (t.close) t.close()
@@ -372,7 +407,19 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   // an install (or uninstall) the engine never confirmed: again (a site unreachable then, a desktop from 002)
   for (const i of data.desktop.icons) if (i.key && !!i.kept !== (i.kind === 'installed')) keepSite(i.key, i.kind === 'installed')
   if (open) openKey(open)
+  follow()
   // for the frame check (npm run test:sandbox): where everything is
   const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings })
-  return { win, inspect, show }
+  const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') } // the engine's 'devices' event
+  // After a join (or a failed one, back on the old folder): another engine, maybe another identity. The open
+  // tabs were the old engine's; installed icons are installed again on this one.
+  function joinedNow ({ identity: id, said }) {
+    identity = id
+    joined = { said, n: (joined?.n || 0) + 1 }
+    for (const t of tabs.slice(1)) closeTab(t.id)
+    setIcons(data.desktop.icons.map((i) => ({ ...i, kept: false })))
+    for (const i of data.desktop.icons) if (i.key && i.kind === 'installed') keepSite(i.key, true)
+    follow()
+  }
+  return { win, inspect, show, devices, joined: joinedNow }
 }

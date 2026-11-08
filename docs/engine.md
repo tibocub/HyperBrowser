@@ -69,6 +69,25 @@ The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` fro
 - **How many**: `hosting` → `{ sites }`, the sites joined here right now (the tray's "hosting 3 sites",
   spec 010).
 
+## Devices: one identity on several computers (spec 012)
+
+hypergraph pairs devices; the engine passes it through:
+
+- **Add a device** (`devices.add`) gives a code. The new computer starts its engine in an **empty folder**
+  with `init { joinCode, deviceName }`: it becomes a device of the same identity (same key), and receives
+  the recovery phrase over the pairing connection.
+- **What follows the person** on every device: the spaces any of them created or joined (forums, sites,
+  instances), roles in them (each device records decisions as you), and the settings: answers to "use your
+  identity?", sites' own data (`hyper.mine`), apps' instance lists, and the installed sites
+  (`hyperbrowser/installed/<key>`; SwarmFS's own "kept" stays per device, so each device keeps the files
+  itself). A site installed on a device before 012 goes on that list at its next start.
+- **Remove a device** (`devices.remove`): what it does from then on counts for nobody (`DEVICE_REMOVED` on
+  that device). It needs the recovery phrase: plain on this device until protected (`devices.protect`), then
+  the password.
+- `devices.list`, the `devices` event: protocol.md. Test: `test/devices.test.js`.
+- **Known issue** (`specs/requests-to-hypergraph.md` B4): closing an engine within seconds of its join can
+  hang in hypergraph; the shell doesn't restart after a join for that reason.
+
 ## Tests
 
 ```bash

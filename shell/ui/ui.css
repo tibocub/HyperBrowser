@@ -107,3 +107,21 @@ button:disabled { cursor: default; opacity: .35; }
 .swatch { display: inline-flex; padding: 3px; }
 .swatch i { display: block; width: 18px; height: 14px; }
 .swatch[aria-pressed="true"] { background: var(--paper); outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* the Devices window (spec 012) */
+#devices { top: 60px; z-index: 5; -webkit-app-region: no-drag; }
+#devices ul { list-style: none; margin: 4px 0 12px; padding: 0; }
+#devices li { display: flex; align-items: center; gap: 8px; padding: 2px 0 2px 8px; }
+#devices li .choice { margin-left: auto; }
+#devices .head { padding: 0; }
+.row.left { justify-content: flex-start; flex-wrap: wrap; }
+#dv-out:not(:empty) { margin: 14px 0; padding: 10px 12px; border: 1px solid var(--ink); }
+#dv-out p, #devices .note { margin: 0 0 10px; word-break: normal; }
+#dv-out .code { user-select: all; word-break: break-all; text-decoration: underline; } /* not bold: Cozette bold has no m */
+#devices textarea, #devices input { box-sizing: border-box; width: 100%; padding: 4px 8px; border: 1px solid var(--ink); background: var(--paper); font: inherit; color: inherit; user-select: text; }
+#devices textarea { height: 64px; resize: none; margin-bottom: 10px; }
+.field { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.field input { flex: 1 1 auto; }
+.note { padding: 6px 10px; background: var(--ink); color: var(--paper); }
+.dim { opacity: .6; }
+#devices input[type=password] { margin-bottom: 10px; }
