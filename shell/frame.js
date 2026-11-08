@@ -3,7 +3,7 @@
 // the frame covers the whole window on the desktop tab, while a tab has no page yet, and while a menu is
 // open (transparent over the site). Its messages are taken from its own view only (contracts/frame.md).
 // No OS frame and no app menu: the taskbar row is the title bar (drag, double-click, our window buttons).
-import { app, BaseWindow, WebContentsView, ipcMain, Menu } from 'electron'
+import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeImage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -17,10 +17,37 @@ const THEMES = new Set(['system', 'light', 'dark'])
 const ACCENTS = new Set(['#1f4fd1', '#c2410c', '#0b7a52'])
 const DEV = !app.isPackaged // devtools: F12, Ctrl+Shift+I
 
+// The frame's pixel icons (spec 008): one PNG a glyph in shell/icons/, dark pixels are the glyph (white or
+// transparent around). Sent to the frame as SVG paths, one 1×1 run a row, so they keep currentColor.
+export function readGlyphs (dir = path.join(HERE, 'icons')) {
+  const glyphs = {}
+  for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.png'))) {
+    const img = nativeImage.createFromPath(path.join(dir, f))
+    const { width, height } = img.getSize()
+    const px = img.toBitmap() // BGRA
+    const ink = (x, y) => { const i = (y * width + x) * 4; return px[i + 3] >= 128 && px[i] + px[i + 1] + px[i + 2] < 384 }
+    let d = ''
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (!ink(x, y)) continue
+        let w = 1
+        while (x + w < width && ink(x + w, y)) w++
+        d += `M${x} ${y}h${w}v1H${x}z`
+        x += w
+      }
+    }
+    glyphs[f.slice(0, -4)] = { width, height, d }
+  }
+  return glyphs
+}
+
 // openSite(key) → { key, manifest, view, webContents, close }; readIcon(key, manifest) → data URL or null.
 export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null }) {
   const preset = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
   let data = load()
+  const glyphs = readGlyphs()
+  // the look's theme for every page: the frame and each site's prefers-color-scheme (spec 008)
+  nativeTheme.themeSource = data.settings.theme
   Menu.setApplicationMenu(null) // no File/Edit/View: copy, paste and undo still work in pages (Windows, Linux)
   const win = new BaseWindow({ width: 1280, height: 820, minWidth: 560, minHeight: 360, frame: false, title: 'HyperBrowser', backgroundColor: '#ffffff' })
   const frame = new WebContentsView({
@@ -230,6 +257,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const tab = tabOf(current)
     switch (op) {
       case 'hello': return { result: snapshot() }
+      case 'glyphs': return { result: glyphs }
       case 'open': return openKey(a.input)
       case 'select': select(a.id); return { result: true }
       case 'close': closeTab(a.id); return { result: true }
@@ -264,7 +292,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         return { result: true }
       }
       case 'settings':
-        if (THEMES.has(a.theme)) data.settings.theme = a.theme
+        if (THEMES.has(a.theme)) nativeTheme.themeSource = data.settings.theme = a.theme
         if (ACCENTS.has(a.accent)) data.settings.accent = a.accent
         save()
         push()

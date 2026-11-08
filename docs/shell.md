@@ -56,6 +56,29 @@ The desktop, bookmarks and the look are kept in `shell.json` in the app's data f
 | Alt+Left, Alt+Right | back, forward |
 | Escape | close a menu |
 
+## The look
+
+"HyperBrowser ▾" → Look: **System** follows Windows' light or dark setting, **Light** and **Dark** force one.
+It applies to the window and to every site (a site's `prefers-color-scheme`), at once, without a reload.
+
+A site page with no stylesheet of its own gets HyperBrowser's default theme (`shell/ui/theme.css`): the
+official site's fonts, colours and dithered background. Sites with their own CSS keep their look.
+
+## Icons: where they are, how to redraw one
+
+- **The window's icons** (tabs, toolbar, menu, window buttons, desktop): one PNG each in `shell/icons/`,
+  named after what it is (`back.png`, `reload.png`, `close.png`…). 8×8 pixels; the window buttons
+  (`plus`, `close`, `min`, `max`, `restore`) are 5×5. Each pixel shows as 2×2 on screen.
+- **A site's icon** (its desktop icon and tab): the file its `site.json` names in `icon`, in the site's
+  folder: `sites/home/icon.svg`, `sites/forum/icon.svg`, `sites/demo/icon.svg`. Any image works (PNG, SVG…);
+  a 16×16 1-bit picture fits the look.
+
+To redraw a window icon: open its PNG in any paint program (Paint, Paint.NET, GIMP, Aseprite, Krita…), zoom
+in, draw in **black**; everything else **white** (or transparent). Keep the size (8×8 or 5×5) and save as
+PNG under the same name. Restart `npm start` to see it. Black takes the colour of the text around it (white
+in dark mode, the accent on the bookmark button), so don't use colours or grays: a pixel is black or not.
+A new icon: add `<name>.png`, then use `name` where the window's code names icons (`shell/ui/`).
+
 ## Linux
 
 Not tried yet. The window has no OS frame: it moves by the top bar; resizing at the edges depends on the

@@ -2,38 +2,21 @@
 // Plain DOM, no framework; built with DOM calls, never from HTML strings (titles come from sites).
 /* global frame */
 
-// 8×8 pixel icons (the mockup's), drawn crisp at any size
-const GLYPHS = {
-  hb: 'M3 0h2v1H3zM1 1h2v1H1zM5 1h2v1H5zM0 2h1v4H0zM7 2h1v4H7zM3 3h2v2H3zM1 6h2v1H1zM5 6h2v1H5zM3 7h2v1H3z',
-  desktop: 'M0 1h8v5H0zM1 2v3h6V2zM3 6h2v1H3zM2 7h4v1H2z',
-  forum: 'M0 0h8v5H0zM1 1v3h6V1zM2 2h4v1H2zM1 5h2v1H1zM1 6h1v1H1z',
-  site: 'M0 0h8v8H0zM1 2v5h6V2zM1 0v1h1V1zM3 0v1h1V1z',
-  back: 'M3 1h1v1H3zM2 2h1v1H2zM1 3h6v2H1zM2 5h1v1H2zM3 6h1v1H3z',
-  forward: 'M4 1h1v1H4zM5 2h1v1H5zM1 3h6v2H1zM5 5h1v1H5zM4 6h1v1H4z',
-  reload: 'M2 1h3v1H2zM1 2h1v4H1zM2 6h4v1H2zM6 4h1v2H6zM5 0h1v3H5zM6 1h1v1H6z',
-  // 5×5, drawn at 10px (2px a pixel): perfect crosses, symmetric round the middle pixel
-  plus: 'M2 0h1v5H2zM0 2h2v1H0zM3 2h2v1H3z',
-  close: 'M0 0h1v1H0zM1 1h1v1H1zM2 2h1v1H2zM3 3h1v1H3zM4 4h1v1H4zM4 0h1v1H4zM3 1h1v1H3zM1 3h1v1H1zM0 4h1v1H0z',
-  min: 'M0 4h5v1H0z',
-  max: 'M0 0h5v2H0zM0 2h1v2H0zM4 2h1v2H4zM0 4h5v1H0z',
-  restore: 'M1 0h4v1H1zM4 1h1v3H4zM0 1h4v1H0zM0 2h1v2H0zM3 2h1v2H3zM0 4h4v1H0z',
-  mark: 'M1 0h6v8H6V7H5V6H3v1H2v1H1zM2 1v5h1V5h2v1h1V1z',
-  marked: 'M1 0h6v8H6V7H5V6H3v1H2v1H1z',
-  me: 'M1 0h6v1H1zM0 1h1v6H0zM7 1h1v6H7zM1 7h6v1H1zM2 2h1v2H2zM5 2h1v2H5zM2 5h4v1H2z'
-}
-const SMALL = new Set(['plus', 'close', 'min', 'max', 'restore']) // the 5×5 ones
+// pixel icons: shell/icons/<name>.png (8×8, the window buttons 5×5), sent by main as paths; crisp at 2px a pixel
+let GLYPHS = {}
 const DARK_ACCENT = { '#1f4fd1': '#8fb0ff', '#c2410c': '#ff9a5c', '#0b7a52': '#4fd1a0' }
 const SVG = 'http://www.w3.org/2000/svg'
 const $ = (id) => document.getElementById(id)
 
 function glyph (name) {
+  const g = GLYPHS[name] || GLYPHS.site || { width: 8, height: 8, d: '' }
   const svg = document.createElementNS(SVG, 'svg')
-  svg.setAttribute('viewBox', SMALL.has(name) ? '0 0 5 5' : '0 0 8 8')
+  svg.setAttribute('viewBox', `0 0 ${g.width} ${g.height}`)
   svg.setAttribute('shape-rendering', 'crispEdges')
   svg.setAttribute('aria-hidden', 'true')
   const p = document.createElementNS(SVG, 'path')
   p.setAttribute('fill', 'currentColor')
-  p.setAttribute('d', GLYPHS[name] || GLYPHS.site)
+  p.setAttribute('d', g.d)
   svg.append(p)
   return svg
 }
@@ -52,7 +35,6 @@ function picture (src, name) {
   img.onerror = () => img.replaceWith(picture(null, name))
   return img
 }
-for (const g of document.querySelectorAll('[data-g]')) setGlyph(g, g.dataset.g)
 
 let S = null // the last state from main
 let selected = null // the selected desktop icon
@@ -331,4 +313,8 @@ document.fonts.ready.then(measure)
 
 frame.onState((s) => { S = s; render() })
 frame.onFocusAddress(toAddress)
-frame.send('hello').then((r) => { S = r.result; render(); measure() })
+frame.send('glyphs').then((r) => {
+  GLYPHS = r.result
+  for (const g of document.querySelectorAll('[data-g]')) setGlyph(g, g.dataset.g)
+  return frame.send('hello')
+}).then((r) => { S = r.result; render(); measure() })

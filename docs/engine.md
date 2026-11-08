@@ -68,7 +68,7 @@ The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` fro
 ```bash
 npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
-npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), then the frame check
+npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS
 npm run framecheck     # the frame alone (no OS frame, no app menu, sites under the bars): FRAMECHECK PASS
 ```
@@ -100,3 +100,4 @@ sudo chown root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 nod
   private networks, or other devices on your network can't reach it directly.
 - The sandbox: one view per site with its own storage, only `hyper://<its key>/` loads, no Node, no files, no
   web, no pop-ups, no device permissions; the shell takes the site from the view, never from the page.
+  WebAssembly is allowed (CSP `'wasm-unsafe-eval'`, spec 008): it runs in that same sandbox.

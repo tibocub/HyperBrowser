@@ -21,6 +21,13 @@ A site is a folder: pages, scripts, styles, images, and a `site.json` at its roo
 
 Pages load from `hyper://<site key>/`: use relative links (`style.css`, `docs/a.html`). Nothing else loads:
 no web (`https://`), no other site, no files of the computer. Each site has its own storage and cookies.
+WebAssembly works (`WebAssembly.instantiateStreaming(fetch('app.wasm'))`), in the same sandbox as scripts.
+
+**The look.** HyperBrowser's theme (system, light or dark, in its menu) is your pages'
+`prefers-color-scheme`. A page with no stylesheet at all (no `<style>`, no `<link rel="stylesheet">`) gets
+HyperBrowser's default theme: the official site's fonts, colours, light and dark, links, buttons, and its
+dithered background. A HyperMD site built without a `style.css` looks like the official site. Add any
+stylesheet and the page is yours alone.
 
 ## Static sites
 

@@ -6,6 +6,7 @@ Accepted only from the frame's own view; any other sender gets `{ error: { code:
 
 | op | args | does |
 |---|---|---|
+| `glyphs` | | the pixel icons, `{ <name>: { width, height, d } }` (`d`: an SVG path, from `shell/icons/<name>.png`; spec 008) |
 | `open` | `{ input }` | a full key or `hg:` link: opens a tab (or selects the one open); else `{ error: { code: 'INVALID_KEY' } }` |
 | `select` | `{ id }` | makes tab `id` current |
 | `close` | `{ id }` | closes a site tab (not `0`) |
