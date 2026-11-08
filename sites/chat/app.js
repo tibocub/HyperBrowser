@@ -73,7 +73,7 @@ function draw () {
     h('nav', { style: 'width:220px; flex:none' },
       h('h2', {}, 'Chat'),
       h('p', { class: 'small' }, 'You are ', h('b', {}, me.name || '(no name yet)'), ' · ',
-        h('a', { href: '#', onclick: (e) => { e.preventDefault(); hyper.people.contact(me.identity) } }, 'Contacts')),
+        h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(me.identity)) } }, 'Contacts')),
       h('ul', { style: 'list-style:none; padding:0' }, convs.map((x) => h('li', {},
         h('a', { href: '#', 'aria-current': x.key === current ? 'page' : null, onclick: (e) => { e.preventDefault(); open(x.key) } },
           x.direct ? '@ ' : '# ', titleOf(x))))),
@@ -90,13 +90,13 @@ function draw () {
 
 function conversation (conv) {
   const mod = MODERATORS.has(view.role)
-  const out = [h('h2', {}, conv.direct ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); hyper.people.contact(conv.direct.identity) } }, titleOf(conv)) : '# ' + titleOf(conv))]
+  const out = [h('h2', {}, conv.direct ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(conv.direct.identity)) } }, titleOf(conv)) : '# ' + titleOf(conv))]
   for (const inv of view.invites) {
     if (inv.author === me.identity || joined['invite:' + inv.id]) continue
     out.push(h('p', {}, nameOf(inv.author), ' invites you to the group ', h('b', {}, inv.name), ' ', h('button', { onclick: () => join(inv) }, 'Join')))
   }
   out.push(h('div', { style: 'max-height:60vh; overflow:auto' }, view.messages.map((m) => h('p', {},
-    h('a', { href: '#', onclick: (e) => { e.preventDefault(); hyper.people.contact(m.author) } }, h('b', {}, nameOf(m.author))),
+    h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(m.author)) } }, h('b', {}, nameOf(m.author))),
     h('span', { class: 'small' }, ' ', new Date(m.stamp).toLocaleString(), m.edited ? ' (edited)' : ''), h('br'),
     h('span', { style: 'white-space:pre-wrap' }, m.text), ' ',
     m.author === me.identity ? h('button', { class: 'small', onclick: () => { view.editing = m; view.draft = m.text; draw() } }, 'Edit') : null,

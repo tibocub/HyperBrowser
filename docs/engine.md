@@ -46,6 +46,19 @@ An invite-only site stays invite-only: if a folder first published with `"public
 publishing refuses (`PRIVATE_SITE`), since public can't be undone and its records would become readable. `--new`
 gives the folder a fresh site with a new key (public unless `"public": false`) and leaves the old one.
 
+### HyperBrowser's official apps, all at once (Tibo)
+
+```bash
+npm run apps:publish -- --dir E:/Code/P2P/hyperbrowser-owner
+```
+
+Builds the home site, publishes every official app (`scripts/apps.js`: home, the forum with its "HyperBrowser"
+instance, Chat, Contacts) once from that engine folder, writes their keys into `shell/preset.json` (only the `key`
+fields; the forum's is its instance's) and prints what changed. A rerun prints "no change". Run it from the same
+checkout as before: a folder's key is tied to its path, so another checkout (a worktree) makes new sites. A key
+already in `preset.json` that differs is never overwritten (it says `KEPT`) unless you add `--replace`. It stops
+when done: to stay online for visitors, `node engine/cli.js publish <folder>` as above.
+
 ## Open a site
 
 ```bash

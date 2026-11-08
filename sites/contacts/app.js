@@ -72,7 +72,7 @@ function home () {
     h('section', {}, h('h2', {}, 'Friends'), of('friend').length
       ? h('ul', {}, of('friend').map((c) => h('li', {},
         h('a', { href: '?person=' + c.identity, onclick: (e) => { e.preventDefault(); go(c.identity) } }, label(c)), ' ',
-        h('button', { onclick: () => hyper.people.chat(c.identity) }, 'Message'))))
+        h('button', { onclick: () => act(() => hyper.people.chat(c.identity)) }, 'Message'))))
       : h('p', {}, 'No friends yet. Add someone by their key or send them a contact link.')),
     of('outgoing').length ? h('section', {}, h('h2', {}, 'Sent, waiting'), h('ul', {}, of('outgoing').map((c) => h('li', {},
       label(c), ' ', h('code', { class: 'small' }, short(c.identity)), ' ',
@@ -88,7 +88,7 @@ function page (key) {
   if (!c) return [...head, h('button', { onclick: () => act(() => hyper.contacts.request(key)) }, 'Send a friend request')]
   const state = { friend: 'Your friend', incoming: 'Wants to be your friend', outgoing: 'Friend request sent, waiting' }[c.state]
   return [...head, h('p', {}, state),
-    c.state === 'friend' ? h('p', {}, h('button', { onclick: () => hyper.people.chat(key) }, 'Message')) : null,
+    c.state === 'friend' ? h('p', {}, h('button', { onclick: () => act(() => hyper.people.chat(key)) }, 'Message')) : null,
     c.state === 'incoming' ? h('p', {}, h('button', { onclick: () => act(() => hyper.contacts.accept(key)) }, 'Accept'), ' ',
       h('button', { onclick: () => act(() => hyper.contacts.decline(key)) }, 'Decline')) : null,
     h('form', { onsubmit: (e) => { e.preventDefault(); act(() => hyper.contacts.rename(key, e.target.name.value)) } },

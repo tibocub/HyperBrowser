@@ -8,6 +8,7 @@ import os from 'os'
 import path from 'path'
 import { start } from './index.js'
 import { connect, pair } from './protocol.js'
+import { publish } from './publish.js'
 
 const USAGE = `usage:
   publish <folder>   publish a site folder (made the first time; same key after), then stay online
@@ -57,25 +58,10 @@ if (!['publish', 'open'].includes(cmd) || !target || (opts.invite !== null && ![
 async function run (rpc) {
   await rpc.request('init', { dir: opts.dir, bootstrap: opts.bootstrap })
   if (cmd === 'publish') {
-    const { key, created } = await rpc.request('site.publish', { folder: target, fresh: opts.fresh })
-    console.log(`key: ${key}${created ? ' (created)' : ''}`)
-    if (!opts.invite && !opts.instance) return
-    // the owner's engine has no window to ask: running this command is the owner saying yes
-    await rpc.request('site.open', { key })
-    await rpc.request('site.consent', { key, allow: true })
-    const call = (method, args, instance = null) => rpc.request('site.call', { key, instance, method, args })
-    let instance = null
-    if (opts.instance) {
-      const mine = (await call('instances.list', [])).find((i) => i.name === opts.instance && i.role === 'owner')
-      instance = mine ? mine.key : (await call('instances.create', [opts.instance])).key
-      console.log(`instance: ${instance}${mine ? '' : ' (created)'}`)
-      const types = await call('types', [])
-      if (types.official && (await rpc.request('site.call', { key, method: 'query', args: ['official'], chain: [['latest', [1]]] })).items?.[0]?.instance !== instance) await call('put', ['official', { instance }])
-    }
-    if (opts.invite) {
-      const link = await call('createInvite', [{ role: opts.invite, uses: 1 }], instance)
-      console.log(`invite (${opts.invite}, one use${instance ? ', to the instance' : ''}): ${link}`)
-    }
+    const r = await publish(rpc, target, { fresh: opts.fresh, instance: opts.instance, invite: opts.invite })
+    console.log(`key: ${r.key}${r.created ? ' (created)' : ''}`)
+    if (r.instance) console.log(`instance: ${r.instance}${r.instanceCreated ? ' (created)' : ''}`)
+    if (r.invite) console.log(`invite (${opts.invite}, one use${r.instance ? ', to the instance' : ''}): ${r.invite}`)
     return
   }
   const { key, manifest, dynamic } = await rpc.request('site.open', { key: target })
