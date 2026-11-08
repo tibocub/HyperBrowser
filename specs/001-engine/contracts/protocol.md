@@ -32,6 +32,9 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 | `site.on` | `{ key, sub?, event }` | `{ id }`; then `event` events |
 | `site.off` | `{ id }` | `true` |
 | `site.close` | `{ key }` | `true`. The last open's close: its live views and listeners stop, its handle released, and, unless it is installed or the person's own, the site is left after `grace` (spec 004) |
+| `site.permit` | `{ key, permission: 'contacts', allow }` (spec 013) | `true`: the person's answer to "see and manage your contacts?" (`NOT_ALLOWED` if the site's `site.json` doesn't ask for it) |
+| `apps.set` | `{ chat }` (spec 013) | `true`: the app whose instances friends' conversations are (the shell's preset) |
+| `contacts.me` / `contacts.get` / `contacts.request` | `{}` / `{ identity }` / `{ identity, name? }` (spec 013) | the shell's own calls: `{ identity, name, findable }` / the contact or `null` / the new contact (after the person's yes). Sites call `contacts.*` through `site.call` (`specs/013-contacts-chat/contracts/site-api.md`) |
 | `hosting` | `{}` (spec 010) | `{ sites }`: how many sites (top-level spaces) this device holds joined, so serves: installed, own, joined instances, and those open or in their grace period |
 | `site.installed` | `{}` (spec 012) | `{ sites: [{ key, title }], uninstalled: [key] }`: sites installed on any device of the person (`site.keep` records it as the setting `hyperbrowser/installed/<key>`: the title, or null once uninstalled) |
 | `devices.list` | `{}` (spec 012) | `{ identity, devices: [{ publicKey, name, current }], removed, phrase, owns }`: `removed`: this device was removed from the identity; `phrase`: `plain`, `protected` or `forgotten` (the recovery phrase on this device); `owns`: `[{ key, name }]`, the sites this identity owns (joining another identity leaves them) |
@@ -61,6 +64,6 @@ site. `site.publish` reads `site.json`'s
 | event | data |
 |---|---|
 | `live` | `{ id, items, complete }`: a live query's new answer |
-| `event` | `{ id, data }`: a site event (`change`, `peers`, `members`, `decisions`, `status`) |
+| `event` | `{ id, data }`: a site event (`change`, `peers`, `members`, `decisions`, `status`; `contacts`, spec 013) |
 | `devices` | `{}`: the identity's device list changed: read `devices.list` again (spec 012) |
 | `closing` | `{ reason }` (`heartbeat` or `close`), sent just before the engine ends its stream |

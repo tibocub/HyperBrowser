@@ -1,4 +1,6 @@
 [
   { "id": "preset:hb", "key": "8cbbhekq5b34o49ottfk85agmaudp4fe7ixfsown8zmp9gwfxino", "title": "HyperBrowser", "glyph": "hb", "kind": "installed" },
-  { "id": "preset:forum", "key": "95exzhp3csdm5r97y9r8maym3bx7bnjh9a5qfq98yh985q1xofky", "title": "HyperBrowser Forum", "glyph": "forum", "kind": "installed" }
+  { "id": "preset:forum", "key": "95exzhp3csdm5r97y9r8maym3bx7bnjh9a5qfq98yh985q1xofky", "title": "HyperBrowser Forum", "glyph": "forum", "kind": "installed" },
+  { "id": "preset:chat", "title": "Chat", "glyph": "site", "kind": "installed" },
+  { "id": "preset:contacts", "title": "Contacts", "glyph": "site", "kind": "installed" }
 ]

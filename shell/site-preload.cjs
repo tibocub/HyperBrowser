@@ -18,8 +18,14 @@ ipcRenderer.on('hyper-event', (e, { id, data }) => {
 
 async function invoke (msg) {
   const r = await ipcRenderer.invoke('site', msg)
-  if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code })
+  if (r.error) throw failure(r.error)
   return r.result
+}
+
+// An error as the page gets it: a plain { name, code, message }. An Error crossing the context bridge keeps its
+// message only (Electron copies nothing else), so the page could never read `err.code` (spec 013 found it).
+function failure ({ code, message }) {
+  return { name: 'HyperError', code, message }
 }
 
 // A live view or a listener: returns stop().
@@ -67,8 +73,26 @@ function api (sub, instance = null) {
       leave: (key) => invoke({ op: 'call', ...at, method: 'instances.leave', args: [key] })
     }
     o.instance = (key) => api(null, String(key))
+    // the person's contacts (spec 013): only for a site whose site.json asks for "contacts", once allowed
+    o.contacts = {}
+    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add']) {
+      o.contacts[m] = (...args) => invoke({ op: 'call', ...at, method: 'contacts.' + m, args })
+    }
+    o.contacts.on = (fn) => subscribe({ op: 'on', ...at, event: 'contacts' }, () => fn())
+    // any site, through HyperBrowser (spec 013): opening needs a click on the page; a request, the person's yes
+    o.people = {
+      chat: (identity) => people('chat', identity),
+      contact: (identity) => people('contact', identity),
+      request: (identity, name) => people('request', identity, name)
+    }
   }
   return o
+}
+
+async function people (op, identity, name) {
+  const r = await ipcRenderer.invoke('people', { op, identity: String(identity), name: name === undefined ? undefined : String(name), activated: navigator.userActivation.isActive })
+  if (r.error) throw failure(r.error)
+  return r.result
 }
 
 contextBridge.exposeInMainWorld('hyper', api(null))

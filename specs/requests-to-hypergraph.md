@@ -2,6 +2,27 @@
 
 What HyperBrowser needs from hypergraph and doesn't work around (constitution IV). Newest first.
 
+## B6. A rendezvous on hypergraph's swarm (2026-11-08, spec 013) — worked around: a second Hyperswarm
+
+- **Need**: a friend request by key: the sender knows only the other person's identity, no space key. Both meet
+  on a DHT topic derived from the identity (`hash('hyperbrowser/contacts/1/' + identity)`) and exchange one
+  message (the invite to their new conversation).
+- **Today**: hypergraph's swarm joins only spaces' topics; it isn't exposed. HyperBrowser's engine runs a Hyperswarm
+  of its own for this (`engine/contacts.js`): a second DHT node per engine (UDP socket, routing table, announces).
+- **Ask**: `hg.meet(topic, { server, client, onconnection })` (or an app protocol on a topic's connections) on the
+  one swarm, so an app adds a rendezvous without a second DHT node.
+
+## B5. An invite only one identity can use (2026-11-08, spec 013)
+
+- **Need**: a friend request carries a one-use invite to a private conversation, sent over the DHT to whoever
+  answers under the recipient's topic. Anyone can answer under any topic: an impostor gets the invite and may
+  join first.
+- **Today**: HyperBrowser's sender bans anyone but the expected identity as soon as it sees them join (nothing was
+  written there yet, the space is private: the key changes). The real recipient then finds the invite used up.
+- **Ask**: `createInvite({ for: identity })`: a redemption by any other identity is refused (`NOT_ALLOWED`), the
+  same way for every member (part of the signed invite). Group invites sent in a direct conversation would use it
+  too.
+
 ## B4. `close()` hangs when called seconds after a join (2026-11-08, spec 012) — worked around
 
 - **Seen**: device A (public DHT) has an installed public site; device B opens with `{ joinCode }`; B's

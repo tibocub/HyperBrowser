@@ -153,18 +153,22 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     push()
   }
 
-  function openKey (input) {
+  // `query`: for the shell's own calls (spec 013: Contacts on one person, '?person=<key>')
+  function openKey (input, query = '') {
     const a = parseAddress(input)
     if (a.error) return { error: { code: 'INVALID_KEY', message: a.error } }
     const have = tabs.find((t) => t.key === a.key)
     if (have) {
+      if (query && have.wc) have.wc.loadURL('hyper://' + have.site + '/' + query)
       select(have.id)
+      show()
       return { result: have.id }
     }
     const tab = { id: nextId++, key: a.key, title: shortKey(a.key), status: 'opening', icon: iconOf(a.key)?.icon }
     tabs.push(tab)
     select(tab.id)
-    openSite(a.key).then((v) => {
+    show()
+    openSite(a.key, query).then((v) => {
       if (!tabs.includes(tab)) return v.close() // closed while opening
       // key: the address (an app's instance shows its own key, spec 009); site: the site whose pages run
       Object.assign(tab, { key: v.instance || v.key, site: v.key, title: v.manifest.title, status: 'ready', view: v.view, wc: v.webContents, close: v.close })
@@ -421,5 +425,5 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     for (const i of data.desktop.icons) if (i.key && i.kind === 'installed') keepSite(i.key, true)
     follow()
   }
-  return { win, inspect, show, devices, joined: joinedNow }
+  return { win, inspect, show, devices, joined: joinedNow, open: openKey }
 }

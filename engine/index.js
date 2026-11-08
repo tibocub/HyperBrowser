@@ -7,6 +7,7 @@ import path from 'path'
 import { SwarmFS } from 'swarmfs'
 import { connect, VERSION } from './protocol.js'
 import { parseManifest, isDynamic, sitePath } from './manifest.js'
+import { contacts } from './contacts.js'
 
 const ANSWERS = 'hyperbrowser/identity' // setting: { [site key]: true | false }, on every device of the person
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
@@ -17,6 +18,10 @@ const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'linked', 'count', 
   'peers', 'status', 'isComplete', 'completeFrom', 'types'])
 const MINE = new Set(['mine.all', 'mine.set'])
 const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join', 'instances.leave'])
+// spec 013: the person's contacts, for a site that declares the `contacts` permission and was allowed it
+const CONTACTS = new Set(['contacts.me', 'contacts.setMe', 'contacts.list', 'contacts.request', 'contacts.accept',
+  'contacts.decline', 'contacts.remove', 'contacts.rename', 'contacts.link', 'contacts.add'])
+const PERMITS = 'hyperbrowser/permissions' // setting: { [site key]: { contacts: true | false } }
 const APP_PREFIX = 'hyperbrowser/app/' // + key + '/instances': { [instance key]: true }, written by the engine only
 const INSTANCES_MAX = 1000 // per app: the list is a setting every device of the person keeps
 const INSTALLED = 'hyperbrowser/installed/' // + key: the site's title, or null once uninstalled (spec 012)
@@ -44,6 +49,7 @@ export function start (ipc) {
   let answering = Promise.resolve()
   let keeping = Promise.resolve() // mine.set one at a time: two at once would each pass the cap
   let syncing = null
+  let people = null // the contacts (spec 013)
   const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null, instances: Map<key, Promise<Scope>>, tabs }
   const leaving = new Map() // key -> timer: no tab shows it, left once the grace period is over
   const departing = new Map() // key -> the leave running
@@ -76,6 +82,12 @@ export function start (ipc) {
       case 'site.on': return listen(p)
       case 'site.off': return off(p)
       case 'site.close': return closeSite(keyOf(p))
+      case 'site.permit': return permit(p)
+      // spec 013: the shell's own calls (its "send a friend request?" dialog, "open a chat"), and the chat app
+      case 'apps.set': people.setChat(p.chat ? keyOf({ key: p.chat }) : null); return true
+      case 'contacts.me': return people.call('me', [])
+      case 'contacts.get': return people.call('get', [p.identity])
+      case 'contacts.request': return people.call('request', [p.identity, p.name])
       case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length } // the tray's status line (spec 010)
       case 'site.installed': return installed()
       case 'devices.list': return devices()
@@ -104,6 +116,7 @@ export function start (ipc) {
     sfs.hg.on('devices', () => rpc.emit('devices', {}))
     await sweep()
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
+    people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance })
     if (heartbeat) {
       timer = setInterval(() => { if (Date.now() - last > 3 * heartbeat) shutdown('heartbeat') }, heartbeat)
     }
@@ -233,6 +246,29 @@ export function start (ipc) {
     return true
   }
 
+  // The person's answer to "let this site see and manage your contacts?" (spec 013), for a site declaring it.
+  async function permit ({ key, permission, allow }) {
+    key = keyOf({ key })
+    if (permission !== 'contacts' || typeof allow !== 'boolean') throw error('INVALID_PARAMS', "site.permit needs { permission: 'contacts', allow: true | false }")
+    if (!opened(key).manifest.permissions.includes(permission)) throw error('NOT_ALLOWED', "this site's site.json doesn't ask for " + permission)
+    const write = answering.then(async () => {
+      const all = (await sfs.hg.settings())[PERMITS] || {}
+      await sfs.hg.setSetting(PERMITS, { ...all, [key]: { ...all[key], [permission]: allow } })
+    })
+    answering = write.catch(() => {})
+    await write
+    if (!allow) for (const [id, x] of subs) if (x.key === key && x.contacts) off({ id })
+    return true
+  }
+
+  async function permitted (key) {
+    await target({ key }) // a dynamic site the person let use their identity
+    if (!opened(key).manifest.permissions.includes('contacts')) throw error('NOT_ALLOWED', "this site's site.json doesn't ask for contacts")
+    const answer = ((await sfs.hg.settings())[PERMITS] || {})[key]?.contacts
+    if (answer === false) throw error('NOT_ALLOWED', 'the person said no to this site seeing their contacts')
+    if (answer !== true) throw error('NEEDS_PERMISSION', 'ask the person first (site.permit)')
+  }
+
   async function target ({ key, sub, instance }) {
     const s = opened(keyOf({ key }))
     if (!isDynamic(s.manifest)) throw error('NOT_ALLOWED', 'a static site has no API')
@@ -300,39 +336,50 @@ export function start (ipc) {
     if (method === 'instances.create') {
       if (typeof a !== 'string' || !a.trim() || a.length > 200) throw error('INVALID_PARAMS', "an instance's name is 1 to 200 characters")
       const pub = b?.public ?? false
-      if (typeof pub !== 'boolean') throw error('INVALID_PARAMS', 'public is true or false')
+      const priv = b?.private ?? false // spec 013: read by its members only (a chat)
+      if (typeof pub !== 'boolean' || typeof priv !== 'boolean' || (pub && priv)) throw error('INVALID_PARAMS', 'public or private: true or false, not both')
       if (Object.keys(await listed(app)).length >= INSTANCES_MAX) throw error('TOO_BIG', `an app keeps at most ${INSTANCES_MAX} instances`)
-      const site = await sfs.createSite(a.trim(), { app, types: s.manifest.types })
+      const site = await sfs.createSite(a.trim(), { app, types: s.manifest.types, private: priv })
       if (pub) await site.makePublic()
       await listInstance(app, site.key, true)
       return { key: site.key, name: a.trim() }
     }
     if (method === 'instances.join') {
-      if (typeof a !== 'string' || !a.startsWith('hg:')) throw error('INVALID_PARAMS', "join takes an instance's link (hg:...)")
-      const before = new Set(sfs.hg.spaces().map((x) => x.key))
-      let site = null
-      try {
-        site = await sfs.visit(a)
-      } catch (err) {
-        if (err.code !== 'NOT_FOUND') throw err // a space that isn't a site: refused below
-      }
-      if (!site || site.app !== app) {
-        for (const x of sfs.hg.spaces()) if (!before.has(x.key) && !x.parent) await sfs.leave(x.key).catch(() => {}) // joined for nothing
-        throw error('NOT_ALLOWED', "that link is not to one of this app's instances")
-      }
-      await listInstance(app, site.key, true)
+      const site = await joinInstance(app, a)
       return { key: site.key, name: site.space.name ?? null }
     }
-    // instances.leave: off the list first, so nothing reaches it while it goes
-    keyOf({ key: a })
-    if (!(await listed(app))[a]) throw error('NOT_ALLOWED', "not one of this app's instances")
-    await listInstance(app, a, false)
-    for (const [id, x] of subs) if (x.instance === a) off({ id })
-    const scope = s.instances.get(a)
-    s.instances.delete(a)
+    return leaveInstance(app, a)
+  }
+
+  // Into one of `app`'s instances with its link (also a contact's request, spec 013): the site, listed for the app.
+  async function joinInstance (app, link) {
+    if (typeof link !== 'string' || !link.startsWith('hg:')) throw error('INVALID_PARAMS', "join takes an instance's link (hg:...)")
+    const before = new Set(sfs.hg.spaces().map((x) => x.key))
+    let site = null
+    try {
+      site = await sfs.visit(link)
+    } catch (err) {
+      if (err.code !== 'NOT_FOUND') throw err // a space that isn't a site: refused below
+    }
+    if (!site || site.app !== app) {
+      for (const x of sfs.hg.spaces()) if (!before.has(x.key) && !x.parent) await sfs.leave(x.key).catch(() => {}) // joined for nothing
+      throw error('NOT_ALLOWED', "that link is not to one of this app's instances")
+    }
+    await listInstance(app, site.key, true)
+    return site
+  }
+
+  // Off the list first, so nothing reaches it while it goes.
+  async function leaveInstance (app, key) {
+    keyOf({ key })
+    if (!(await listed(app))[key]) throw error('NOT_ALLOWED', "not one of this app's instances")
+    await listInstance(app, key, false)
+    for (const [id, x] of subs) if (x.instance === key) off({ id })
+    const scope = sites.get(app)?.instances.get(key)
+    sites.get(app)?.instances.delete(key)
     if (scope) await scope.then((i) => i.scope.close(), () => {})
-    await sfs.leave(a)
-    const names = `${MINE_PREFIX}${app}/@${a}/` // its mine names: out of the app's cap
+    await sfs.leave(key)
+    const names = `${MINE_PREFIX}${app}/@${key}/` // its mine names: out of the app's cap
     for (const n of Object.keys(await sfs.hg.settings())) if (n.startsWith(names)) await sfs.hg.setSetting(n, null)
     return true
   }
@@ -348,11 +395,15 @@ export function start (ipc) {
   }
 
   async function call ({ key, sub, instance, method, args = [], chain }) {
-    if (method !== 'info' && !MINE.has(method) && !INSTANCES.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
+    if (method !== 'info' && !MINE.has(method) && !INSTANCES.has(method) && !CONTACTS.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
     if (!Array.isArray(args)) throw error('INVALID_PARAMS', 'args is a list')
     if (MINE.has(method)) {
       await target({ key, instance }) // an instance's: checked as any call on it
       return mine(key, method, args, instance)
+    }
+    if (CONTACTS.has(method)) {
+      await permitted(key)
+      return people.call(method.slice('contacts.'.length), args)
     }
     if (INSTANCES.has(method)) { // the app's own, whatever instance the page names
       await target({ key })
@@ -418,6 +469,14 @@ export function start (ipc) {
   }
 
   async function listen ({ key, sub, instance, event }) {
+    if (event === 'contacts') { // spec 013: the list may have changed (any setting did: the site reads again)
+      await permitted(key)
+      const id = nextSub++
+      const fn = () => rpc.emit('event', { id, data: null })
+      sfs.hg.on('settings', fn)
+      subs.set(id, { key, contacts: true, stop: () => sfs.hg.off('settings', fn) })
+      return { id }
+    }
     const t = await target({ key, sub, instance })
     const id = nextSub++
     const fn = (data) => rpc.emit('event', { id, data: plain(data) })
@@ -543,6 +602,7 @@ export function start (ipc) {
         const opening = starting
         starting = null
         await syncing // a close() before sync() has started leaks its interval (requests-to-swarmfs F3)
+        if (people) await people.close()
         if (opening) await opening.then((s) => s.close(), () => {})
         sfs = null
         setTimeout(() => rpc.end(), 0) // after the reply to 'close'
