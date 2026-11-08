@@ -1,5 +1,5 @@
 // The sandbox self-test and its control run, as a test (spec 001 US3, SC-002), then the frame check
-// (spec 002 US6, FR-010, FR-013). Node only (it starts
+// (spec 002 US6, FR-010, FR-013), then the textures check at 100, 125, 150 % (spec 008). Node only (it starts
 // Electron): `npm run test:sandbox`. The guarded run must pass every check; the control run (--no-guards)
 // must fail, and fail exactly where a guard of ours does the work.
 import test from 'brittle'
@@ -12,8 +12,12 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const ELECTRON = createRequire(import.meta.url)('electron') // the binary's path, from Node
 
 function selftest (...args) {
+  return run(['.', ...(args.includes('--framecheck') ? [] : ['--selftest']), ...args])
+}
+
+function run (args) {
   return new Promise((resolve) => {
-    const p = spawn(ELECTRON, ['.', ...(args.includes('--framecheck') ? [] : ['--selftest']), ...args], { cwd: ROOT })
+    const p = spawn(ELECTRON, args, { cwd: ROOT })
     let out = ''
     p.stdout.on('data', (d) => { out += d })
     p.stderr.on('data', (d) => { out += d })
@@ -48,4 +52,13 @@ test('the frame: no OS frame, no app menu, sites under the bars', { timeout: 150
   t.is(fails(out).length, 0, fails(out).join('; '))
   t.ok(out.includes('FRAMECHECK PASS'))
   t.is(code, 0)
+})
+
+test('the textures: whole device pixels at 100, 125, 150 %, still when the page scrolls', { timeout: 150000 }, async (t) => {
+  for (const scale of ['1', '1.25', '1.5']) {
+    const { code, out } = await run(['shell/selftest/pixels.cjs', '--force-device-scale-factor=' + scale])
+    t.is(fails(out).length, 0, scale + ': ' + fails(out).join('; '))
+    t.ok(out.includes('PIXELS PASS'), scale)
+    t.is(code, 0)
+  }
 })

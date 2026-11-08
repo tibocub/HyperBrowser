@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>008: button options</title>
+<!-- Open this file in a browser (or see the screenshots next to it). It uses the forum's real stylesheet; each
+     row overrides .btn with one option. A is what the forum and the default theme use now. -->
+<link rel="stylesheet" href="../../sites/forum/style.css">
+<style>
+  .opt-old .btn { border-radius: 8px; box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--ink); }
+  .opt-old .btn.down { background: var(--ink); color: var(--paper); }
+  .opt-a .btn.down { transform: translate(2px, 2px); box-shadow: none; background: var(--ink); color: var(--paper); }
+  .opt-b .btn { box-shadow: 1px 1px 0 var(--ink); }
+  .opt-b .btn.down { transform: translate(1px, 1px); box-shadow: none; background: var(--ink); color: var(--paper); }
+  .opt-c .btn { margin: 2px; box-shadow: 0 0 0 1px var(--paper), 0 0 0 3px var(--ink); }
+  .opt-c .btn.down { background: var(--ink); color: var(--paper); }
+  .opts { display: grid; gap: 22px; padding: 18px 20px 22px; }
+  .opts .head { gap: 14px 18px; }
+  .opts .what { flex: 1 1 260px; }
+  .opts .what b { display: block; }
+</style>
+</head>
+<body>
+<div class="window" style="max-width: 760px">
+  <div class="title"><h1>Buttons: the options</h1></div>
+  <div class="opts">
+    <div class="head opt-old"><div class="what"><b>Before</b>rounded double border (anti-aliased curves)</div><a class="btn" href="#">New thread</a><a class="btn down" href="#">Pressed</a></div>
+    <div class="head opt-a"><div class="what"><b>A · hard shadow (chosen)</b>1 px border, 2 px shadow: the windows' and menus' own shadow; pressed, it sinks into it</div><a class="btn" href="#">New thread</a><a class="btn down" href="#">Pressed</a></div>
+    <div class="head opt-b"><div class="what"><b>B · thin shadow</b>1 px border, 1 px shadow; lighter, pressed sinks 1 px</div><a class="btn" href="#">New thread</a><a class="btn down" href="#">Pressed</a></div>
+    <div class="head opt-c"><div class="what"><b>C · default-button frame</b>System 1's default button, square: 1 px border, 1 px gap, 2 px frame</div><a class="btn" href="#">New thread</a><a class="btn down" href="#">Pressed</a></div>
+  </div>
+</div>
+</body>
+</html>

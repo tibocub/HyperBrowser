@@ -4,7 +4,7 @@
 //   npm start [-- --open <key>] [-- --dir <engine folder>]
 //   npm run selftest [-- --no-guards]      (the sandbox self-test; --no-guards is its control run: must fail)
 //   npm run framecheck                     (the frame: no OS frame, no app menu, sites under the bars)
-import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents } from 'electron'
+import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme } from 'electron'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -176,6 +176,21 @@ async function selftest (dir) {
   clearTimeout(timeout)
   const out = results.flat()
   out.push({ site: 'shell', name: 'the identity question: asked once per dynamic site, never for the static one', pass: asked.length === 2 && asked.includes(a) && asked.includes(b) })
+  // the look (spec 008): HyperBrowser's theme reaches sites; a page with no stylesheet gets the default theme
+  const dark = async () => { await new Promise((resolve) => setTimeout(resolve, 300)); return views[0].webContents.executeJavaScript("matchMedia('(prefers-color-scheme: dark)').matches") }
+  nativeTheme.themeSource = 'dark'
+  const isDark = await dark()
+  nativeTheme.themeSource = 'light'
+  const isLight = !(await dark())
+  nativeTheme.themeSource = 'system'
+  out.push({ site: 'shell', name: "the theme setting is each site's prefers-color-scheme (dark, then light)", pass: isDark && isLight })
+  const look = "(() => { const h = getComputedStyle(document.documentElement); return getComputedStyle(document.body).fontFamily + '|' + h.backgroundAttachment })()"
+  await views[2].webContents.loadURL('hyper://' + c + '/plain.html')
+  await new Promise((resolve) => setTimeout(resolve, 500)) // insertCSS on dom-ready
+  const plain = await views[2].webContents.executeJavaScript(look)
+  const styled = await views[0].webContents.executeJavaScript(look)
+  out.push({ site: 'shell', name: 'a page with no stylesheet gets the default theme (fonts, a fixed dither)', pass: plain === "\"HB Plex Mono\", ui-monospace, monospace|fixed" })
+  out.push({ site: 'shell', name: 'a page with its own <style> keeps its look', pass: !styled.includes('HB ') })
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
@@ -200,7 +215,9 @@ async function framecheck (dir) {
   const i = inspect()
   const css = await i.fwc.executeJavaScript(`(() => {
     const region = (q) => { const c = getComputedStyle(document.querySelector(q)); return c.getPropertyValue('app-region') || c.getPropertyValue('-webkit-app-region') }
-    return { top: region('#top'), clickable: ['#tabs', '#plus', '#hb', '#w-min', '#w-max', '#w-close'].map(region), bars: document.getElementById('bars').offsetHeight }
+    const paths = [...document.querySelectorAll('[data-g] path')]
+    return { top: region('#top'), clickable: ['#tabs', '#plus', '#hb', '#w-min', '#w-max', '#w-close'].map(region), bars: document.getElementById('bars').offsetHeight,
+      glyphs: paths.length === document.querySelectorAll('[data-g]').length && paths.every((p) => p.getAttribute('d')), plus: document.querySelector('#plus path').getAttribute('d') }
   })()`)
   const site = await openSiteOf(key).executeJavaScript('typeof window.frame')
   const b = win.getBounds()
@@ -212,7 +229,8 @@ async function framecheck (dir) {
     ['tabs, +, the menu and the window buttons stay clickable', css.clickable.every((r) => r === 'no-drag')],
     ['the site view starts right under the bars', i.views.length === 1 && i.views[0].y === i.bars && i.bars >= css.bars],
     ['over a site, the frame covers the bars only', i.frame.height === i.bars],
-    ["a site's page has no door to the frame", site === 'undefined']
+    ["a site's page has no door to the frame", site === 'undefined'],
+    ['the icons are drawn from shell/icons/*.png (plus.png: a 5×5 cross)', css.glyphs && css.plus === 'M2 0h1v1H2zM2 1h1v1H2zM0 2h5v1H0zM2 3h1v1H2zM2 4h1v1H2z']
   ]
   for (const [name, pass] of out) console.log((pass ? 'PASS ' : 'FAIL ') + 'frame  ' + name)
   const ok = out.every(([, pass]) => pass)
