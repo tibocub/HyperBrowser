@@ -1,5 +1,5 @@
-// Runs in each site's view: what it must reach (its own space, if dynamic) and must not (Node, files, the
-// other site, the web). The shell reads window.__results (no test-only API in the page).
+// Runs in each site's view: what it must reach (its own space, if dynamic; WebAssembly) and must not (Node,
+// files, the other site, the web). The shell reads window.__results (no test-only API in the page).
 const me = location.host
 const params = new URLSearchParams(location.search)
 const other = params.get('other')
@@ -57,7 +57,16 @@ const common = [
     await wait(500)
     return document.cookie.split('; ').filter(Boolean).every((c) => c.startsWith(mine + '='))
   }],
-  ['its own files load: fetch probe.js from its own site', async () => (await fetch('probe.js')).ok]
+  ['its own files load: fetch probe.js from its own site', async () => (await fetch('probe.js')).ok],
+  // WebAssembly (spec 008): it compiles and runs, in the page's sandbox (the checks above still hold for it)
+  ['wasm: WebAssembly.instantiateStreaming(fetch("add.wasm")) adds 2 + 3', async () =>
+    (await WebAssembly.instantiateStreaming(fetch('add.wasm'))).instance.exports.add(2, 3) === 5],
+  ['wasm: WebAssembly.compile of bytes the page holds', async () => {
+    const bytes = new Uint8Array(await (await fetch('add.wasm')).arrayBuffer())
+    return new WebAssembly.Instance(await WebAssembly.compile(bytes)).exports.add(40, 2) === 42
+  }],
+  ["wasm: another site's add.wasm is refused", () =>
+    refused(WebAssembly.instantiateStreaming(fetch('hyper://' + other + '/add.wasm')))]
 ]
 
 const statics = [

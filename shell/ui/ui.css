@@ -3,6 +3,13 @@
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette-bold.woff2) format('woff2'); font-weight: 700; }
 
 :root { --accent: #1f4fd1; --ink: #000; --paper: #fff; }
+/* --px: one device pixel, so the textures stay on whole pixels at Windows' 125 %, 150 %, 175 % (spec 008) */
+:root { --px: 1px; }
+@media (resolution: 1.25dppx) { :root { --px: calc(1px / 1.25); } }
+@media (resolution: 1.5dppx) { :root { --px: calc(1px / 1.5); } }
+@media (resolution: 1.75dppx) { :root { --px: calc(1px / 1.75); } }
+@media (resolution: 2.25dppx) { :root { --px: calc(2px / 2.25); } }
+@media (resolution: 2.5dppx) { :root { --px: calc(2px / 2.5); } }
 html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
 body { font-family: 'Cozette', ui-monospace, monospace; font-size: 13px; line-height: 1.6; color: var(--ink); user-select: none; }
 html.dark body { filter: invert(1); }
@@ -44,7 +51,7 @@ button:disabled { cursor: default; opacity: .35; }
 
 /* toolbar: striped like a System 1 title bar */
 #toolbar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-bottom: 1px solid var(--ink);
-  background-image: repeating-linear-gradient(to bottom, var(--paper) 0 2px, var(--ink) 2px 3px); }
+  background-image: repeating-linear-gradient(to bottom, var(--paper) 0 calc(2 * var(--px)), var(--ink) calc(2 * var(--px)) calc(3 * var(--px))); }
 .tool { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 28px; padding: 0; border: 1px solid var(--ink); background: var(--paper); }
 .tool:active:not(:disabled) { background: var(--ink); color: var(--paper); }
 #star[aria-pressed="true"] { color: var(--accent); }
@@ -56,7 +63,8 @@ button:disabled { cursor: default; opacity: .35; }
 
 /* the desktop: a dithered gray, a grid of icons */
 #desktop { position: absolute; inset: 68px 0 0 0; overflow: auto; padding: 24px; box-sizing: border-box; background-color: var(--paper);
-  background-image: repeating-conic-gradient(var(--ink) 0 25%, var(--paper) 0 50%); background-size: 2px 2px; }
+  background-image: repeating-conic-gradient(var(--ink) 0 25%, var(--paper) 0 50%);
+  background-size: calc(2 * var(--px)) calc(2 * var(--px)); background-attachment: fixed; }
 #grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(8, 112px); grid-auto-rows: 112px; }
 .icon { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 112px; padding-top: 4px; border: 0; background: transparent; }
 .icon .box { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
@@ -72,12 +80,13 @@ button:disabled { cursor: default; opacity: .35; }
 /* a System 1 window: striped title bar */
 .window { position: absolute; top: 140px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); z-index: 1; }
 .window .title { display: flex; justify-content: center; padding: 2px 8px; border-bottom: 1px solid var(--ink);
-  background-image: repeating-linear-gradient(to bottom, var(--paper) 0 1px, var(--ink) 1px 2px); }
+  background-image: repeating-linear-gradient(to bottom, var(--paper) 0 var(--px), var(--ink) var(--px) calc(2 * var(--px))); }
 .window .title span { padding: 0 8px; background: var(--paper); font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .window .body { padding: 16px 20px; }
 .window p { margin: 0 0 16px; user-select: text; word-break: break-all; }
 .row { display: flex; gap: 12px; justify-content: flex-end; }
 .push { padding: 4px 14px; border: 1px solid var(--ink); background: var(--paper); box-shadow: 2px 2px 0 var(--ink); font-weight: 700; }
+.push:active { transform: translate(2px, 2px); box-shadow: none; }
 
 /* menus */
 #backdrop { position: fixed; inset: 0; z-index: 3; -webkit-app-region: no-drag; }
