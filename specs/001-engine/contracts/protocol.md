@@ -18,7 +18,7 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 
 | method | params | result |
 |---|---|---|
-| `init` | `{ dir, bootstrap?, heartbeat?, appStorageMax?, grace? }` (`grace`: ms a site no tab shows stays joined, default 5 min; spec 004) | `{ identity, version: 1 }`; `ALREADY` if done. Sites held here neither installed nor the person's own are left first (spec 004) |
+| `init` | `{ dir, bootstrap?, heartbeat?, appStorageMax?, grace?, deviceName?, joinCode?, joinTimeout? }` (`grace`: ms a site no tab shows stays joined, default 5 min; spec 004. `joinCode`: another device's code, `dir` empty: this device joins that identity; `deviceName`: this device's name in the list; spec 012) | `{ identity, version: 1 }`; `ALREADY` if done; `INVITE_INVALID` for a bad, used or expired code (nobody answered within `joinTimeout` ms). Sites held here neither installed nor the person's own are left first (spec 004) |
 | `ping` | `{}` | `true` (any message also counts as a heartbeat) |
 | `site.publish` | `{ folder, fresh? }` | `{ key, created, manifest }` (`NO_MANIFEST`, `INVALID_MANIFEST`, `PRIVATE_SITE`: the folder's site is invite-only and `site.json` asks public; `fresh: true` makes a new site, leaving the old) |
 | `site.open` | `{ key, timeout? }` (z32 key, or an `hg:` invite / public link; timeout ms, default 30000) | `{ key, manifest, dynamic }`. Each open counts as one tab until its `site.close` (spec 004) |
@@ -33,6 +33,12 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 | `site.off` | `{ id }` | `true` |
 | `site.close` | `{ key }` | `true`. The last open's close: its live views and listeners stop, its handle released, and, unless it is installed or the person's own, the site is left after `grace` (spec 004) |
 | `hosting` | `{}` (spec 010) | `{ sites }`: how many sites (top-level spaces) this device holds joined, so serves: installed, own, joined instances, and those open or in their grace period |
+| `site.installed` | `{}` (spec 012) | `{ sites: [{ key, title }], uninstalled: [key] }`: sites installed on any device of the person (`site.keep` records it as the setting `hyperbrowser/installed/<key>`: the title, or null once uninstalled) |
+| `devices.list` | `{}` (spec 012) | `{ identity, devices: [{ publicKey, name, current }], removed, phrase, owns }`: `removed`: this device was removed from the identity; `phrase`: `plain`, `protected` or `forgotten` (the recovery phrase on this device); `owns`: `[{ key, name }]`, the sites this identity owns (joining another identity leaves them) |
+| `devices.add` | `{ password?, recoveryPhrase? }` | `{ code }`: for the new device (`init { joinCode }`); one at a time, works once, 10 min. `NOT_ALLOWED` without the password once the phrase is protected |
+| `devices.remove` | `{ publicKey, password?, recoveryPhrase? }` | `true`; that device's writes count for nobody from then on (`DEVICE_REMOVED` there). `NOT_ALLOWED` for this device, `NOT_FOUND` for a key that isn't one of the identity's devices |
+| `devices.phrase` | `{ password? }` | `{ words }`: the 24 words, or `null` if forgotten here; `NOT_ALLOWED` without the right password once protected |
+| `devices.protect` | `{ password }` | `true`: the phrase kept here behind that password from now on |
 | `close` | `{}` | `true`: everything closed; the engine then ends its stream |
 
 `site.read`, `site.call`, `site.live`, `site.on` need the site opened (`site.open`) in this engine first
@@ -56,4 +62,5 @@ site. `site.publish` reads `site.json`'s
 |---|---|
 | `live` | `{ id, items, complete }`: a live query's new answer |
 | `event` | `{ id, data }`: a site event (`change`, `peers`, `members`, `decisions`, `status`) |
+| `devices` | `{}`: the identity's device list changed: read `devices.list` again (spec 012) |
 | `closing` | `{ reason }` (`heartbeat` or `close`), sent just before the engine ends its stream |

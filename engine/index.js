@@ -19,6 +19,7 @@ const MINE = new Set(['mine.all', 'mine.set'])
 const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join', 'instances.leave'])
 const APP_PREFIX = 'hyperbrowser/app/' // + key + '/instances': { [instance key]: true }, written by the engine only
 const INSTANCES_MAX = 1000 // per app: the list is a setting every device of the person keeps
+const INSTALLED = 'hyperbrowser/installed/' // + key: the site's title, or null once uninstalled (spec 012)
 const MINE_PREFIX = 'hyperbrowser/site/' // + key + '/' + name: a site's own settings
 // What a site may keep in the person's settings, which every device of theirs replicates (site code is untrusted).
 // The forum's use: read state ~90 bytes per thread opened, pruned to the threads it shows (<= 500): ~45 KB.
@@ -76,17 +77,31 @@ export function start (ipc) {
       case 'site.off': return off(p)
       case 'site.close': return closeSite(keyOf(p))
       case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length } // the tray's status line (spec 010)
+      case 'site.installed': return installed()
+      case 'devices.list': return devices()
+      case 'devices.add': return { code: (await sfs.hg.addDevice(secret(p))).code } // the new device: a 'devices' event
+      case 'devices.remove':
+        if (typeof p.publicKey !== 'string') throw error('INVALID_PARAMS', 'devices.remove needs { publicKey }')
+        await sfs.hg.removeDevice(p.publicKey, secret(p))
+        return true
+      case 'devices.phrase': return { words: await sfs.hg.recoveryPhrase(p.password) }
+      case 'devices.protect':
+        if (typeof p.password !== 'string' || !p.password) throw error('INVALID_PARAMS', 'devices.protect needs { password }')
+        await sfs.hg.protectRecoveryPhrase(p.password)
+        return true
       default: throw error('UNKNOWN_METHOD', 'unknown method ' + method)
     }
   }
 
-  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g }) {
+  // joinCode: another device's code (spec 012): this empty folder becomes a device of that identity.
+  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
-    starting = SwarmFS.open(dir, { bootstrap, appStorageMax })
+    starting = SwarmFS.open(dir, { bootstrap, appStorageMax, joinCode, joinTimeout, deviceName })
     starting.catch(() => { starting = null }) // a failed init may be sent again
     if (g !== undefined) grace = g
     sfs = await starting
+    sfs.hg.on('devices', () => rpc.emit('devices', {}))
     await sweep()
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
     if (heartbeat) {
@@ -176,9 +191,10 @@ export function start (ipc) {
 
   // Install (true: kept whole here, never evicted, served; remembered) or back to the cache (SwarmFS F4).
   async function keep ({ key, keep, timeout }) {
-    const { site } = opened(keyOf({ key }))
+    const { site, manifest } = opened(keyOf({ key }))
     if (typeof keep !== 'boolean') throw error('INVALID_PARAMS', 'site.keep needs { keep: true | false }')
-    await site.keep(keep, { timeout })
+    await site.keep(keep, { timeout }) // SwarmFS remembers it for this device; the setting, for every device
+    await sfs.hg.setSetting(INSTALLED + key, keep ? manifest.title : null)
     return { kept: keep }
   }
 
@@ -469,13 +485,48 @@ export function start (ipc) {
   }
 
   // At start: every site held here that isn't installed or the person's own is left (its cached files stay,
-  // served again once it is opened). Not a site, or not readable at once: left alone.
+  // served again once it is opened). Not a site, or not readable at once: left alone. A site installed here
+  // before 012 goes on the person's list (once: an uninstall on another device is a null, left as is).
   async function sweep () {
-    for (const { key, parent } of sfs.hg.spaces()) {
+    const settings = await sfs.hg.settings()
+    for (const { key, parent, name } of sfs.hg.spaces()) {
       if (parent) continue
       const site = await sfs.site(key, { timeout: 0 }).catch(() => null)
       if (site && !(await hosted(site).catch(() => true))) await sfs.leave(key).catch(() => {})
+      else if (site && !((INSTALLED + key) in settings) && await site.kept().catch(() => false)) await sfs.hg.setSetting(INSTALLED + key, name ?? '')
     }
+  }
+
+  // --- devices (spec 012): one identity on several devices ---
+
+  // The phrase's password, or the phrase typed (once forgotten here): what adding or removing a device needs.
+  const secret = ({ password, recoveryPhrase }) => ({ password, recoveryPhrase })
+
+  async function devices () {
+    const list = await sfs.hg.devices()
+    let phrase = 'plain'
+    try {
+      if (await sfs.hg.recoveryPhrase() === null) phrase = 'forgotten'
+    } catch { phrase = 'protected' }
+    const owns = []
+    for (const s of sfs.hg.spaces()) {
+      if (!s.parent && (await sfs.hg.space(s.key).getRole(sfs.hg.identity.publicKey).catch(() => null)) === 'owner') owns.push({ key: s.key, name: s.name ?? '' })
+    }
+    // shortcut: "removed" = this device left out of a list that has others (hypergraph drops removed devices
+    // from devices()); a device that just joined and holds no list yet reads as not removed.
+    const removed = list.length > 0 && !list.some((d) => d.current)
+    return { identity: sfs.hg.identity.publicKey, devices: list, removed, phrase, owns }
+  }
+
+  // Sites installed on any device of the person (spec 012): the shell's desktop installs them here too.
+  async function installed () {
+    const out = { sites: [], uninstalled: [] }
+    for (const [n, title] of Object.entries(await sfs.hg.settings())) {
+      if (!n.startsWith(INSTALLED)) continue
+      if (title === null) out.uninstalled.push(n.slice(INSTALLED.length))
+      else out.sites.push({ key: n.slice(INSTALLED.length), title })
+    }
+    return out
   }
 
   // --- lifecycle ---

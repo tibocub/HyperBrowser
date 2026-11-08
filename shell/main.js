@@ -59,6 +59,7 @@ let worker = null
 let updater = null
 let update = null // the version installed by an update, started at the next launch (spec 011)
 let quitting = false
+let stopping = null // the engine connection being stopped (a join, spec 012)
 const sites = new Map() // key -> { manifest, dynamic }
 const viewOf = new Map() // webContents id -> site key
 const subscribers = new Map() // engine subscription id -> webContents
@@ -72,8 +73,9 @@ async function serve (key, p) {
 }
 
 function onEvent (event, data) {
+  if (event === 'devices') return ui?.devices()
   if (event === 'closing') {
-    if (!quitting) { console.error('engine stopped:', data.reason); app.exit(1) }
+    if (!quitting && data.reason !== 'close') { console.error('engine stopped:', data.reason); app.exit(1) } // 'close': asked (a join)
     return
   }
   if (event !== 'live' && event !== 'event') return
@@ -157,13 +159,19 @@ async function readIcon (key, manifest) {
 async function shutdown () {
   quitting = true
   if (updater) { updater.end(); updater = null } // it closes by itself (or dies with the app)
-  if (rpc) await rpc.request('close').catch(() => {})
-  if (worker) {
-    const exited = new Promise((resolve) => { if (worker._exited) resolve(); else worker.once('exit', resolve) })
-    worker.destroy() // kills it if it didn't exit by itself
+  await stopEngine()
+}
+
+async function stopEngine () {
+  const [r, w] = [rpc, worker]
+  stopping = r // its stream's end is expected (startEngine's onclose)
+  if (r) await r.request('close').catch(() => {})
+  if (w) {
+    const exited = new Promise((resolve) => { if (w._exited) resolve(); else w.once('exit', resolve) })
+    w.destroy() // kills it if it didn't exit by itself
     await exited
   }
-  rpc = worker = null
+  if (rpc === r) rpc = worker = null
 }
 
 function layout (win, views) {
@@ -237,6 +245,7 @@ async function framecheck (dir) {
   const { key } = await rpc.request('site.publish', { folder: path.join(tmp, 'site') })
   const { win, inspect } = startFrame({ rpc, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
   const timeout = setTimeout(() => { console.log('FRAMECHECK TIMEOUT'); app.exit(2) }, 60000)
+  const until = async (f) => { for (let n = 0; n < 100; n++) { if (await f().catch(() => false)) return true; await new Promise((resolve) => setTimeout(resolve, 100)) } return false }
   const settled = async () => inspect().ready === 1 && await inspect().fwc.executeJavaScript("document.getElementById('tabs').children.length === 2").catch(() => false)
   while (!(await settled())) await new Promise((resolve) => setTimeout(resolve, 250))
   await new Promise((resolve) => setTimeout(resolve, 500)) // the frame's 'bars' message
@@ -249,6 +258,12 @@ async function framecheck (dir) {
       glyphs: paths.length === document.querySelectorAll('[data-g]').length && paths.every((p) => p.getAttribute('d')), plus: document.querySelector('#plus path').getAttribute('d') }
   })()`)
   const site = await openSiteOf(key).executeJavaScript('typeof window.frame')
+  // the Devices window (spec 012): from the menu, this computer listed, a code to add another
+  await i.fwc.executeJavaScript("document.getElementById('hb').click(); document.getElementById('m-devices').click()")
+  const listed = await until(() => i.fwc.executeJavaScript("document.querySelectorAll('#dv-list li').length === 1 && document.querySelector('#dv-list li').textContent.includes('(this computer)')"))
+  await i.fwc.executeJavaScript("document.getElementById('dv-add').click()")
+  const coded = await until(() => i.fwc.executeJavaScript("(document.querySelector('#dv-out .code')?.textContent.length || 0) > 20"))
+  if (process.env.HB_SHOT) fs.writeFileSync(process.env.HB_SHOT, (await i.fwc.capturePage()).toPNG())
   const b = win.getBounds()
   const c = win.getContentBounds()
   const out = [
@@ -259,7 +274,9 @@ async function framecheck (dir) {
     ['the site view starts right under the bars', i.views.length === 1 && i.views[0].y === i.bars && i.bars >= css.bars],
     ['over a site, the frame covers the bars only', i.frame.height === i.bars],
     ["a site's page has no door to the frame", site === 'undefined'],
-    ['the icons are drawn from shell/icons/*.png (plus.png: a 5×5 cross)', css.glyphs && css.plus === 'M2 0h1v1H2zM2 1h1v1H2zM0 2h5v1H0zM2 3h1v1H2zM2 4h1v1H2z']
+    ['the icons are drawn from shell/icons/*.png (plus.png: a 5×5 cross)', css.glyphs && css.plus === 'M2 0h1v1H2zM2 1h1v1H2zM0 2h5v1H0zM2 3h1v1H2zM2 4h1v1H2z'],
+    ['Devices: this computer listed (spec 012)', listed],
+    ['Devices: Add a device shows a code', coded]
   ]
   for (const [name, pass] of out) console.log((pass ? 'PASS ' : 'FAIL ') + 'frame  ' + name)
   const ok = out.every(([, pass]) => pass)
@@ -375,21 +392,62 @@ function restart () {
   ui.win.destroy() // the tray's Quit path: window-all-closed, shutdown(), app.quit()
 }
 
+// The engine, as a Bare worker: rpc set, then init in `dir` (with `more`: a join code, spec 012).
+async function startEngine (dir, more = {}) {
+  worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
+  worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
+  const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
+  rpc = conn
+  return rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), ...more })
+}
+
+// Join another device's identity (spec 012): this computer's engine folder is moved aside (kept), a new one
+// joins with the code; a failed join puts the old folder back. The frame then goes on with whichever engine
+// is up. Not a restart: closing an engine seconds after a join can hang in hypergraph (seen 2026-11-08).
+async function join (dir, code) {
+  const aside = dir + '-before-join-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
+  await stopEngine()
+  await move(dir, aside)
+  let said = 'joined'
+  let identity
+  try {
+    ({ identity } = await startEngine(dir, { joinCode: code, joinTimeout: 60000 }))
+    log("joined another device's identity " + identity + '; the one before is in ' + aside)
+  } catch (err) {
+    said = err.message + ' (' + (err.code || 'ERROR') + ')'
+    log('could not join: ' + said)
+    await stopEngine()
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10 })
+    await move(aside, dir)
+    ;({ identity } = await startEngine(dir))
+  }
+  ui.joined({ identity, said })
+}
+
+// A rename that waits for a just-ended worker to let go of its files (Windows: EBUSY, EPERM for a moment).
+async function move (from, to) {
+  for (let i = 0; ; i++) {
+    try { return fs.renameSync(from, to) } catch (err) {
+      if (i >= 40 || !['EBUSY', 'EPERM', 'EACCES'].includes(err.code)) throw err
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+}
+
 const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContents.fromId(id)).find(Boolean)
 
 app.whenReady().then(async () => {
   if (!FIRST) return
-  worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
-  worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
-  rpc = connect(worker, { onEvent, onclose: () => { if (!quitting) { console.error('engine stopped without a word'); app.exit(1) } } })
   const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST || FRAMECHECK ? 'selftest-' + process.pid : 'engine')
-  const { identity } = await rpc.request('init', { dir, heartbeat: HEARTBEAT })
+  const { identity } = await startEngine(dir)
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
   log('engine up, identity ' + identity)
   if (SELFTEST) return selftest(dir)
   if (FRAMECHECK) return framecheck(dir)
   if (!TRAYCHECK) startUpdates()
-  ui = startFrame({ rpc, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open'), update: () => update, restart })
+  // the frame and the tray reach whichever engine is up (a join starts another, spec 012)
+  const engine = { request: (method, params) => rpc ? rpc.request(method, params) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' })) }
+  ui = startFrame({ rpc: engine, openSite, readIcon, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open'), update: () => update, restart, join: (code) => join(dir, code).catch((err) => { log('join: ' + err.message); app.exit(1) }) })
   if (TRAYCHECK) traycheck(ui, TRAYCHECK)
 }).catch((err) => { console.error(err); app.exit(1) })
 
