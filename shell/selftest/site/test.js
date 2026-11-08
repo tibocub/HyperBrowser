@@ -10,8 +10,9 @@ const refused = (p) => p.then(() => false, () => true)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // mine: the person's own data for this site (spec 006), on their settings, not a space
 // instance, instances: the app's instances (spec 009), checked by the engine
-const API = ['completeFrom', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
-  'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'on', 'peers',
+// contacts (only with the permission), people: through HyperBrowser (spec 013)
+const API = ['completeFrom', 'contacts', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
+  'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'on', 'peers', 'people',
   'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'setRole',
   'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag']
 
@@ -93,6 +94,11 @@ const dynamics = [
     refused(window.hyper.subspace(other).query('profile').latest(10))],
   ['the page names no space: hyper.instance(<other site>) is refused', () =>
     refused(window.hyper.instance(other).query('profile').latest(10))],
+  ["contacts: a site whose site.json doesn't ask for them gets NOT_ALLOWED", () =>
+    window.hyper.contacts.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+  ['people: opening a chat without a click opens nothing', async () => (await window.hyper.people.chat(other)) === false],
+  ['people: a friend request the person refused is NOT_ALLOWED', () =>
+    window.hyper.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],
   ['its own instance: created, then reached', async () => {
     const f = await window.hyper.instances.create('Self-test ' + me.slice(0, 4))
     await window.hyper.instance(f.key).put('profile', { name })

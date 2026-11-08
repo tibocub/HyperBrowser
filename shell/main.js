@@ -33,6 +33,10 @@ const TYPES = {
 }
 const typeOf = (p) => TYPES[p.split('.').pop().toLowerCase()] || 'application/octet-stream'
 const PKG = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf-8'))
+// The official apps the shell's own calls open (spec 013): their keys once Tibo published them (preset.json)
+const PRESET = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
+const APPS = { chat: PRESET.find((p) => p.id === 'preset:chat')?.key || null, contacts: PRESET.find((p) => p.id === 'preset:contacts')?.key || null }
+const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 
 // An installed HyperBrowser has no console: what it says also goes to <data folder>/hyperbrowser.log.
 const LOG = app.isPackaged ? path.join(app.getPath('userData'), 'hyperbrowser.log') : null
@@ -66,6 +70,8 @@ const subscribers = new Map() // engine subscription id -> webContents
 const early = new Map() // engine subscription id -> events that came before its reply
 const asking = new Map() // key -> the identity question in progress
 const asked = [] // keys the question was asked for (the self-test checks: once per site)
+const permits = new Map() // key -> the contacts question in progress (spec 013)
+const peopleOpened = [] // the self-test's record of what hyper.people opened (no frame there)
 
 async function serve (key, p) {
   const { bytes, path: real } = await rpc.request('site.read', { key, path: p })
@@ -98,6 +104,18 @@ function ask (key) {
   return asking.get(key)
 }
 
+// "Let this site see and manage your contacts?": once per site declaring it (spec 013); the engine remembers.
+function askPermit (key) {
+  if (!permits.has(key)) {
+    const title = sites.get(key).manifest.title
+    const answer = SELFTEST
+      ? Promise.resolve(true)
+      : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 1, cancelId: 1, message: `Let "${title}" see and manage your contacts?`, detail: 'It will list your friends and requests, accept or remove them, and send requests. Only HyperBrowser\'s Contacts and Chat need this.' }).then((r) => r.response === 0)
+    permits.set(key, answer.then((allow) => rpc.request('site.permit', { key, permission: 'contacts', allow })).finally(() => permits.delete(key)))
+  }
+  return permits.get(key)
+}
+
 async function bridge (wc, msg) {
   let key = viewOf.get(wc.id)
   let sub = msg.sub ?? null
@@ -113,9 +131,13 @@ async function bridge (wc, msg) {
   try {
     result = await rpc.request(method, params)
   } catch (err) {
-    if (err.code !== 'NEEDS_CONSENT') throw err
-    await ask(key)
-    result = await rpc.request(method, params)
+    if (err.code !== 'NEEDS_CONSENT' && err.code !== 'NEEDS_PERMISSION') throw err
+    await (err.code === 'NEEDS_CONSENT' ? ask(key) : askPermit(key))
+    result = await rpc.request(method, params).catch(async (err) => { // the identity first, then the contacts
+      if (err.code !== 'NEEDS_PERMISSION') throw err
+      await askPermit(key)
+      return rpc.request(method, params)
+    })
   }
   if (msg.op === 'live' || msg.op === 'on') {
     subscribers.set(result.id, wc)
@@ -129,6 +151,36 @@ ipcMain.handle('site', async (evt, msg) => {
   if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
   try {
     return { result: await bridge(evt.sender, msg || {}) }
+  } catch (err) {
+    return { error: { code: err.code || 'ERROR', message: err.message } }
+  }
+})
+
+// hyper.people (spec 013): what any site may ask of the person's contacts and chats, through HyperBrowser only.
+// Opening needs a click on the page (the preload says whether one is running); a request, the person's yes.
+async function people (wc, { op, identity, name, activated }) {
+  if (typeof identity !== 'string' || !KEY.test(identity)) throw Object.assign(new Error('not a person\'s key'), { code: 'INVALID_PARAMS' })
+  if (op === 'request') {
+    const site = sites.get(viewOf.get(wc.id)).manifest.title
+    const who = (typeof name === 'string' && name.trim() ? `"${name.trim().slice(0, 64)}" ` : '') + `(key ${identity.slice(0, 8)}…)`
+    const yes = !GUARDS || (!SELFTEST && (await dialog.showMessageBox({ type: 'question', buttons: ['Send', 'Cancel'], defaultId: 1, cancelId: 1, message: `Send a friend request to ${who}?`, detail: `"${site}" asks. The name comes from that site: check the key if it matters.` })).response === 0)
+    if (!yes) throw Object.assign(new Error('the person said no'), { code: 'NOT_ALLOWED' })
+    return rpc.request('contacts.request', { identity, name })
+  }
+  if (op !== 'chat' && op !== 'contact') throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
+  if (GUARDS && !activated) return false // only right after a click on the page
+  const c = op === 'chat' ? await rpc.request('contacts.get', { identity }) : null
+  const [key, query] = c?.state === 'friend' ? [c.chat, ''] : [APPS.contacts, '?person=' + identity] // not a friend: their page
+  if (SELFTEST) return !!peopleOpened.push(key || op)
+  if (!key) throw Object.assign(new Error('Contacts is not published yet'), { code: 'NOT_PUBLISHED' })
+  ui?.open(key, query)
+  return true
+}
+
+ipcMain.handle('people', async (evt, msg) => {
+  if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
+  try {
+    return { result: await people(evt.sender, msg || {}) }
   } catch (err) {
     return { error: { code: err.code || 'ERROR', message: err.message } }
   }
@@ -199,11 +251,16 @@ async function selftest (dir) {
     keys.push((await rpc.request('site.publish', { folder: folder(name, manifest) })).key)
   }
   const [a, b, c] = keys
+  await rpc.request('apps.set', { chat: a }) // spec 013: a request makes a conversation of some app
   const views = [await openSite(a, '?other=' + b), await openSite(b, '?other=' + a), await openSite(c, '?other=' + a + '&static=1')]
   const win = new BaseWindow({ width: 1500, height: 800, title: 'HyperBrowser self-test' + (GUARDS ? '' : ' (no guards)') })
   layout(win, views)
 
-  const timeout = setTimeout(() => { console.log('SELFTEST TIMEOUT'); app.exit(2) }, 90000)
+  const timeout = setTimeout(async () => { // where each page stopped: its last line is the check that hangs
+    for (const v of views) console.log(await v.webContents.executeJavaScript("document.getElementById('out').innerText").catch(() => '?'))
+    console.log('SELFTEST TIMEOUT')
+    app.exit(2)
+  }, 90000)
   let results
   for (;;) {
     results = await Promise.all(views.map((v) => v.webContents.executeJavaScript('window.__results || null').catch(() => null)))
@@ -213,6 +270,9 @@ async function selftest (dir) {
   clearTimeout(timeout)
   const out = results.flat()
   out.push({ site: 'shell', name: 'the identity question: asked once per dynamic site, never for the static one', pass: asked.length === 2 && asked.includes(a) && asked.includes(b) })
+  // spec 013: what the pages asked of hyper.people without a click, or refused by the person, did nothing
+  out.push({ site: 'shell', name: 'hyper.people: nothing opened without a click', pass: peopleOpened.length === 0 })
+  out.push({ site: 'shell', name: 'hyper.people: a request the person refused sent nothing', pass: (await rpc.request('contacts.get', { identity: b })) === null })
   // the look (spec 008): HyperBrowser's theme reaches sites; a page with no stylesheet gets the default theme
   const dark = async () => { await new Promise((resolve) => setTimeout(resolve, 300)); return views[0].webContents.executeJavaScript("matchMedia('(prefers-color-scheme: dark)').matches") }
   nativeTheme.themeSource = 'dark'
@@ -398,7 +458,9 @@ async function startEngine (dir, more = {}) {
   worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
   const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
-  return rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), ...more })
+  const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), ...more })
+  if (APPS.chat) await rpc.request('apps.set', { chat: APPS.chat }) // spec 013: friends' conversations are Chat's (also after a join)
+  return up
 }
 
 // Join another device's identity (spec 012): this computer's engine folder is moved aside (kept), a new one

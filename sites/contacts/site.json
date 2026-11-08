@@ -1,0 +1,6 @@
+{
+  "title": "Contacts",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "permissions": ["space", "contacts"]
+}

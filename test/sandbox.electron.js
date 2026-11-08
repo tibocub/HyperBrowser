@@ -55,7 +55,11 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     "other site's files: <script src=hyper://<other>/probe.js> doesn't run",
     'no web: <img src=https://...> fails to load (needs internet to mean anything)',
     'the page names no space: hyper.subspace(<other site>) is refused',
-    'the page names no space: hyper.instance(<other site>) is refused'
+    'the page names no space: hyper.instance(<other site>) is refused',
+    'people: opening a chat without a click opens nothing', // spec 013
+    'people: a friend request the person refused is NOT_ALLOWED',
+    'hyper.people: nothing opened without a click',
+    'hyper.people: a request the person refused sent nothing'
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
 })
 

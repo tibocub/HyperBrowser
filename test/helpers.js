@@ -76,6 +76,10 @@ export function siteApi (e, key, instance = null) {
       leave: (k) => call('instances.leave', [k])
     }
     api.instance = (k) => siteApi(e, key, String(k))
+    // spec 013: a site with the contacts permission
+    api.contacts = {}
+    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add']) api.contacts[m] = (...args) => call('contacts.' + m, args)
+    api.contacts.on = (fn) => subscribe('site.on', { event: 'contacts' }, fn)
   }
   return api
 }
