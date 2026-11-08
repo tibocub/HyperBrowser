@@ -8,7 +8,7 @@ The window has no OS frame and no menu bar: two bars drawn by HyperBrowser itsel
 below them):
 
 - **The top bar** is the window's title bar: "HyperBrowser ▾" (your identity, installed sites, open a site by
-  key, the look: system, light or dark, and the accent), then **the tabs** as a taskbar, `+` right after the
+  key, the look: system, light or dark, and the accent, and what closing the window does), then **the tabs** as a taskbar, `+` right after the
   last tab (goes to the desktop with the address ready), empty space, and the window's buttons (minimize,
   maximize/restore, close). Drag the empty space to move the window (Windows snaps it to screen edges);
   double-click it to maximize. Tabs share the width; other tabs keep running in the background. The desktop is
@@ -41,6 +41,25 @@ Each site's icon (from its `site.json`), its title under it.
 
 The desktop, bookmarks and the look are kept in `shell.json` in the app's data folder
 (`%APPDATA%\HyperBrowser` on Windows).
+
+## The tray (spec 010)
+
+Closing the window doesn't quit: HyperBrowser stays in the tray (Windows: the notification area, by the
+clock) and keeps serving your installed sites, your own sites and the forums you joined. The first time, a
+notice says so. The tray icon (right-click) has:
+
+- **Open HyperBrowser** (a click on the icon does it too): the window comes back as you left it, tabs open.
+- **hosting 3 sites**: how many sites this computer serves right now.
+- **Quit**: stops everything.
+
+Tabs left open while the window is hidden keep running, and their sites keep being served; close a tab to let
+its site go after the usual 5 minutes.
+
+To turn the tray off: "HyperBrowser ▾" → **When the window closes** → **Quit**. Closing the window then quits
+HyperBrowser, as before. **Stay in the tray** turns it back on.
+
+Launching HyperBrowser while it already runs shows the running one's window: one HyperBrowser per data
+folder (one started with `--dir <another folder>` is another HyperBrowser, for testing with two peers).
 
 ## Keys
 
@@ -84,6 +103,10 @@ A new icon: add `<name>.png`, then use `name` where the window's code names icon
 Not tried yet. The window has no OS frame: it moves by the top bar; resizing at the edges depends on the
 window manager (some Wayland desktops give none).
 
+The tray depends on the desktop: KDE, Cinnamon, XFCE and most others show it; GNOME shows it only with the
+AppIndicator extension. HyperBrowser asks the desktop at start (`gdbus`); with no tray, closing the window
+quits, rather than leaving a HyperBrowser running that you can't see or stop.
+
 ## Not yet
 
-Mentions, folders on the desktop, the tray, `hyper://` links from the system, phone layout.
+Mentions, folders on the desktop, starting with the system, `hyper://` links from the system, phone layout.

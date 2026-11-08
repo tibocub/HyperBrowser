@@ -1,8 +1,11 @@
 // The sandbox self-test and its control run, as a test (spec 001 US3, SC-002), then the frame check
-// (spec 002 US6, FR-010, FR-013), then the textures check at 100, 125, 150 % (spec 008). Node only (it starts
+// (spec 002 US6, FR-010, FR-013), then the textures check at 100, 125, 150 % (spec 008), then the tray
+// (spec 010: close to the tray, one HyperBrowser a data folder, Quit, the setting). Node only (it starts
 // Electron): `npm run test:sandbox`. The guarded run must pass every check; the control run (--no-guards)
 // must fail, and fail exactly where a guard of ours does the work.
 import test from 'brittle'
+import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
@@ -15,15 +18,23 @@ function selftest (...args) {
   return run(['.', ...(args.includes('--framecheck') ? [] : ['--selftest']), ...args])
 }
 
-function run (args) {
-  return new Promise((resolve) => {
-    const p = spawn(ELECTRON, args, { cwd: ROOT })
-    let out = ''
-    p.stdout.on('data', (d) => { out += d })
-    p.stderr.on('data', (d) => { out += d })
-    const timer = setTimeout(() => p.kill(), 120000)
-    p.on('exit', (code) => { clearTimeout(timer); resolve({ code, out }) })
-  })
+const run = (args) => launch(args).done
+
+// → { done: Promise<{ code, out }>, saw(text): resolves once the output has it (or the process ended) }
+function launch (args) {
+  const p = spawn(ELECTRON, args, { cwd: ROOT })
+  let out = ''
+  const waiters = []
+  const add = (d) => {
+    out += d
+    for (const w of waiters.filter((w) => out.includes(w.text))) w.resolve()
+  }
+  p.stdout.on('data', add)
+  p.stderr.on('data', add)
+  const timer = setTimeout(() => p.kill(), 120000)
+  const done = new Promise((resolve) => p.on('exit', (code) => { clearTimeout(timer); resolve({ code, out }) }))
+  const saw = (text) => Promise.race([done, new Promise((resolve) => { if (out.includes(text)) resolve(); else waiters.push({ text, resolve }) })])
+  return { done, saw }
 }
 
 const fails = (out) => out.split('\n').filter((l) => l.startsWith('FAIL ')).map((l) => l.replace(/^FAIL \S+\s+/, '').trim())
@@ -62,4 +73,30 @@ test('the textures: whole device pixels at 100, 125, 150 %, still when the page 
     t.ok(out.includes('PIXELS PASS'), scale)
     t.is(code, 0)
   }
+})
+
+test('the tray: closing keeps it running, a second launch shows it, Quit ends it; turned off, closing quits', { timeout: 300000 }, async (t) => {
+  const tmp = process.env.HG_TEST_TMP || os.tmpdir()
+  fs.mkdirSync(tmp, { recursive: true })
+  const profile = fs.mkdtempSync(path.join(tmp, 'hb-tray-'))
+  t.teardown(() => fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5 }))
+  const user = '--user-data-dir=' + profile
+
+  const first = launch(['.', user, '--traycheck', 'quit'])
+  await first.saw('TRAYCHECK WAITING')
+  const second = await run(['.', user])
+  t.is(second.code, 0, 'the second launch ends by itself')
+  t.absent(second.out.includes('engine up'), 'without starting a second engine')
+  const one = await first.done
+  t.is(fails(one.out).length, 0, fails(one.out).join('; '))
+  t.ok(one.out.includes('TRAYCHECK QUIT'))
+  t.is(one.code, 0, "the tray's Quit ends the process")
+
+  // the same data folder: an engine left running by the first would hold it, and this one couldn't start
+  const two = await run(['.', user, '--traycheck', 'off'])
+  t.ok(two.out.includes('engine up'), 'the engine starts again on the same folder')
+  t.is(fails(two.out).length, 0, fails(two.out).join('; '))
+  t.ok(two.out.includes('TRAYCHECK CLOSE'))
+  t.is(two.code, 0, 'with the setting off, closing the window ends the process')
+  t.is(JSON.parse(fs.readFileSync(path.join(profile, 'shell.json'), 'utf-8')).settings.tray, false, 'the setting is remembered')
 })

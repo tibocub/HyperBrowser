@@ -75,6 +75,7 @@ export function start (ipc) {
       case 'site.on': return listen(p)
       case 'site.off': return off(p)
       case 'site.close': return closeSite(keyOf(p))
+      case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length } // the tray's status line (spec 010)
       default: throw error('UNKNOWN_METHOD', 'unknown method ' + method)
     }
   }

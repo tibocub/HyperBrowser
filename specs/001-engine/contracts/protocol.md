@@ -32,6 +32,7 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 | `site.on` | `{ key, sub?, event }` | `{ id }`; then `event` events |
 | `site.off` | `{ id }` | `true` |
 | `site.close` | `{ key }` | `true`. The last open's close: its live views and listeners stop, its handle released, and, unless it is installed or the person's own, the site is left after `grace` (spec 004) |
+| `hosting` | `{}` (spec 010) | `{ sites }`: how many sites (top-level spaces) this device holds joined, so serves: installed, own, joined instances, and those open or in their grace period |
 | `close` | `{}` | `true`: everything closed; the engine then ends its stream |
 
 `site.read`, `site.call`, `site.live`, `site.on` need the site opened (`site.open`) in this engine first

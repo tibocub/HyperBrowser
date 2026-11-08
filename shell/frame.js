@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { parseAddress, shortKey, upsert, move, remove } from './model.js'
+import { startTray, hasTray } from './tray.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const POLL = 2000
@@ -16,6 +17,7 @@ const KINDS = new Set(['installed', 'bookmark'])
 const THEMES = new Set(['system', 'light', 'dark'])
 const ACCENTS = new Set(['#1f4fd1', '#c2410c', '#0b7a52'])
 const DEV = !app.isPackaged // devtools: F12, Ctrl+Shift+I
+const NOTICE = 'HyperBrowser keeps running in the tray to host your sites; turn this off in HyperBrowser ▾'
 
 // The frame's pixel icons (spec 008): one PNG a glyph in shell/icons/, dark pixels are the glyph (white or
 // transparent around). Sent to the frame as SVG paths, one 1×1 run a row, so they keep currentColor.
@@ -75,7 +77,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const s = saved?.settings || {}
     return {
       desktop: { icons },
-      settings: { theme: THEMES.has(s.theme) ? s.theme : 'system', accent: ACCENTS.has(s.accent) ? s.accent : '#1f4fd1' }
+      settings: { theme: THEMES.has(s.theme) ? s.theme : 'system', accent: ACCENTS.has(s.accent) ? s.accent : '#1f4fd1', tray: s.tray !== false, trayNoticed: !!s.trayNoticed }
     }
   }
 
@@ -296,6 +298,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       case 'settings':
         if (THEMES.has(a.theme)) nativeTheme.themeSource = data.settings.theme = a.theme
         if (ACCENTS.has(a.accent)) data.settings.accent = a.accent
+        if (typeof a.tray === 'boolean') { data.settings.tray = a.tray; setTray() }
         save()
         push()
         return { result: true }
@@ -323,11 +326,40 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   })
   fwc.on('before-input-event', (e, input) => { if (DEV && input.type === 'keyDown' && (input.key === 'F12' || ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i'))) { e.preventDefault(); fwc.toggleDevTools() } })
 
+  // The tray (spec 010): while there is one, closing the window hides it; the engine, the open tabs and their
+  // views stay (the window comes back as it was, and Chromium throttles hidden pages). Quit destroys the
+  // window: 'closed' below, then main.js's window-all-closed stops the engine and quits, as without a tray.
+  let tray = null
+  let notices = 0
+  const TRAY = hasTray()
+  function setTray () {
+    if (data.settings.tray && TRAY && !tray) tray = startTray({ rpc, show, quit: () => win.destroy() })
+    else if (!data.settings.tray && tray) { tray.destroy(); tray = null }
+  }
+  function show () {
+    if (win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  }
+  win.on('close', (e) => {
+    if (!tray) return
+    e.preventDefault()
+    win.hide()
+    if (data.settings.trayNoticed) return
+    data.settings.trayNoticed = true
+    save()
+    notices++
+    tray.notice(NOTICE)
+  })
+  setTray()
+
   win.on('resize', layout)
   win.on('maximize', push)
   win.on('unmaximize', push)
   win.on('closed', () => {
     clearInterval(timer)
+    if (tray) tray.destroy()
     ipcMain.removeHandler('frame')
     for (const t of tabs) if (t.close) t.close()
   })
@@ -337,6 +369,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   for (const i of data.desktop.icons) if (i.key && !!i.kept !== (i.kind === 'installed')) keepSite(i.key, i.kind === 'installed')
   if (open) openKey(open)
   // for the frame check (npm run test:sandbox): where everything is
-  const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc })
-  return { win, inspect }
+  const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings })
+  return { win, inspect, show }
 }

@@ -16,7 +16,7 @@ Accepted only from the frame's own view; any other sender gets `{ error: { code:
 | `icon.move` | `{ id, col, row }` | moves an icon (swaps with one already there) |
 | `icon.kind` | `{ id, kind }` | `installed` or `bookmark` |
 | `icon.remove` | `{ id }` | |
-| `settings` | `{ theme?, accent? }` | |
+| `settings` | `{ theme?, accent?, tray? }` (`tray`: boolean, spec 010: closing the window keeps HyperBrowser in the tray) | |
 | `window` | `{ act }` | `minimize`, `maximize` (toggles restore), `close` |
 | `cover` | `{ full }` | `true` while a frame menu is open: the frame covers the window |
 | `bars` | `{ height }` | the bars' height in px (the frame measures itself) |
