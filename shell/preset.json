@@ -1,7 +1,7 @@
 [
   { "id": "preset:hb", "key": "8cbbhekq5b34o49ottfk85agmaudp4fe7ixfsown8zmp9gwfxino", "title": "HyperBrowser", "glyph": "hb", "kind": "installed" },
   { "id": "preset:forum", "key": "95exzhp3csdm5r97y9r8maym3bx7bnjh9a5qfq98yh985q1xofky", "title": "HyperBrowser Forum", "glyph": "forum", "kind": "installed" },
-  { "id": "preset:apps", "title": "Apps", "glyph": "site", "kind": "installed" },
-  { "id": "preset:chat", "title": "Chat", "glyph": "site", "kind": "installed" },
-  { "id": "preset:contacts", "title": "Contacts", "glyph": "site", "kind": "installed" }
+  { "id": "preset:apps", "key": "7nrzmnuotf13eziq7wz5q1886bfmu5o1qpnd9ue1jiyzcp1fqjeo", "title": "Apps", "glyph": "site", "kind": "installed" },
+  { "id": "preset:chat", "key": "ycexw7hb3cqmckdtsewjxgnxnnjom3t6ofqmkq1hgqxqaceutmro", "title": "Chat", "glyph": "site", "kind": "installed" },
+  { "id": "preset:contacts", "key": "11b3p18zue869siu7izmpr38hbhrs3n73hc45tf3f313txgaqr6o", "title": "Contacts", "glyph": "site", "kind": "installed" }
 ]
