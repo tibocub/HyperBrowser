@@ -62,6 +62,19 @@ checkout as before: a folder's key is tied to its path, so another checkout (a w
 already in `preset.json` that differs is never overwritten (it says `KEPT`) unless you add `--replace`. It stops
 when done: to stay online for visitors, `node engine/cli.js publish <folder>` as above.
 
+### Bundled apps (spec 015)
+
+`npm run build -- --apps-from <owner folder>` packs each preset app's own data (`scripts/bundle.js`, SwarmFS
+packs: the app's space, its pages and the files too big for a record, signed by the owner; no key, identity,
+personal space or setting) into the app's `apps/` folder with `bundle.json` (`{ id, apps: [{ id, key }] }`).
+The shell passes it as `init { bundle }`. At start the engine imports it when this engine folder hasn't imported
+this bundle yet (`<dir>/bundled.json` holds the id done), or a bundled app isn't held here: each app as a visit
+of it, every block checked against its writer's signature and every file against its signed hash, so a changed
+snapshot is refused (logged; tried again at the next start; the start goes on). Then the shell installs the
+preset apps as before, with no peer needed. A newer version held here stays (a core is never taken back);
+later versions come from peers. Bundled apps stay joined and served, installed or not. The forum's preset key
+is its official instance (invite-only): its app is packed, the instance is not.
+
 ## Open a site
 
 ```bash
@@ -78,7 +91,8 @@ The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` fro
   its last tab closes (5 min: `init`'s `grace`). Then the engine leaves its space (SwarmFS `leave`, hypergraph
   `leaveSpace`): it is no longer announced or served, and its records go from this device. Its files stay
   in app storage; opening it again joins it again (someone must be online) and reuses them.
-- **At start**: before anything else, every site held here that is neither installed nor yours is left
+- **Bundled apps** (spec 015): joined and served from engine start too, installed or not.
+- **At start**: before anything else, every site held here that is neither installed nor yours nor bundled is left
   (sites joined by older versions, which never left one).
 - **Eviction** (app storage over its cap) deletes cached files whether the space is joined or not; a site
   that isn't installed is left within the grace period of its last tab anyway.
@@ -107,7 +121,7 @@ hypergraph pairs devices; the engine passes it through:
 ## Tests
 
 ```bash
-npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum
+npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
 npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %, the tray (spec 010)
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS

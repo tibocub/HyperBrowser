@@ -3,7 +3,11 @@
 //   Windows: <out>/dist/win-unpacked (the HyperBrowser folder: what is released) and HyperBrowser.zip (it, to
 //            download); Linux: HyperBrowser.AppImage; macOS: HyperBrowser.zip (the .app, not tested).
 //
-//   npm run build [-- --version x.y.z] [-- --upgrade pear://...] [-- --out <dir>]
+//   npm run build [-- --version x.y.z] [-- --upgrade pear://...] [-- --out <dir>] [-- --apps-from <dir>]
+//
+// --apps-from: the owner's engine folder (the one `npm run apps:publish` publishes from): the preset apps'
+// own signed data is packed into <out>/app/apps (spec 015, scripts/bundle.js), so a new install opens them
+// with nobody online and peers update them. No process may have that folder open. Without it: no apps.
 //
 // The app's files (shell/, engine/) go to <out>/app with a package.json of their own; the sibling repos this
 // repo links (file:../hypergraph, ../SwarmFS... and theirs) are copied in as real folders, without their
@@ -15,6 +19,7 @@ import { execFileSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { bundleApps } from './bundle.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'))
@@ -23,6 +28,8 @@ const arg = (name, def) => { const i = argv.indexOf(name); return i === -1 ? def
 const version = arg('--version', pkg.version)
 const upgrade = arg('--upgrade', pkg.upgrade || null)
 const out = path.resolve(arg('--out', path.join(ROOT, 'out')))
+const appsFrom = arg('--apps-from', null)
+const preset = path.resolve(arg('--preset', path.join(ROOT, 'shell', 'preset.json'))) // a check's copy, as apps-publish's --preset
 const app = path.join(out, 'app')
 const vendor = path.join(out, 'vendor')
 const cache = path.join(out, 'cache')
@@ -34,6 +41,7 @@ const BUILDER = '26.18.0' // electron-builder, pinned: only the build uses it, s
 if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('version must be x.y.z: ' + version)
 if (!TARGET) throw new Error('no build for ' + process.platform)
 if (!upgrade) console.warn('no release channel (package.json "upgrade" or --upgrade): this build never updates')
+if (!appsFrom) console.warn('no --apps-from <owner engine folder>: this build ships no apps (a new install opens them only from peers)')
 
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32', env: { ...process.env, npm_config_cache: path.join(cache, 'npm'), ELECTRON_BUILDER_CACHE: path.join(cache, 'electron-builder') } })
 const copy = (from, to) => fs.cpSync(from, to, { recursive: true, filter: (src) => !SKIP.has(path.basename(src)) || src === from })
@@ -64,6 +72,11 @@ fs.rmSync(vendor, { recursive: true, force: true })
 fs.rmSync(path.join(out, 'dist'), { recursive: true, force: true })
 for (const d of ['shell', 'engine']) copy(path.join(ROOT, d), path.join(app, d))
 fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(app, 'LICENSE'))
+fs.copyFileSync(preset, path.join(app, 'shell', 'preset.json'))
+if (appsFrom) {
+  const presets = JSON.parse(fs.readFileSync(preset, 'utf-8'))
+  for (const a of await bundleApps(path.resolve(appsFrom), path.join(app, 'apps'), presets)) console.log('bundled ' + a.id + ': ' + a.key)
+}
 vendorOf(ROOT)
 const dependencies = {}
 for (const [name, spec] of Object.entries(pkg.dependencies)) {
@@ -80,7 +93,7 @@ fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({
     productName: pkg.productName,
     asar: false, // pear-runtime starts the Bare workers from real files
     directories: { output: path.join(out, 'dist') },
-    files: ['shell/**', 'engine/**', 'package.json', 'LICENSE', 'node_modules/**'],
+    files: ['shell/**', 'engine/**', 'apps/**', 'package.json', 'LICENSE', 'node_modules/**'],
     win: { icon: 'shell/app.png' },
     linux: { icon: 'shell/app.png', category: 'Network' },
     appImage: { artifactName: '${productName}.AppImage' }, // eslint-disable-line no-template-curly-in-string

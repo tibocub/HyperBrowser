@@ -40,21 +40,33 @@ Commit that line: it is public, like a site key. Every build made from now on fo
 ## Each release
 
 1. **Version**: raise `"version"` in `package.json` (`0.0.1` → `0.0.2`). Only a higher version reaches installed copies; there is no going back down, so a rollback is a new, higher version. Commit.
-2. **Build on Windows** (in the repo, on the PC):
+2. **Publish the apps, then build on Windows** (in the repo, on the PC). Stop anything running on the owner
+   folder first (`cli.js publish`): the build opens it to pack the apps.
 
    ```bash
-   npm run build
+   npm run apps:publish -- --dir E:/Code/P2P/hyperbrowser-owner
    ```
+
+   ```bash
+   npm run build -- --apps-from E:/Code/P2P/hyperbrowser-owner
+   ```
+
+   `--apps-from` packs the preset apps (spec 015) into the build: their own signed data, the same sites with the
+   same keys, so a new install opens them with nobody online, and peers update them as before. It packs what
+   is published in that folder (run `apps:publish` first: edits not published yet are not packed). The forum
+   icon's official instance is invite-only, so only the forum **app** is packed; the instance's posts still come
+   from a peer. Without `--apps-from` the build warns and ships no apps.
 
    This takes about 3–5 minutes and gives two things:
    - `out/dist/win-unpacked/`: the HyperBrowser folder, which is what gets released;
    - `out/dist/HyperBrowser.zip`: the same folder zipped (~180 MB, one `HyperBrowser` folder inside), for people to download.
 
    The first build downloads the packages and build tools (~300 MB) into `out/cache`. It uses the Electron already in `node_modules`.
-3. **Build on Linux** (on the laptop, the same commit, set up the same way):
+3. **Build on Linux** (on the laptop, the same commit, set up the same way; copy the owner folder there first,
+   with nothing running on it on either machine, or skip `--apps-from`: that build then ships no apps):
 
    ```bash
-   npm run build
+   npm run build -- --apps-from <the owner folder's copy>
    ```
 
    This gives `out/dist/HyperBrowser.AppImage`. Copy it to the PC, next to the repo for example (USB stick, `scp`, a shared folder).
