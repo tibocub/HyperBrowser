@@ -502,7 +502,8 @@ async function startEngine (dir, more = {}) {
   worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
   const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
-  const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), ...more })
+  // spec 015: the apps a build packed (scripts/build.js --apps-from) next to shell/; none when run from the repo
+  const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), ...more })
   if (APPS.chat) await rpc.request('apps.set', { chat: APPS.chat }) // spec 013: friends' conversations are Chat's (also after a join)
   return up
 }

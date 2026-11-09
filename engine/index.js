@@ -56,6 +56,7 @@ export function start (ipc) {
   let grace = GRACE
   let opening = 0
   const subs = new Map() // id -> { key, stop }
+  const bundled = new Set() // keys of the apps shipped inside HyperBrowser (spec 015): always joined, so served
   let closed
   const done = new Promise((resolve) => { closed = resolve })
 
@@ -106,7 +107,8 @@ export function start (ipc) {
   }
 
   // joinCode: another device's code (spec 012): this empty folder becomes a device of that identity.
-  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName }) {
+  // bundle: the official apps shipped inside HyperBrowser (spec 015), a folder made by scripts/build.js.
+  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName, bundle }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
     starting = SwarmFS.open(dir, { bootstrap, appStorageMax, joinCode, joinTimeout, deviceName })
@@ -114,7 +116,10 @@ export function start (ipc) {
     if (g !== undefined) grace = g
     sfs = await starting
     sfs.hg.on('devices', () => rpc.emit('devices', {}))
+    const list = typeof bundle === 'string' && bundle ? await readBundle(bundle) : null
+    for (const a of list?.apps || []) bundled.add(a.key)
     await sweep()
+    if (list) await unbundle(bundle, list, dir)
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
     people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance })
     if (heartbeat) {
@@ -522,9 +527,10 @@ export function start (ipc) {
   // --- hosting (specs/004-hosting): installed and own sites stay joined; the others only while shown ---
 
   // An app's instance stays joined too (spec 009 Q7: an invite-only forum isn't lost when its tab closes); it is
-  // online while used (hypergraph opens spaces while used). Only instances.leave drops one.
+  // online while used (hypergraph opens spaces while used). Only instances.leave drops one. A bundled app (spec 015)
+  // too: every HyperBrowser serves the apps it shipped with, installed or not.
   async function hosted (site) {
-    return !!site.app || (await site.kept()) || (await site.space.getRole(sfs.hg.identity.publicKey)) === 'owner'
+    return !!site.app || bundled.has(site.key) || (await site.kept()) || (await site.space.getRole(sfs.hg.identity.publicKey)) === 'owner'
   }
 
   function stay (key) {
@@ -554,6 +560,40 @@ export function start (ipc) {
       if (site && !(await hosted(site).catch(() => true))) await sfs.leave(key).catch(() => {})
       else if (site && !((INSTALLED + key) in settings) && await site.kept().catch(() => false)) await sfs.hg.setSetting(INSTALLED + key, name ?? '')
     }
+  }
+
+  // --- bundled apps (spec 015) ---
+
+  // bundle.json { id, apps: [{ id, key }] }, or null: a build without apps.
+  async function readBundle (bundle) {
+    try {
+      const list = JSON.parse(await fs.promises.readFile(path.join(bundle, 'bundle.json'), 'utf-8'))
+      return typeof list?.id === 'string' && Array.isArray(list.apps) ? { id: list.id, apps: list.apps.filter((a) => typeof a?.key === 'string' && KEY.test(a.key)) } : null
+    } catch {
+      return null
+    }
+  }
+
+  // The bundle's apps imported as visits of them (SwarmFS packs: their own signed data, checked as replicated):
+  // once per bundle, and again for one not held here. A newer version held here stays (hypergraph never takes a
+  // core back); later ones come from peers. The shell then installs the preset apps as before. A failed app is
+  // logged and tried again at the next start; the start goes on (its peers may serve it).
+  async function unbundle (bundle, list, dir) {
+    const marker = path.join(dir, 'bundled.json') // this engine folder's: the bundle it imported
+    let done = null
+    try { done = JSON.parse(await fs.promises.readFile(marker, 'utf-8')).id } catch {}
+    const held = (key) => { try { sfs.hg.space(key); return true } catch { return false } }
+    const todo = list.apps.filter((a) => done !== list.id || !held(a.key))
+    let failed = false
+    for (const a of todo) {
+      try {
+        await sfs.importSites(path.join(bundle, a.key), { timeout: 10000 }) // copied in process: seconds at most
+      } catch (err) {
+        failed = true
+        console.error(`bundled app ${a.id} (${a.key}) not imported: ${err.code || 'ERROR'} ${err.message}`)
+      }
+    }
+    if (todo.length && !failed) await fs.promises.writeFile(marker, JSON.stringify({ id: list.id }))
   }
 
   // --- devices (spec 012): one identity on several devices ---
