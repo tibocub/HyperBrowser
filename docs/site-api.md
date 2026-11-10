@@ -58,6 +58,9 @@ stop(); off()
   `NOT_ALLOWED`.
 - Reads answer at once: right after a visitor opens your site, a list may be empty with `complete: false`.
   Show it as "loading" and keep a live view: it fires again when records arrive.
+- Live views and `on` listeners last as long as the page: a real load (`location.search = …`, a link to another
+  page, reload, closing the tab) stops them all, and the new page subscribes again. A hash change (`location.hash`,
+  `history.replaceState`) isn't a load: they keep running.
 - Errors have a `code` (`NOT_ALLOWED`, `NOT_FOUND`, `INVALID_TYPE`…) and a `message`; they are plain objects
   `{ name: 'HyperError', code, message }`, not `Error`s. Bytes fields are `Uint8Array`.
 - The official forum (`sites/forum`) is a full example: [forum.md](forum.md).

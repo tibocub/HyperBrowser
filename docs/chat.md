@@ -34,11 +34,14 @@ Publishing again sends the edited pages to everyone; Chat's new record types rea
   `invite` record (link + name) in the direct conversation.
 - **Calls between apps** go through the shell (`hyper.people`, `shell/main.js` `people()`): open needs a click
   (the preload passes `navigator.userActivation.isActive`), a request needs the person's yes in a dialog.
+- **A redraw keeps your place.** The message list opens at the latest message and follows new ones while you are
+  at the end; scrolled up, it stays put; sending takes you to the end (`sites/chat/lib/scroll.js`). The caret and
+  selection in the draft stay where they were.
 - No stylesheet in either app: HyperBrowser's default theme.
 
 ## Limits (shortcuts)
 
-- A conversation shows its latest 300 messages.
+- A conversation shows its latest 300 messages; past that, a new message shifts your place by the one that drops.
 - Requests need both people online at once (no sealed inbox); an incoming list of at most 100.
 - An impostor answering under someone's DHT name can spoil (not read) a request: B5.
 - A second DHT node per engine for the rendezvous: B6.

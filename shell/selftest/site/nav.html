@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Loads</title>
+<script>
+// subscribes the moment it starts: the shell, noticing this load, must not stop it (checkLoads in shell/main.js)
+window.__got = 0
+window.hyper.query('profile').live(() => { window.__got++ })
+</script>
