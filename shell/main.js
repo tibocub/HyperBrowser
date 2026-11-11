@@ -358,7 +358,7 @@ async function selftest (dir) {
   out.push({ site: 'shell', name: 'a page with no stylesheet gets the default theme (fonts, a fixed dither)', pass: plain === "\"HB Plex Mono\", ui-monospace, monospace|fixed" })
   out.push({ site: 'shell', name: 'a page with its own <style> keeps its look', pass: !styled.includes('HB ') })
   await checkLoads(views, out)
-  await checkChat(win, views, out)
+  await checkChat(win, views, out, tmp)
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
@@ -425,9 +425,11 @@ async function checkLoads ([a, b], out) {
 }
 
 // Chat's page, in a real browser: where a redraw leaves the message list and the caret.
-async function checkChat (win, views, out) {
+async function checkChat (win, views, out, tmp) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
-  const { key } = await rpc.request('site.publish', { folder: path.join(HERE, '..', 'sites', 'chat') })
+  const folder = path.join(tmp, 'chat') // a copy: publishing links a folder both ways with the engine
+  fs.cpSync(path.join(HERE, '..', 'sites', 'chat'), folder, { recursive: true })
+  const { key } = await rpc.request('site.publish', { folder })
   const chat = await openSite(key)
   views.push(chat)
   win.contentView.addChildView(chat.view)
