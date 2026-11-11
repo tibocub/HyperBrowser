@@ -197,17 +197,21 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     drop((x) => x.app === CONTACTS_APP && !now.has(x.author)) // answered: the request is gone
     file.items = [...out, ...file.items].slice(0, ITEMS_MAX)
     if (out.length) dirty = true
+    lastContacts = JSON.stringify(s[CONTACTS] ?? null)
     pending.push(() => setCursor(CONTACTS_APP, Object.fromEntries([...now].map((id) => [id, 1]))))
     return out
   }
 
   // --- one pass: the places named (all of them: null), told, then saved ---
 
+  // A closed space can't have news (records arrive only while it is open), and since() would open it: only the
+  // places held (chats, the turn's) or open anyway (a page shows it, hypergraph's recent ones) are checked.
   async function pass (only = null) {
     const s = await settings()
     const fresh = []
+    const open = new Set(sfs.hg.spaces().filter((x) => x.opened).map((x) => x.key))
     for (const p of places(s)) {
-      if (only && !only.includes(p.place)) continue
+      if ((only && !only.includes(p.place)) || !(held.has(p.place) || open.has(p.place))) continue
       try { fresh.push(...await check(p, s)) } catch {} // a space that can't be read now: next time
     }
     if (!only) fresh.push(...requests(s))
@@ -325,14 +329,30 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     const next = ring.slice(at, at + TURN_N)
     at += TURN_N
     for (const p of next) { turning.push(p.place); await hold(p) }
+    if (next.length) await pass(next.map((p) => p.place)) // held now: a first look starts here, not at the turn's end
     turnTimer = closed ? null : setTimeout(() => serial(rotate).catch(noop), turn)
   }
 
+  // Any setting fires 'settings' (a forum's read state, a read here): the places are looked at again only when
+  // what decides them changed; friend requests when the contacts did; else only the unread counts.
   let syncTimer = null
+  let lastDigest = null
+  let lastContacts = null
+  const decides = (n) => n === PERMITS || n.startsWith(APP) || n.startsWith(MUTE) || /^hyperbrowser\/app\/[^/]+\/instances$/.test(n)
+  async function react () {
+    const s = await settings()
+    const digest = JSON.stringify(Object.keys(s).filter(decides).sort().map((n) => [n, s[n]]))
+    if (digest !== lastDigest) {
+      lastDigest = digest
+      return sync()
+    }
+    if (JSON.stringify(s[CONTACTS] ?? null) !== lastContacts) return tell(requests(s))
+    return changed()
+  }
   const onSettings = () => {
     if (closed) return
     clearTimeout(syncTimer)
-    syncTimer = setTimeout(() => serial(sync).catch(noop), 200)
+    syncTimer = setTimeout(() => serial(react).catch(noop), 200)
   }
 
   // --- start ---
@@ -344,7 +364,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     } catch {}
     launchTimer = setTimeout(() => serial(endLaunch).catch(noop), turn)
     sfs.hg.on('settings', onSettings)
-    await serial(sync)
+    await serial(react)
   })()
   ready.catch(noop)
 
@@ -354,6 +374,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     setChat (key) {
       if (key === chat) return
       chat = key
+      lastDigest = null // which places stay held changed
       onSettings()
     },
 

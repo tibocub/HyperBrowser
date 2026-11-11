@@ -96,3 +96,22 @@ Not built:
   engine alone in a fresh process, 209 MB before watching; while watching 50 places it never went above it (growth
   −74 to −2 MB: start-up garbage freed). CPU in the second half: median 3.1 % of one core, max 7.5 % (the turns).
   With the places' peers online the memory would be higher (replication): not measured.
+
+## Review fix (lead, 2026-11-11): watching opened every closed place
+
+`space.since()` opens a closed space, and every `settings` event (a forum's read state, a read here) ran a check of
+all watched places: all of them opened at once, defeating the turns.
+- [x] Only places held (chats, the current turn) or open anyway are checked: a closed space can't have news. A
+  turn's places are checked when held, and again at the turn's end.
+- [x] `sync()` runs only when the settings that decide the watched places change (permissions,
+  `notify/app/*`, mute, the apps' instance lists: a digest); the contacts' change only re-reads friend requests;
+  anything else only recounts unread.
+- [x] Test (failed before the fix): `notifications()` on a stub hypergraph, 10 places, one open: at the start only
+  the turn's 2 and the open one are read; a setting change and a read open none.
+- Found on the way, not changed (not this spec): in this engine no space ever closes. 40 joined forums, Bob's
+  engine restarted with notifications never allowed: 82 of 82 spaces open after start, still 82 after 5 minutes
+  (the start-up sweep of spec 004 opens every site; something keeps them open after). So the turns' saving is
+  real only once that is fixed.
+- Runs: Node 73/73 three times (once before, 65/67: an unhandled "not a site" crashed a file, not reproduced in
+  3 runs, file unknown); Bare 73/73; perf: 201 MB at start, growth at most 3.4 MB, CPU median 4.2 % of a core,
+  max 9.1 %.

@@ -2,8 +2,9 @@
 // watches its instances with no app code, finds what's new with space.since() cursors (never by dates), and
 // tells the shell (notify.* messages, the `notify` event). Engines on a local DHT, no site view open.
 import test from 'brittle'
-import { engine, siteFolder, siteApi, codeOf, eventually, sleep, bootstrap } from './helpers.js'
+import { engine, siteFolder, siteApi, codeOf, eventually, sleep, bootstrap, tmpDir } from './helpers.js'
 import { parseManifest } from '../engine/manifest.js'
+import { notifications } from '../engine/notifications.js'
 
 const CHAT = {
   manifest: {
@@ -271,4 +272,46 @@ test('two devices of one person: reading on one clears the other; a block follow
   t.ok(await eventually(() => laptop.e.events.some((x) => x.event === 'notify' && x.data.unread.total === 0), 10000), 'with a notify event')
   await pc.e.rpc.request('notify.set', { app: key, allow: false })
   t.ok(await eventually(async () => (await items(laptop)).length === 0, 30000), 'blocked on the PC: blocked on the laptop')
+})
+
+// notifications() on a stub hypergraph: which places since() reads (it opens a closed space: hypergraph 021).
+test('watching opens no closed place: only held or open ones are checked, a setting change or a read opens none', async (t) => {
+  const APP = 'a'.repeat(52)
+  const places = Array.from({ length: 10 }, (_, i) => 'p' + i)
+  const set = {
+    'hyperbrowser/permissions': { [APP]: { notifications: true } },
+    ['hyperbrowser/notify/app/' + APP]: { title: 'Forum', watches: [{ type: 'mention', me: 'who', says: 'mentioned you' }], hide: false },
+    ['hyperbrowser/app/' + APP + '/instances']: Object.fromEntries(places.map((p) => [p, true]))
+  }
+  const opened = new Set(['p9']) // a page shows it
+  const read = []
+  const listeners = []
+  const hg = {
+    identity: { publicKey: 'me' },
+    settings: async () => ({ ...set }),
+    setSetting: async (n, v) => { set[n] = v; for (const fn of listeners) fn() },
+    on: (e, fn) => listeners.push(fn),
+    off: () => {},
+    spaces: () => places.map((key) => ({ key, opened: opened.has(key) })),
+    space: (key) => ({
+      name: key,
+      since: async () => { read.push(key); opened.add(key); return { records: [], cursor: {} } },
+      ready: async () => {},
+      isComplete: () => true,
+      hold: async () => { opened.add(key); return () => {} },
+      on () {},
+      off () {},
+      get: async () => ({ record: null })
+    })
+  }
+  const notes = notifications({ sfs: { hg }, dir: tmpDir(t), emit: () => {}, turn: 600000 }) // one long turn: p0, p1
+  await notes.state()
+  await sleep(500)
+  t.alike([...new Set(read)].sort(), ['p0', 'p1', 'p9'], 'at the start: the turn places and the open one')
+  read.length = 0
+  await hg.setSetting('hyperbrowser/site/' + APP + '/seen', 1) // a page's own data: decides nothing
+  await notes.read({ place: 'p3' })
+  await sleep(1000)
+  t.alike(read.filter((k) => !['p0', 'p1', 'p9'].includes(k)), [], 'a setting change and a read open none')
+  await notes.close()
 })
