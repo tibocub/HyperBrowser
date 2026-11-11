@@ -1,6 +1,7 @@
 // Chat's page (spec 013): conversations on the left, the open one on the right, redrawn from live views. No
 // stylesheet: HyperBrowser's default theme, with a few inline layout rules. Data: lib/chat.js.
 import { chat, ROLES, MODERATORS, INVITERS } from './lib/chat.js'
+import { keepScroll } from './lib/scroll.js'
 
 const hyper = window.hyper
 const root = document.getElementById('app')
@@ -68,7 +69,10 @@ function open (key) {
 
 function draw () {
   const conv = convs.find((x) => x.key === current)
-  const typing = document.activeElement?.name === 'text' // a redraw (a message arriving) keeps the writer's place
+  // a redraw (a message arriving) keeps the writer's caret and the reader's place
+  const typing = document.activeElement?.name === 'text' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null
+  const top = keepScroll(root.querySelector('[data-key]'), view?.key, view?.toEnd)
+  if (view) view.toEnd = false
   root.replaceChildren(h('div', { style: 'display:flex; gap:16px; align-items:flex-start; padding:8px' },
     h('nav', { style: 'width:220px; flex:none' },
       h('h2', {}, 'Chat'),
@@ -81,10 +85,12 @@ function draw () {
       h('form', { onsubmit: newGroup }, h('input', { name: 'name', placeholder: 'New group name', maxlength: 200 }), ' ', h('button', {}, 'Create'))),
     h('main', { style: 'flex:1; min-width:0' }, notice ? h('p', { role: 'alert' }, notice) : null,
       view && conv ? conversation(conv) : h('p', {}, 'Pick a conversation.'))))
+  const list = root.querySelector('[data-key]')
+  if (list) list.scrollTop = top ?? list.scrollHeight
   if (typing) {
     const box = root.querySelector('textarea[name=text]')
     box?.focus()
-    box?.setSelectionRange(box.value.length, box.value.length)
+    box?.setSelectionRange(...typing)
   }
 }
 
@@ -95,7 +101,7 @@ function conversation (conv) {
     if (inv.author === me.identity || joined['invite:' + inv.id]) continue
     out.push(h('p', {}, nameOf(inv.author), ' invites you to the group ', h('b', {}, inv.name), ' ', h('button', { onclick: () => join(inv) }, 'Join')))
   }
-  out.push(h('div', { style: 'max-height:60vh; overflow:auto' }, view.messages.map((m) => h('p', {},
+  out.push(h('div', { 'data-key': view.key, style: 'max-height:60vh; overflow:auto' }, view.messages.map((m) => h('p', {},
     h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(m.author)) } }, h('b', {}, nameOf(m.author))),
     h('span', { class: 'small' }, ' ', new Date(m.stamp).toLocaleString(), m.edited ? ' (edited)' : ''), h('br'),
     h('span', { style: 'white-space:pre-wrap' }, m.text), ' ',
@@ -148,7 +154,7 @@ function send (e) {
   const editing = view.editing
   act(async () => {
     if (editing) await c.edit(view.key, editing.id, text)
-    else await c.send(view.key, text)
+    else { await c.send(view.key, text); view.toEnd = true }
     view.editing = view.draft = null
   })
 }

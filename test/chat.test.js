@@ -5,6 +5,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, sleep } from './helpers.js'
 import { chat } from '../sites/chat/lib/chat.js'
+import { keepScroll } from '../sites/chat/lib/scroll.js'
 
 const FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'chat')
 
@@ -36,6 +37,17 @@ async function joinFromInvite (b, a) {
   await eventually(async () => (invite = (await b.hyper.instance(direct).query('invite').latest(1)).items[0]), 30000)
   return b.c.join(invite.link)
 }
+
+// The caret across a redraw needs a real page: the sandbox self-test checks it (and this, in a browser).
+test('a redraw keeps the reader in the message list, or at the end', (t) => {
+  const list = (key, scrollTop) => ({ dataset: { key }, scrollTop, scrollHeight: 1000, clientHeight: 400 })
+  t.is(keepScroll(null, 'a'), null, 'a conversation just opened: the end')
+  t.is(keepScroll(list('a', 600), 'a'), null, 'at the end: stays there')
+  t.is(keepScroll(list('a', 595), 'a'), null, 'a few pixels short still counts')
+  t.is(keepScroll(list('a', 300), 'a'), 300, 'scrolled up: keeps the place')
+  t.is(keepScroll(list('a', 300), 'a', true), null, 'your own message: the end')
+  t.is(keepScroll(list('b', 300), 'a'), null, "another conversation doesn't inherit it")
+})
 
 test('a direct conversation and a group where the owner hands out rights', async (t) => {
   t.timeout(300000)

@@ -15,6 +15,9 @@ ipcRenderer.on('hyper-event', (e, { id, data }) => {
   if (fn) fn(data)
   else early.set(id, [...(early.get(id) || []), data])
 })
+// The first word of each real load, before the page can subscribe: the shell stops the last page's subscriptions.
+// Its answer comes after anything they still sent here, and before any event of this page's own.
+ipcRenderer.invoke('site', { op: 'page' }).then(() => early.clear(), () => {})
 
 async function invoke (msg) {
   const r = await ipcRenderer.invoke('site', msg)

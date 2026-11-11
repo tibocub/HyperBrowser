@@ -68,12 +68,14 @@ const sites = new Map() // key -> { manifest, dynamic }
 const viewOf = new Map() // webContents id -> site key
 const subscribers = new Map() // engine subscription id -> webContents
 const early = new Map() // engine subscription id -> events that came before its reply
+const pages = new WeakMap() // webContents -> how many pages it has loaded (the preload's 'page' message)
 const asking = new Map() // key -> the identity question in progress
 const asked = [] // keys the question was asked for (the self-test checks: once per site)
 const permits = new Map() // key -> the contacts question in progress (spec 013)
 const peopleOpened = [] // the self-test's record of what hyper.people opened (no frame there)
 const appsInstalled = new Set() // the self-test's installs and opens through hyper.apps (spec 014)
 const appsOpened = []
+const heard = [] // the self-test's record of which subscriptions the engine still sends events for
 let selftestYes = false // the self-test's answer to "Install …?"
 
 async function serve (key, p) {
@@ -88,6 +90,7 @@ function onEvent (event, data) {
     return
   }
   if (event !== 'live' && event !== 'event') return
+  if (SELFTEST) heard.push(data.id)
   const wc = subscribers.get(data.id)
   const out = event === 'live' ? { items: data.items, complete: data.complete } : data.data
   if (!wc) early.set(data.id, [...(early.get(data.id) || []), out])
@@ -119,13 +122,31 @@ function askPermit (key) {
   return permits.get(key)
 }
 
+// Events on their way land in `early` meanwhile; the engine's answer comes after them.
+async function unsubscribe (id) {
+  subscribers.delete(id)
+  await rpc?.request('site.off', { id }).catch(() => {})
+  early.delete(id)
+  return true
+}
+
+function stopAll (wc) {
+  for (const [id, x] of subscribers) if (x === wc) unsubscribe(id)
+  return true
+}
+
 async function bridge (wc, msg) {
+  if (msg.op === 'page') { // a real load: a hash change runs no preload, a cancelled navigation doesn't get here
+    pages.set(wc, (pages.get(wc) || 0) + 1)
+    return stopAll(wc)
+  }
+  const page = pages.get(wc)
   let key = viewOf.get(wc.id)
   let sub = msg.sub ?? null
   let instance = msg.instance ?? null // one of the app's instances (spec 009): the engine checks it is
   if (!GUARDS && sites.has(sub)) { key = sub; sub = null } // control run: trusts a key from the page
   if (!GUARDS && sites.has(instance)) { key = instance; instance = null }
-  if (msg.op === 'off') return rpc.request('site.off', { id: msg.id })
+  if (msg.op === 'off') return !GUARDS || subscribers.get(msg.id) === wc ? unsubscribe(msg.id) : false // only this page's own
   const method = { call: 'site.call', live: 'site.live', on: 'site.on' }[msg.op]
   if (!method) throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
   // only the fields of that call; the key is the view's
@@ -143,6 +164,10 @@ async function bridge (wc, msg) {
     })
   }
   if (msg.op === 'live' || msg.op === 'on') {
+    if (wc.isDestroyed() || pages.get(wc) !== page) { // its page left while the engine answered: nobody else would stop it
+      unsubscribe(result.id)
+      return result
+    }
     subscribers.set(result.id, wc)
     for (const data of early.get(result.id) || []) wc.send('hyper-event', { id: result.id, data })
     early.delete(result.id)
@@ -229,7 +254,7 @@ async function openSite (key, query = '') {
   const v = createSiteView(real, { dynamic, serve, guards: GUARDS, persist: !SELFTEST, query })
   viewOf.set(v.webContents.id, real)
   v.webContents.on('destroyed', () => {
-    for (const [id, wc] of subscribers) if (wc === v.webContents) { subscribers.delete(id); rpc.request('site.off', { id }).catch(() => {}) }
+    stopAll(v.webContents)
     rpc?.request('site.close', { key: real }).catch(() => {}) // the engine leaves it a while later unless installed (spec 004)
   })
   return { key: real, instance, manifest, ...v }
@@ -332,6 +357,8 @@ async function selftest (dir) {
   const styled = await views[0].webContents.executeJavaScript(look)
   out.push({ site: 'shell', name: 'a page with no stylesheet gets the default theme (fonts, a fixed dither)', pass: plain === "\"HB Plex Mono\", ui-monospace, monospace|fixed" })
   out.push({ site: 'shell', name: 'a page with its own <style> keeps its look', pass: !styled.includes('HB ') })
+  await checkLoads(views, out)
+  await checkChat(win, views, out, tmp)
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
@@ -342,6 +369,97 @@ async function selftest (dir) {
   app.exit(ok ? 0 : 1)
 }
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const until = async (f) => { for (let n = 0; n < 100; n++) { if (await f().catch(() => false)) return true; await wait(100) } return false }
+
+// A real load ends the old page's subscriptions and only those; a hash change or a cancelled navigation ends none.
+async function checkLoads ([a, b], out) {
+  const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
+  const wc = b.webContents
+  const run = (s) => wc.executeJavaScript(s)
+  const mine = (w = wc) => [...subscribers].filter(([, x]) => x === w).map(([id]) => id)
+  const got = () => run('window.__got')
+  const put = async () => {
+    const n = await got()
+    await run("window.hyper.put('profile', { name: 'load' }).then(() => 0)")
+    return until(async () => (await got()) > n)
+  }
+
+  // the reply to a subscribe comes after its page left
+  const flying = bridge(wc, { op: 'live', args: ['profile'], chain: [] })
+  bridge(wc, { op: 'page' }).catch(() => {})
+  const late = await flying
+  pass('a subscribe answered after its page left is stopped', !subscribers.has(late.id))
+
+  await wc.loadURL('hyper://' + b.key + '/nav.html')
+  await until(async () => (await got()) > 0)
+  await a.webContents.executeJavaScript("window.hyper.query('profile').live(() => {}); 0")
+  await until(async () => mine(a.webContents).length > 0)
+  const other = mine(a.webContents).at(-1)
+
+  const before = mine()
+  await run("location.hash = '#x'; 0")
+  await wait(300)
+  pass('a hash change stops nothing', before.length === 1 && String(mine()) === String(before) && await put())
+  wc.once('will-navigate', (e) => e.preventDefault())
+  await run("location.search = '?cancelled'; 0")
+  await wait(500)
+  pass('a cancelled navigation stops nothing', String(mine()) === String(before) && await put())
+
+  for (const [name, go] of [['location.search', "location.search = '?2'"], ['reload', 'location.reload()'], ['back', 'history.back()']]) {
+    const old = mine()
+    await run(`window.__left = true; setTimeout(() => { ${go} }); 0`)
+    const loaded = await until(async () => !(await run('window.__left')) && (await got()) > 0)
+    const mark = heard.length
+    const works = await put()
+    const now = mine()
+    pass(`a real load (${name}): the old page's subscriptions stop, the new page's work`, loaded && works && now.length === 1 && !old.includes(now[0]) &&
+      heard.slice(mark).includes(now[0]) && !heard.slice(mark).some((id) => old.includes(id) || id === late.id) && !old.some((id) => early.has(id)))
+  }
+
+  pass("a page's load leaves another view's subscriptions", subscribers.get(other) === a.webContents)
+  await bridge(wc, { op: 'off', id: other }).catch(() => {})
+  const mark = heard.length
+  await a.webContents.executeJavaScript("window.hyper.put('profile', { name: 'still' }).then(() => 0)")
+  pass("a page can't stop another page's subscription", await until(async () => heard.slice(mark).includes(other)))
+}
+
+// Chat's page, in a real browser: where a redraw leaves the message list and the caret.
+async function checkChat (win, views, out, tmp) {
+  const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
+  const folder = path.join(tmp, 'chat') // a copy: publishing links a folder both ways with the engine
+  fs.cpSync(path.join(HERE, '..', 'sites', 'chat'), folder, { recursive: true })
+  const { key } = await rpc.request('site.publish', { folder })
+  const chat = await openSite(key)
+  views.push(chat)
+  win.contentView.addChildView(chat.view)
+  chat.view.setBounds({ x: 0, y: 0, width: 500, height: 800 })
+  const run = (s) => chat.webContents.executeJavaScript(s)
+  await until(() => run("!!document.querySelector('input[name=name]')"))
+  await run("(() => { const i = document.querySelector('input[name=name]'); i.value = 'Scroll'; i.form.requestSubmit(); return 0 })()")
+  await until(() => run("!!document.querySelector('textarea[name=text]')"))
+  const list = "document.querySelector('main div[style*=overflow]')"
+  const box = "document.querySelector('textarea[name=text]')"
+  let shown = 0
+  const say = async (lines) => {
+    await run(`window.hyper.instance(new URLSearchParams(location.search).get('instance')).put('message', { text: ${JSON.stringify('line\n'.repeat(lines))} }).then(() => 0)`)
+    return until(async () => (await run(`${list}.children.length`)) === shown + 1).then((ok) => { shown++; return ok })
+  }
+  const atEnd = () => run(`(() => { const l = ${list}; return l.scrollHeight > l.clientHeight && l.scrollHeight - l.scrollTop - l.clientHeight <= 8 })()`)
+  const scrollUp = () => run(`${list}.scrollTop = 100`)
+
+  pass('chat: a conversation shows its latest messages', await say(80) && await atEnd())
+  pass('chat: a new message keeps you at the end', await say(80) && await atEnd())
+  await scrollUp()
+  pass('chat: scrolled up, a new message keeps your place', await say(1) && (await run(`${list}.scrollTop`)) === 100)
+  await run(`(() => { const t = ${box}; t.focus(); t.value = 'hello world'; t.dispatchEvent(new Event('input')); t.setSelectionRange(2, 5); return 0 })()`)
+  await say(1)
+  pass('chat: a redraw keeps the caret and the selection', (await run(`(() => { const t = ${box}; return [document.activeElement === t, t.selectionStart, t.selectionEnd].join() })()`)) === 'true,2,5')
+  await scrollUp()
+  await run(`${box}.form.requestSubmit(); 0`)
+  pass('chat: your own message takes you to the end', await until(async () => (await run(`${list}.children.length`)) === shown + 1) && await until(atEnd))
+}
+
 // The frame check: the demo site in a frame of its own, then where everything is.
 async function framecheck (dir) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-framecheck-'))
@@ -349,7 +467,6 @@ async function framecheck (dir) {
   const { key } = await rpc.request('site.publish', { folder: path.join(tmp, 'site') })
   const { win, inspect } = startFrame({ rpc, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
   const timeout = setTimeout(() => { console.log('FRAMECHECK TIMEOUT'); app.exit(2) }, 60000)
-  const until = async (f) => { for (let n = 0; n < 100; n++) { if (await f().catch(() => false)) return true; await new Promise((resolve) => setTimeout(resolve, 100)) } return false }
   const settled = async () => inspect().ready === 1 && await inspect().fwc.executeJavaScript("document.getElementById('tabs').children.length === 2").catch(() => false)
   while (!(await settled())) await new Promise((resolve) => setTimeout(resolve, 250))
   await new Promise((resolve) => setTimeout(resolve, 500)) // the frame's 'bars' message

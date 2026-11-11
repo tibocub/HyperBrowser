@@ -63,7 +63,8 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     'apps: installing a site without a click installs nothing', // spec 014
     'apps: opening a site without a click opens nothing',
     'hyper.apps: nothing installed or opened without a click',
-    "hyper.apps: a click and the person's no install nothing"
+    "hyper.apps: a click and the person's no install nothing",
+    "a page can't stop another page's subscription"
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
 })
 
