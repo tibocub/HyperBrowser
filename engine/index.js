@@ -97,7 +97,10 @@ export function start (ipc) {
         }
         return notes.set({ ...p, allow: undefined })
       // spec 013: the shell's own calls (its "send a friend request?" dialog, "open a chat"), and the chat app
-      case 'apps.set': people.setChat(p.chat ? keyOf({ key: p.chat }) : null); return true
+      case 'apps.set':
+        people.setChat(p.chat ? keyOf({ key: p.chat }) : null)
+        notes.setChat(p.chat || null) // spec 016: chats stay online first
+        return true
       case 'contacts.me': return people.call('me', [])
       case 'contacts.get': return people.call('get', [p.identity])
       case 'contacts.request': return people.call('request', [p.identity, p.name])

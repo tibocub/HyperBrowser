@@ -35,3 +35,18 @@ done before). One commit per step.
 - Clock-ahead and late-arrival tests are hypergraph 021's (`space.since()` never reads stamps); a patched
   `Date.now` here doesn't reach hypergraph's stamper, so this suite tests a restart's catch-up instead.
 - A record whose content was dropped here (budgets) notifies with no text ("New message"); no `get()` to fetch it.
+
+## Step 3: turns (US5, R3)
+
+- [x] Chats (the app `apps.set` names) held with `space.hold()`, up to 24; the other places in turns, 2 at a time,
+  `turn` ms each (20 s), checked at the end of their turn and woken by their changes meanwhile. With 2 places or
+  fewer in turns they simply stay held.
+- [x] `perf/turn.mjs`: from a stopped engine's start to the notification of a record written while it was away
+  (an upper bound on a turn: it includes the engine's own start). 2026-11-11, this PC:
+  - test DHT, 5 runs: min 0.6 s, median 1.7 s, max 1.8 s.
+  - public DHT, low load, 3 runs: 9.0 s, 13.5 s, 21.9 s.
+  - **20 s is enough most of the time, not always**: one public run in three took 21.9 s. A place missed in its
+    turn isn't lost (its cursor stays), it is found in the next round: worst case two rounds, about 9 minutes for
+    50 places, still under SC-003's 10. Kept at 20 s; 30 s would make a round of 50 places about 6.5 minutes.
+- The turns test can't prove the rotation is what reaches the places: on a local DHT hypergraph keeps the few
+  spaces open anyway (64 open). It proves the timing bound.

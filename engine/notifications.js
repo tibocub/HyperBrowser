@@ -20,6 +20,8 @@ const ITEMS_MAX = 200
 const READ_LOGS = 64
 const BATCH = 500
 const QUIET = 1000 // a place whose history is arriving is checked this often, until complete
+const HELD_MAX = 24 // chats kept online all the time (R3: of hypergraph's 64 open, 32 announced)
+const TURN_N = 2 // the other places: this many at a time, `turn` ms each
 const CATCHUP = 10 // more new items at once than this: one summary, not a popup each (a space catching up)
 const TEXT_MAX = 200
 const NAME_MAX = 64
@@ -44,6 +46,12 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
   let launching = []
   let launchTimer = null
   let last = null // the unread counts last told
+  let chat = null // the Chat app's key (apps.set): its places stay online first
+  let ring = [] // places checked in turns
+  let at = 0
+  let turning = [] // the places held for the current turn
+  let turnTimer = null
+  let online = new Set() // the chats held all the time
   const pending = [] // cursors to save once what they passed is told
 
   const serial = (fn) => {
@@ -292,13 +300,32 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     timers.set(place, setTimeout(() => { timers.delete(place); serial(() => pass([place])).catch(noop) }, ms))
   }
 
-  // The places to watch changed (a yes, a block, a join, a leave): hold the new ones, let the others go.
+  // The places to watch changed (a yes, a block, a join, a leave): chats held, up to HELD_MAX; the others take
+  // turns (R3). The place a page shows is kept open by the page itself.
   async function sync () {
     const want = places(await settings())
-    const names = new Set(want.map((p) => p.place))
-    for (const place of [...held.keys()]) if (!names.has(place)) unhold(place)
-    for (const p of want) await hold(p)
+    const chats = want.filter((p) => p.app === chat).slice(0, HELD_MAX)
+    online = new Set(chats.map((p) => p.place))
+    const keep = new Set([...online, ...turning])
+    ring = want.filter((p) => !online.has(p.place))
+    for (const place of [...held.keys()]) if (!keep.has(place)) unhold(place)
+    for (const p of chats) await hold(p)
     await pass()
+    if (!turnTimer && !closed) turnTimer = setTimeout(() => serial(rotate).catch(noop), 0)
+  }
+
+  // One turn: the places held for the last one checked and let go, the next ones held for `turn` ms (and woken
+  // by their changes meanwhile). 50 places, 26 in turns: 13 turns, about 4.5 minutes a round.
+  async function rotate () {
+    const done = turning.splice(0)
+    if (done.length) await pass(done)
+    const stays = ring.length <= TURN_N ? new Set(ring.map((p) => p.place)) : new Set() // few enough: always held
+    for (const place of done) if (!stays.has(place) && !online.has(place)) unhold(place)
+    if (at >= ring.length) at = 0
+    const next = ring.slice(at, at + TURN_N)
+    at += TURN_N
+    for (const p of next) { turning.push(p.place); await hold(p) }
+    turnTimer = closed ? null : setTimeout(() => serial(rotate).catch(noop), turn)
   }
 
   let syncTimer = null
@@ -324,6 +351,12 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
   // --- the engine's calls ---
 
   return {
+    setChat (key) {
+      if (key === chat) return
+      chat = key
+      onSettings()
+    },
+
     async state () {
       await ready
       const s = await settings()
@@ -431,6 +464,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
       sfs.hg.off('settings', onSettings)
       clearTimeout(syncTimer)
       clearTimeout(launchTimer)
+      clearTimeout(turnTimer)
       for (const t of timers.values()) clearTimeout(t)
       for (const place of [...held.keys()]) unhold(place)
       await queue
