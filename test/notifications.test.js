@@ -158,6 +158,8 @@ test('the person decides: no yes, nothing; block, mute, hide; a no is remembered
   await ag.put('message', { text: 'before the yes' })
   await sleep(2000)
   t.alike(await items(bob), [], 'not asked yet: nothing')
+  t.is((await bob.e.rpc.request('site.open', { key })).notify, 'ask', 'site.open: ask the person (identity said yes, notifications not asked)')
+  await bob.e.rpc.request('site.close', { key })
   t.is(await codeOf(bob.e.rpc.request('site.permit', { key, permission: 'notify', allow: true })), 'INVALID_PARAMS')
 
   await bob.e.rpc.request('site.permit', { key, permission: 'notifications', allow: true })
@@ -166,6 +168,11 @@ test('the person decides: no yes, nothing; block, mute, hide; a no is remembered
   await ag.put('message', { text: 'after the yes' })
   t.ok(await waitItems(bob, (l) => l.length === 1))
 
+  t.is((await bob.e.rpc.request('site.open', { key })).notify, undefined, 'answered: not asked again')
+  await bob.e.rpc.request('site.close', { key })
+  t.is(await codeOf(bob.e.rpc.request('site.call', { key, method: 'notify.state', args: [] })), 'UNKNOWN_METHOD', 'a page cannot read notifications')
+  t.is(await codeOf(bob.e.rpc.request('notify.read', { place, app: 'x'.repeat(52) })), 'NOT_ALLOWED', 'read for a page: only places of its own app')
+  t.is(await bob.e.rpc.request('notify.read', { place, app: key }), true)
   await bob.e.rpc.request('notify.set', { app: key, hide: true })
   t.is((await items(bob))[0].text, null, 'hidden content: no text')
   t.ok((await state(bob)).apps.find((a) => a.key === key).hide)

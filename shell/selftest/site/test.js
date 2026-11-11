@@ -12,7 +12,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // instance, instances: the app's instances (spec 009), checked by the engine
 // contacts (only with the permission), people: through HyperBrowser (spec 013); apps: the same (spec 014)
 const API = ['apps', 'completeFrom', 'contacts', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
-  'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'on', 'peers', 'people',
+  'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
   'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'setRole',
   'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag']
 

@@ -50,3 +50,30 @@ done before). One commit per step.
     50 places, still under SC-003's 10. Kept at 20 s; 30 s would make a round of 50 places about 6.5 minutes.
 - The turns test can't prove the rotation is what reaches the places: on a local DHT hypergraph keeps the few
   spaces open anyway (64 open). It proves the timing bound.
+
+## Step 4: shell
+
+- [x] The question "Let X notify you?" right after the identity question (`ask()` chains it; `site.open` says
+  `notify: 'ask'` when identity was a yes before and this one was never answered).
+- [x] `hyper.notifications.viewing(instance | null)` (site preload → `site` ipc op `viewing`). The frame acts on it
+  only while that tab is current and the window focused; main sends `notify.read { place, app }` and the engine
+  refuses a place that isn't that app's. Seen there is read, and its popup isn't shown.
+- [x] Counter (`#bell`) between the bookmark star and `#state`; its list (one row per conversation, newest first);
+  desktop icon counts (the app's, or an instance icon's own); popups (one per conversation, replaced by its newest;
+  a catch-up: one); the tray mark (a red square, and the tooltip's count).
+- [x] Configuration window (menu → Configuration…): per app Allowed / Blocked / Hide text, per conversation Mute;
+  the tray setting and Devices moved there from the drop-down.
+- [x] Self-test: viewing can't mark another app's conversation read (fails in the control run), viewing marks its
+  own, a page can't read notifications (`viewing` only; `notify.*` refused). Frame check: 9 checks on scripted
+  notifications (counter, icon counts, rows, tray mark, read, Configuration, Blocked, popups).
+
+Built differently:
+- **The engine's `site.open` answers `notify: 'ask'`**, an additive field, so the shell knows when to ask without
+  another message.
+- **`notify.read` takes an optional `app`**: with it the engine checks the place is one of that app's instances.
+  That is the guard behind `viewing` (the shell's control run leaves it out).
+- **"A page can't read notifications" isn't a shell guard**: no page call reaches `notify.*` (the preload has no
+  such call, and the engine's site methods are a fixed list). The self-test checks it, but it passes in the control
+  run too: there is no guard to turn off.
+- **Popups use Electron's `Notification`**, with `app.setAppUserModelId('org.hyperbrowser.app')` in an installed
+  build (the installer's id). No balloon fallback: to add if Tibo's check by hand shows nothing.

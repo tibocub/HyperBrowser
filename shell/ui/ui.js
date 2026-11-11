@@ -137,6 +137,7 @@ function render () {
   }
   if (!site) drawDesktop()
   drawMenu()
+  drawNotes()
 }
 
 function drawDesktop () {
@@ -149,6 +150,12 @@ function drawDesktop () {
     b.title = i.key ? i.title + ' · ' + i.key : i.title + ' (not published yet)'
     const box = el('span', 'box')
     box.append(picture(i.icon, i.glyph || 'site'))
+    const n = unreadOf(i) // spec 016: its app's unread notifications, or its conversation's
+    if (n) {
+      const badge = el('span', 'badge', cap(n))
+      badge.setAttribute('aria-label', n + ' new')
+      box.append(badge)
+    }
     b.append(box, el('span', 'label', i.title), el('span', 'kind', i.key ? i.kind : 'not published'))
     b.onclick = () => { selected = i.id; drawDesktop() }
     b.ondblclick = () => send('icon.open', { id: i.id })
@@ -194,6 +201,7 @@ function closeMenus () {
   menuOpen = null
   $('backdrop').hidden = true
   $('hb').setAttribute('aria-expanded', 'false')
+  $('bell').setAttribute('aria-expanded', 'false')
   frame.send('cover', { full: false })
 }
 $('backdrop').onclick = closeMenus
@@ -225,7 +233,7 @@ for (const b of document.querySelectorAll('[data-theme]')) b.onclick = () => sen
 for (const b of document.querySelectorAll('[data-accent]')) b.onclick = () => send('settings', { accent: b.dataset.accent })
 for (const b of document.querySelectorAll('[data-tray]')) b.onclick = () => send('settings', { tray: b.dataset.tray === 'on' })
 $('m-open').onclick = () => { closeMenus(); toAddress() }
-$('m-devices').onclick = () => { closeMenus(); openDevices() }
+$('m-config').onclick = () => { closeMenus(); openConfig() }
 $('m-update').onclick = () => { closeMenus(); send('restart') }
 $('m-about').onclick = () => { closeMenus(); say('HyperBrowser ' + S.version + ': sites live with their owner and their visitors.') }
 
@@ -243,6 +251,84 @@ $('ctx').onclick = (e) => {
   if (act === 'open') send('icon.open', { id })
   if (act === 'kind') send('icon.kind', { id, kind: ctxIcon.kind === 'installed' ? 'bookmark' : 'installed' })
   if (act === 'remove') send('icon.remove', { id })
+}
+
+// --- notifications (spec 016): the counter, its list, icon counts; the Configuration window ---
+
+const cap = (n) => n > 99 ? '99+' : String(n)
+const unreadOf = (icon) => !icon.key ? 0 : S.notes.unread.byPlace[icon.key] || S.notes.unread.byApp[icon.site || icon.key] || 0
+const titleOf = (app) => S.notes.apps.find((a) => a.key === app)?.title || 'HyperBrowser'
+const placeName = (x) => S.notes.apps.find((a) => a.key === x.app)?.places.find((p) => p.key === x.place)?.name
+
+$('bell').onclick = () => menuOpen === $('notes') ? closeMenus() : (showMenu($('notes')), $('bell').setAttribute('aria-expanded', 'true'))
+
+// One row a conversation, newest first: the latest of its notifications, and how many are unread.
+function drawNotes () {
+  const n = S.notes.unread.total
+  $('bell-n').textContent = cap(n)
+  $('bell').classList.toggle('new', n > 0)
+  $('bell').setAttribute('aria-label', n ? n + ' new notifications' : 'Notifications')
+  if ($('notes').hidden) { $('bell').setAttribute('aria-expanded', 'false'); return }
+  const rows = new Map()
+  for (const x of S.notes.items) if (!rows.has(x.place)) rows.set(x.place, x)
+  $('notes-list').replaceChildren(...(rows.size
+    ? [...rows.values()].map((x) => {
+      const unread = S.notes.unread.byPlace[x.place] || 0
+      const b = el('button', 'item' + (unread ? '' : ' read'))
+      b.setAttribute('role', 'menuitem')
+      const where = x.app === 'contacts' ? 'Contacts' : titleOf(x.app) + (placeName(x) ? ' · ' + placeName(x) : '')
+      b.append(el('span', 'what', where + ': ' + (x.name || x.author.slice(0, 6) + '…')), el('span', 'n', unread ? cap(unread) + ' new' : ''), el('span', 'text', x.text || 'New message'))
+      b.onclick = () => { closeMenus(); send('notify.open', { id: x.id }) }
+      return b
+    })
+    : [el('div', 'empty', 'Nothing new')]))
+}
+
+function openConfig () {
+  $('config').hidden = false
+  frame.send('cover', { full: true })
+  drawConfig()
+}
+function closeConfig () {
+  $('config').hidden = true
+  if (!menuOpen && $('devices').hidden) frame.send('cover', { full: false })
+}
+$('cf-close').onclick = closeConfig
+$('cf-devices').onclick = () => { closeConfig(); openDevices() }
+
+function toggle (label, on, fn) {
+  const b = el('button', 'choice', label)
+  b.setAttribute('aria-pressed', String(on))
+  b.onclick = fn
+  return b
+}
+// Per app: allowed or blocked, its text shown or hidden; per conversation: muted. The person's settings, on all
+// their devices (the engine's notify.set).
+function drawConfig () {
+  if ($('config').hidden) return
+  const apps = S.notes.apps
+  $('cf-apps').replaceChildren(...apps.map((a) => {
+    const div = el('div', 'app')
+    div.dataset.app = a.key
+    div.append(el('div', '', a.title))
+    const choices = el('div', 'choices')
+    choices.append(toggle('Allowed', a.allow, () => send('notify.set', { app: a.key, allow: true })), toggle('Blocked', !a.allow, () => send('notify.set', { app: a.key, allow: false })),
+      toggle('Hide text', a.hide, () => send('notify.set', { app: a.key, hide: !a.hide })))
+    div.append(choices)
+    for (const p of a.places) {
+      const row = el('div', 'place')
+      const box = el('input')
+      box.type = 'checkbox'
+      box.id = 'mute-' + p.key
+      box.checked = p.muted
+      box.onchange = () => send('notify.set', { place: p.key, mute: box.checked })
+      const label = el('label', '', 'Mute ' + (p.name || p.key.slice(0, 8) + '…'))
+      label.htmlFor = box.id
+      row.append(box, label)
+      div.append(row)
+    }
+    return div
+  }))
 }
 
 // --- the Devices window (spec 012): one identity on several computers ---
@@ -366,6 +452,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase()
   if (e.key === 'Escape' && menuOpen) { closeMenus(); return }
   if (e.key === 'Escape' && !$('devices').hidden) { closeDevices(); return }
+  if (e.key === 'Escape' && !$('config').hidden) { closeConfig(); return }
   if (mod && k === 'l') { e.preventDefault(); toAddress() }
   else if (mod && k === 't') { e.preventDefault(); send('select', { id: 0 }); toAddress() }
   else if (mod && k === 'w') { e.preventDefault(); send('close', { id: S.current }) }
@@ -413,6 +500,7 @@ let joinedSeen = 0
 frame.onState((s) => {
   S = s
   render()
+  drawConfig()
   // a join ended (spec 012): main now runs the engine of whichever identity is in place
   if (S.joined && S.joined.n !== joinedSeen) {
     joinedSeen = S.joined.n

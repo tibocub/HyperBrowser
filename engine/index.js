@@ -88,7 +88,9 @@ export function start (ipc) {
       case 'site.permit': return permit(p)
       // spec 016: the shell's own calls (its counter, list and Configuration page); no page reaches them
       case 'notify.state': return notes.state()
-      case 'notify.read': return notes.read(p)
+      case 'notify.read': // app: the page's own (hyper.notifications.viewing): only that app's places
+        if (p.app !== undefined && !(await listed(keyOf({ key: p.app })))[p.place]) throw error('NOT_ALLOWED', "not one of this app's places")
+        return notes.read(p)
       case 'notify.set':
         if (p.allow !== undefined && typeof p.app === 'string') {
           if (typeof p.allow !== 'boolean') throw error('INVALID_PARAMS', 'allow is true or false')
@@ -209,7 +211,15 @@ export function start (ipc) {
     const known = sites.get(site.key)
     if (known) Object.assign(known, { manifest, tabs: known.tabs + 1 })
     else sites.set(site.key, { site, manifest, scope: null, instances: new Map(), tabs: 1 })
-    return { key: site.key, manifest, dynamic: isDynamic(manifest) }
+    return { key: site.key, manifest, dynamic: isDynamic(manifest), ...(await askNotify(site.key, manifest)) }
+  }
+
+  // spec 016: "let it notify you?" comes right after the identity question: { notify: 'ask' } once that one is a
+  // yes, for an app declaring watches, until the person answers.
+  async function askNotify (key, manifest) {
+    if (!manifest.permissions.includes('notifications') || !manifest.notifications?.length) return {}
+    const s = await sfs.hg.settings()
+    return s[ANSWERS]?.[key] === true && typeof s[PERMITS]?.[key]?.notifications !== 'boolean' ? { notify: 'ask' } : {}
   }
 
   async function read ({ key, path: p, timeout }) {

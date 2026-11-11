@@ -3,7 +3,7 @@
 // the frame covers the whole window on the desktop tab, while a tab has no page yet, and while a menu is
 // open (transparent over the site). Its messages are taken from its own view only (contracts/frame.md).
 // No OS frame and no app menu: the taskbar row is the title bar (drag, double-click, our window buttons).
-import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeImage } from 'electron'
+import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeImage, Notification } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -46,7 +46,8 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
 // openSite(key) → { key, manifest, view, webContents, close }; readIcon(key, manifest) → data URL or null.
 // update() → the version an update is ready for, or null; restart() starts it (spec 011).
 // join(code): this computer joins another device's identity; then main calls joined() (spec 012).
-export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null, join = null }) {
+// readViewed(wc): marks read what that page says it shows (spec 016), its place or null; contacts: Contacts' key.
+export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null }) {
   let joined = null // { said, n }: what the last join did, for the Devices window
   const preset = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
   let data = load()
@@ -70,6 +71,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   let nextId = 1
   let bars = 68 // the frame measures itself and says (op 'bars')
   let cover = false
+  let notes = { items: [], unread: { total: 0, byApp: {}, byPlace: {} }, apps: [] } // notify.state (spec 016)
+  const popups = new Map() // place -> its system popup: one per conversation, the newest
+  let popupsShown = 0 // for the frame check
 
   function load () {
     let saved = null
@@ -108,6 +112,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       })),
       desktop: data.desktop,
       settings: data.settings,
+      notes,
       identity,
       joined,
       version: app.getVersion(),
@@ -138,6 +143,60 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     push()
     const tab = tabOf(id)
     if (tab.wc && !cover) tab.wc.focus()
+    looked()
+  }
+
+  // --- notifications (spec 016): the engine's list, the counter, popups, the tray's mark ---
+
+  async function refresh () {
+    const s = await rpc.request('notify.state').catch(() => null)
+    if (!s) return
+    notes = s
+    if (tray) tray.mark(notes.unread.total)
+    push()
+  }
+
+  // What the person is looking at: the current tab's page says which conversation (hyper.notifications.viewing),
+  // believed only while that tab is current and the window focused. Seen there is read.
+  const viewingNow = () => win.isFocused() && tabOf(current)?.wc ? tabOf(current).wc : null
+  let lookedPlace = null
+  async function looked () {
+    const wc = viewingNow()
+    lookedPlace = wc ? await readViewed(wc) : null
+    if (lookedPlace) refresh()
+  }
+
+  async function notify ({ items, summary }) {
+    await looked() // what the person looks at is read before it is counted
+    await refresh()
+    const fresh = items.filter((x) => x.place !== lookedPlace)
+    if (!fresh.length || !Notification.isSupported()) return
+    const title = (x) => (notes.apps.find((a) => a.key === x.app)?.title || 'HyperBrowser')
+    const show = (place, head, body, item) => {
+      popups.get(place)?.close()
+      const n = new Notification({ title: head, body, silent: false })
+      n.on('click', () => { showWindow(); if (item) openItem(item) })
+      n.on('close', () => { if (popups.get(place) === n) popups.delete(place) })
+      n.show()
+      popups.set(place, n)
+      popupsShown++
+    }
+    if (summary) return show('*', 'HyperBrowser', summary.count + ' new notifications', null) // a catch-up: one popup
+    const byPlace = new Map()
+    for (const x of fresh) byPlace.set(x.place, [...(byPlace.get(x.place) || []), x])
+    for (const [place, list] of byPlace) { // one popup per conversation, its newest
+      const x = list[0]
+      const shown = notes.items.find((i) => i.id === x.id) || x // with the person's "hide content" applied
+      const who = shown.name || shortKey(shown.author)
+      show(place, title(x) + ': ' + who, (shown.text || 'New message') + (list.length > 1 ? ` (+${list.length - 1})` : ''), x)
+    }
+  }
+
+  // A notification's place: its conversation (and where in it), or Contacts for a friend request.
+  function openItem (x) {
+    if (x.app === 'contacts') return contacts ? openKey(contacts, '?person=' + x.author) : null
+    openKey(x.place, x.open || '')
+    rpc.request('notify.read', { place: x.place }).then(refresh, () => {})
   }
 
   function closeTab (id) {
@@ -159,7 +218,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     if (a.error) return { error: { code: 'INVALID_KEY', message: a.error } }
     const have = tabs.find((t) => t.key === a.key)
     if (have) {
-      if (query && have.wc) have.wc.loadURL('hyper://' + have.site + '/' + query)
+      const at = have.key !== have.site ? '?instance=' + have.key + (query.startsWith('#') ? query : '') : query // an instance's tab keeps its ?instance=
+      if (query && have.wc) have.wc.loadURL('hyper://' + have.site + '/' + at)
       select(have.id)
       show()
       return { result: have.id }
@@ -345,6 +405,16 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         join(a.code.trim())
         return { result: true }
       case 'cover': cover = !!a.full; layout(); return { result: true }
+      // spec 016: the list's rows and the Configuration page
+      case 'notify.open': {
+        const x = notes.items.find((i) => i.id === a.id)
+        if (!x) return { error: { code: 'NOT_FOUND', message: 'no such notification' } }
+        openItem(x)
+        return { result: true }
+      }
+      case 'notify.set':
+        return rpc.request('notify.set', { app: a.app, allow: a.allow, hide: a.hide, place: a.place, mute: a.mute })
+          .then(() => refresh()).then(() => ({ result: true }), (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
       case 'window':
         if (a.act === 'minimize') win.minimize()
         else if (a.act === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
@@ -375,7 +445,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   let notices = 0
   const TRAY = hasTray()
   function setTray () {
-    if (data.settings.tray && TRAY && !tray) tray = startTray({ rpc, show, quit: () => win.destroy() })
+    if (data.settings.tray && TRAY && !tray) { tray = startTray({ rpc, show, quit: () => win.destroy() }); tray.mark(notes.unread.total) }
     else if (!data.settings.tray && tray) { tray.destroy(); tray = null }
   }
   function show () {
@@ -396,6 +466,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   })
   setTray()
 
+  const showWindow = show
+  win.on('focus', looked)
   win.on('resize', layout)
   win.on('maximize', push)
   win.on('unmaximize', push)
@@ -412,8 +484,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   for (const i of data.desktop.icons) if (i.key && !!i.kept !== (i.kind === 'installed')) keepSite(i.key, i.kind === 'installed')
   if (open) openKey(open)
   follow()
+  refresh()
   // for the frame check (npm run test:sandbox): where everything is
-  const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings })
+  const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
   const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') } // the engine's 'devices' event
   // After a join (or a failed one, back on the old folder): another engine, maybe another identity. The open
   // tabs were the old engine's; installed icons are installed again on this one.
@@ -432,5 +505,5 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     setIcons(upsert(data.desktop.icons, { id: icon?.id || key, key, title: icon?.title || title, kind: 'installed' }))
     keepSite(key, true)
   }
-  return { win, inspect, show, devices, joined: joinedNow, open: openKey, installed, install }
+  return { win, inspect, show, devices, joined: joinedNow, open: openKey, installed, install, notify: (d) => notify(d).catch(() => {}), looked: () => looked().catch(() => {}) }
 }

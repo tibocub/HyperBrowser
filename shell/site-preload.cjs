@@ -88,6 +88,11 @@ function api (sub, instance = null) {
       contact: (identity) => people('contact', identity),
       request: (identity, name) => people('request', identity, name)
     }
+    // spec 016: what this page shows now (one of the app's instances, or null), so HyperBrowser doesn't notify
+    // the person of what they are looking at. Nothing else: a page can't read notifications or their settings.
+    o.notifications = {
+      viewing: (instance) => invoke({ op: 'viewing', instance: instance === null || instance === undefined ? null : String(instance) })
+    }
     // other sites, through HyperBrowser (spec 014): install and open need a click on the page; install, the person's yes
     o.apps = {
       installed: (key) => apps('installed', key),

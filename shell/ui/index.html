@@ -26,6 +26,7 @@
     <label for="address" class="hidden">Address</label>
     <input id="address" spellcheck="false" autocomplete="off" placeholder="Paste a site key (Ctrl+L)">
     <button id="star" class="tool" aria-label="Bookmark" aria-pressed="false"><span class="g" data-g="mark"></span></button>
+    <button id="bell" class="tool" aria-label="Notifications" aria-haspopup="menu" aria-expanded="false" title="Notifications"><span id="bell-n">0</span></button>
     <span id="state" aria-live="polite"></span>
   </div>
 </div>
@@ -62,7 +63,26 @@
   </div>
 </section>
 
+<section id="config" class="window" role="dialog" aria-labelledby="cf-title" hidden>
+  <div class="title"><span id="cf-title">Configuration</span></div>
+  <div class="body">
+    <div class="head">Notifications</div>
+    <div id="cf-apps"></div>
+    <div class="head">When the window closes</div>
+    <div class="choices" role="group" aria-label="When the window closes">
+      <button class="choice" data-tray="on" title="Keep hosting your sites from the tray">Stay in the tray</button><button class="choice" data-tray="off">Quit</button>
+    </div>
+    <div class="head">Devices</div>
+    <div class="row left"><button id="cf-devices" class="push">Your devices…</button></div>
+    <div class="row"><button id="cf-close" class="push">Close</button></div>
+  </div>
+</section>
+
 <div id="backdrop" hidden></div>
+<div id="notes" role="menu" aria-label="Notifications" hidden>
+  <div class="head">Notifications</div>
+  <div id="notes-list"></div>
+</div>
 <div id="menu" role="menu" aria-label="HyperBrowser" hidden>
   <div class="who"><span class="g" data-g="me"></span><strong>You</strong><span class="fill"></span><span id="me"></span></div>
   <div class="sep" aria-hidden="true">────────────────────────────────────</div>
@@ -70,17 +90,13 @@
   <div id="installed"></div>
   <div class="sep" aria-hidden="true">────────────────────────────────────</div>
   <button class="item" role="menuitem" id="m-open">Open a site by key…</button>
-  <button class="item" role="menuitem" id="m-devices">Devices…</button>
+  <button class="item" role="menuitem" id="m-config">Configuration…</button>
   <div class="head">Look</div>
   <div class="choices" role="group" aria-label="Theme">
     <button class="choice" data-theme="system">System</button><button class="choice" data-theme="light">Light</button><button class="choice" data-theme="dark">Dark</button>
   </div>
   <div class="choices" role="group" aria-label="Accent">
     <button class="choice swatch" data-accent="#1f4fd1" aria-label="Blue"><i></i></button><button class="choice swatch" data-accent="#c2410c" aria-label="Orange"><i></i></button><button class="choice swatch" data-accent="#0b7a52" aria-label="Green"><i></i></button>
-  </div>
-  <div class="head">When the window closes</div>
-  <div class="choices" role="group" aria-label="When the window closes">
-    <button class="choice" data-tray="on" title="Keep hosting your sites from the tray">Stay in the tray</button><button class="choice" data-tray="off">Quit</button>
   </div>
   <div class="sep" aria-hidden="true">────────────────────────────────────</div>
   <button class="item" role="menuitem" id="m-update" hidden></button>

@@ -125,3 +125,21 @@ button:disabled { cursor: default; opacity: .35; }
 .note { padding: 6px 10px; background: var(--ink); color: var(--paper); }
 .dim { opacity: .6; }
 #devices input[type=password] { margin-bottom: 10px; }
+
+/* notifications (spec 016): the counter, its list, icon counts, the Configuration window */
+#bell { width: auto; min-width: 32px; padding: 0 8px; }
+#bell.new { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+#notes { -webkit-app-region: no-drag; position: fixed; z-index: 4; top: 68px; right: 8px; width: min(380px, calc(100% - 16px)); max-height: calc(100% - 84px); overflow: auto; padding: 6px 0; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+#notes .item { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; }
+#notes .item .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#notes .item .text { grid-column: 1 / 3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
+#notes .item.read { opacity: .6; }
+.icon .box { position: relative; }
+.icon .badge { position: absolute; top: -8px; right: -10px; min-width: 18px; padding: 0 4px; background: var(--accent); color: var(--paper); border: 1px solid var(--ink); font-size: 12px; line-height: 16px; text-align: center; }
+#config { top: 60px; z-index: 5; -webkit-app-region: no-drag; }
+#config .body { max-height: calc(100vh - 140px); overflow: auto; }
+#config .head { padding: 8px 0 2px; }
+#config .app { padding: 4px 0 4px 8px; }
+#config .app .choices { padding-left: 8px; flex-wrap: wrap; }
+#config .place { display: flex; align-items: center; gap: 8px; padding: 0 0 0 16px; }
+#config .place label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
