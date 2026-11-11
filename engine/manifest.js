@@ -40,7 +40,33 @@ export function parseManifest (textOrBytes) {
     if (!m.types || typeof m.types !== 'object' || Array.isArray(m.types)) throw error('INVALID_MANIFEST', 'site.json: types must be an object of record types')
     out.types = m.types
   }
+  if (m.notifications !== undefined) out.notifications = watches(m.notifications, out.types)
   return out
+}
+
+// spec 016: what the engine watches for this app, as data (contracts/notifications.md). Strict: site.json's
+// fields can't change once released, so anything unknown is refused now and may mean something later.
+const WATCH_KEYS = new Set(['type', 'me', 'text', 'says', 'open'])
+function watches (list, types) {
+  const bad = (why) => { throw error('INVALID_MANIFEST', 'site.json: notifications: ' + why) }
+  if (!Array.isArray(list) || list.length > 16) bad('a list of at most 16 watches')
+  for (const w of list) {
+    if (!w || typeof w !== 'object' || Array.isArray(w)) bad('each watch is an object')
+    for (const k of Object.keys(w)) if (!WATCH_KEYS.has(k)) bad(`unknown field ${k}`)
+    const type = types?.[w.type]
+    if (typeof w.type !== 'string' || !type) bad('a watch names one of the types this site declares')
+    const fields = type.fields || {}
+    const field = (f) => typeof f === 'string' && Object.hasOwn(fields, f)
+    if (w.me !== undefined && !field(w.me)) bad(`me names a field of ${w.type}`)
+    if ((w.text === undefined) === (w.says === undefined)) bad('text or says, one of the two')
+    if (w.text !== undefined && !field(w.text)) bad(`text names a field of ${w.type}`)
+    if (w.says !== undefined && (typeof w.says !== 'string' || !w.says.trim() || w.says.length > 60)) bad('says is 1 to 60 characters')
+    if (w.open !== undefined) {
+      if (typeof w.open !== 'string' || w.open[0] !== '#' || w.open.length > 200) bad('open is a place within the app: #...')
+      for (const [, f] of w.open.matchAll(/\{([^}]*)\}/g)) if (!field(f)) bad(`open: {${f}} names a field of ${w.type}`)
+    }
+  }
+  return list
 }
 
 // Dynamic: asks for its space (the hypergraph API); unknown permissions are ignored.
