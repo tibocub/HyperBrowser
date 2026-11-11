@@ -41,6 +41,14 @@ app's: opening a forum's key or link opens the app on it.
   (deleted, hidden, past the newest 500) are dropped once per visit, so at most ~45 KB of the site's 1 MB.
 - Moderation and roles: hypergraph's (`moderateAction`, `report`, `reports`, `setRole`).
 
+## Notifications (spec 016)
+
+The forum's `site.json` watches `mention` records naming the person ("mentioned you"); a click opens `#/r/<record>`,
+which opens that thread, or a comment's thread (at its top). Each forum calls `hyper.notifications.viewing(<forum>)`
+while shown. Forums are checked in turns with the other non-chat places: a mention may arrive a few minutes late.
+Replies, follows and unread dots are the next spec (forum panel). Publish again (`npm run forum:publish`) for the
+watch to reach people.
+
 ## Tests
 
 `test/forum.test.js` runs `lib/` on a forum made with the app, through the site API of engines on a local DHT

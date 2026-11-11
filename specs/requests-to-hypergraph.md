@@ -2,6 +2,16 @@
 
 What HyperBrowser needs from hypergraph and doesn't work around (constitution IV). Newest first.
 
+## B7. What's new since I last looked (2026-11-11, spec 016) — done: hypergraph 021 `space.since()` (2777971)
+
+- **Need**: notifications and unread marks must find every record received since the last check, in a space that was
+  closed meanwhile, after a restart, on a phone waking for seconds.
+- **Today**: `change` fires only while someone listens, and `Hypergraph.open` opens kept-open spaces before an app can
+  attach. `query().since()` goes by stamps: a message written offline and received late is missed, and an author with
+  a clock far ahead silences what follows.
+- **Ask**: `space.since(cursor, { types, limit })` → `{ records, cursor }`: records created past the cursor (a seq per
+  log), `null` meaning "from now on". Read-only; the cost follows what's new, not the space's size.
+
 ## B6. A rendezvous on hypergraph's swarm (2026-11-08, spec 013) — worked around: a second Hyperswarm
 
 - **Need**: a friend request by key: the sender knows only the other person's identity, no space key. Both meet

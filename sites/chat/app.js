@@ -46,6 +46,7 @@ function open (key) {
   stops = []
   current = key
   history.replaceState(null, '', '?instance=' + key)
+  hyper.notifications?.viewing(key).catch(() => {}) // spec 016: shown here, so not notified
   view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null }
   const v = view
   const names = () => c.names(key).then((n) => { if (view === v) { v.names = n; draw() } }, () => {})

@@ -31,7 +31,8 @@
     "test:all": "npm test && npm run test:bare && npm run test:sandbox",
     "build": "node scripts/build.js",
     "release": "node scripts/release.js",
-    "test:update": "node scripts/update-check.js"
+    "test:update": "node scripts/update-check.js",
+    "perf": "node --expose-gc perf/notifications.mjs"
   },
   "dependencies": {
     "b4a": "^1.9.0",

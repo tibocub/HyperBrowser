@@ -8,6 +8,7 @@ import { SwarmFS } from 'swarmfs'
 import { connect, VERSION } from './protocol.js'
 import { parseManifest, isDynamic, sitePath } from './manifest.js'
 import { contacts } from './contacts.js'
+import { notifications } from './notifications.js'
 
 const ANSWERS = 'hyperbrowser/identity' // setting: { [site key]: true | false }, on every device of the person
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
@@ -50,6 +51,7 @@ export function start (ipc) {
   let keeping = Promise.resolve() // mine.set one at a time: two at once would each pass the cap
   let syncing = null
   let people = null // the contacts (spec 013)
+  let notes = null // the notifications (spec 016)
   const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null, instances: Map<key, Promise<Scope>>, tabs }
   const leaving = new Map() // key -> timer: no tab shows it, left once the grace period is over
   const departing = new Map() // key -> the leave running
@@ -84,8 +86,23 @@ export function start (ipc) {
       case 'site.off': return off(p)
       case 'site.close': return closeSite(keyOf(p))
       case 'site.permit': return permit(p)
+      // spec 016: the shell's own calls (its counter, list and Configuration page); no page reaches them
+      case 'notify.state': return notes.state()
+      case 'notify.read': // app: the page's own (hyper.notifications.viewing): only that app's places
+        if (p.app !== undefined && !(await listed(keyOf({ key: p.app })))[p.place]) throw error('NOT_ALLOWED', "not one of this app's places")
+        return notes.read(p)
+      case 'notify.set':
+        if (p.allow !== undefined && typeof p.app === 'string') {
+          if (typeof p.allow !== 'boolean') throw error('INVALID_PARAMS', 'allow is true or false')
+          await writePermit(p.app, 'notifications', p.allow)
+          await notes.permit(p.app, null, p.allow)
+        }
+        return notes.set({ ...p, allow: undefined })
       // spec 013: the shell's own calls (its "send a friend request?" dialog, "open a chat"), and the chat app
-      case 'apps.set': people.setChat(p.chat ? keyOf({ key: p.chat }) : null); return true
+      case 'apps.set':
+        people.setChat(p.chat ? keyOf({ key: p.chat }) : null)
+        notes.setChat(p.chat || null) // spec 016: chats stay online first
+        return true
       case 'contacts.me': return people.call('me', [])
       case 'contacts.get': return people.call('get', [p.identity])
       case 'contacts.request': return people.call('request', [p.identity, p.name])
@@ -108,7 +125,8 @@ export function start (ipc) {
 
   // joinCode: another device's code (spec 012): this empty folder becomes a device of that identity.
   // bundle: the official apps shipped inside HyperBrowser (spec 015), a folder made by scripts/build.js.
-  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName, bundle }) {
+  // notifyTurn (tests): how long a watched place not kept online is held in its turn (spec 016 R3)
+  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName, bundle, notifyTurn }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
     starting = SwarmFS.open(dir, { bootstrap, appStorageMax, joinCode, joinTimeout, deviceName })
@@ -122,6 +140,7 @@ export function start (ipc) {
     if (list) await unbundle(bundle, list, dir)
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
     people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance })
+    notes = notifications({ sfs, dir, emit: (event, data) => rpc.emit(event, data), turn: notifyTurn })
     if (heartbeat) {
       timer = setInterval(() => { if (Date.now() - last > 3 * heartbeat) shutdown('heartbeat') }, heartbeat)
     }
@@ -188,10 +207,19 @@ export function start (ipc) {
       throw err.code === 'NOT_FOUND' ? error('NO_MANIFEST', 'this site has no site.json') : err
     }))
     stay(site.key)
+    notes.refresh(site.key, manifest).catch(() => {}) // an allowed app's watches follow its new versions (spec 016 R2)
     const known = sites.get(site.key)
     if (known) Object.assign(known, { manifest, tabs: known.tabs + 1 })
     else sites.set(site.key, { site, manifest, scope: null, instances: new Map(), tabs: 1 })
-    return { key: site.key, manifest, dynamic: isDynamic(manifest) }
+    return { key: site.key, manifest, dynamic: isDynamic(manifest), ...(await askNotify(site.key, manifest)) }
+  }
+
+  // spec 016: "let it notify you?" comes right after the identity question: { notify: 'ask' } once that one is a
+  // yes, for an app declaring watches, until the person answers.
+  async function askNotify (key, manifest) {
+    if (!manifest.permissions.includes('notifications') || !manifest.notifications?.length) return {}
+    const s = await sfs.hg.settings()
+    return s[ANSWERS]?.[key] === true && typeof s[PERMITS]?.[key]?.notifications !== 'boolean' ? { notify: 'ask' } : {}
   }
 
   async function read ({ key, path: p, timeout }) {
@@ -213,6 +241,7 @@ export function start (ipc) {
     if (typeof keep !== 'boolean') throw error('INVALID_PARAMS', 'site.keep needs { keep: true | false }')
     await site.keep(keep, { timeout }) // SwarmFS remembers it for this device; the setting, for every device
     await sfs.hg.setSetting(INSTALLED + key, keep ? manifest.title : null)
+    if (!keep) await notes.forgetApp(key) // uninstalled: its watches and notifications go (spec 016)
     return { kept: keep }
   }
 
@@ -251,19 +280,27 @@ export function start (ipc) {
     return true
   }
 
-  // The person's answer to "let this site see and manage your contacts?" (spec 013), for a site declaring it.
+  // The person's answer to "let this site see and manage your contacts?" (spec 013) or "let it notify you?"
+  // (spec 016), for a site declaring it.
   async function permit ({ key, permission, allow }) {
     key = keyOf({ key })
-    if (permission !== 'contacts' || typeof allow !== 'boolean') throw error('INVALID_PARAMS', "site.permit needs { permission: 'contacts', allow: true | false }")
-    if (!opened(key).manifest.permissions.includes(permission)) throw error('NOT_ALLOWED', "this site's site.json doesn't ask for " + permission)
+    if (!['contacts', 'notifications'].includes(permission) || typeof allow !== 'boolean') throw error('INVALID_PARAMS', "site.permit needs { permission: 'contacts' | 'notifications', allow: true | false }")
+    const { manifest } = opened(key)
+    if (!manifest.permissions.includes(permission)) throw error('NOT_ALLOWED', "this site's site.json doesn't ask for " + permission)
+    if (permission === 'notifications' && !manifest.notifications?.length) throw error('NOT_ALLOWED', "this site's site.json watches nothing")
+    await writePermit(key, permission, allow)
+    if (permission === 'notifications') await notes.permit(key, manifest, allow)
+    if (!allow) for (const [id, x] of subs) if (x.key === key && x.contacts) off({ id })
+    return true
+  }
+
+  function writePermit (key, permission, allow) {
     const write = answering.then(async () => {
       const all = (await sfs.hg.settings())[PERMITS] || {}
       await sfs.hg.setSetting(PERMITS, { ...all, [key]: { ...all[key], [permission]: allow } })
     })
     answering = write.catch(() => {})
-    await write
-    if (!allow) for (const [id, x] of subs) if (x.key === key && x.contacts) off({ id })
-    return true
+    return write
   }
 
   async function permitted (key) {
@@ -379,6 +416,7 @@ export function start (ipc) {
     keyOf({ key })
     if (!(await listed(app))[key]) throw error('NOT_ALLOWED', "not one of this app's instances")
     await listInstance(app, key, false)
+    await notes.forget(key) // spec 016: its cursor, notifications, mute and read state
     for (const [id, x] of subs) if (x.instance === key) off({ id })
     const scope = sites.get(app)?.instances.get(key)
     sites.get(app)?.instances.delete(key)
@@ -642,6 +680,7 @@ export function start (ipc) {
         const opening = starting
         starting = null
         await syncing // a close() before sync() has started leaks its interval (requests-to-swarmfs F3)
+        if (notes) await notes.close()
         if (people) await people.close()
         if (opening) await opening.then((s) => s.close(), () => {})
         sfs = null

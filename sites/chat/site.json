@@ -3,9 +3,13 @@
   "description": "Private conversations with your friends, and groups.",
   "entry": "index.html",
   "icon": "icon.svg",
-  "permissions": ["space", "contacts"],
+  "permissions": ["space", "contacts", "notifications"],
   "types": {
     "message": { "fields": { "text": "text" } },
     "invite": { "fields": { "link": "string", "name": "string" } }
-  }
+  },
+  "notifications": [
+    { "type": "message", "text": "text" },
+    { "type": "invite", "says": "invited you to a group" }
+  ]
 }

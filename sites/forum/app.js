@@ -61,6 +61,7 @@ async function start () {
   hyper.on('peers', (list) => { peers = Array.isArray(list) ? list.length : peers; schedule() })
   hyper.peers().then((list) => { peers = list.length; schedule() }, () => {})
   window.addEventListener('hashchange', () => { ui.replyTo = ui.editing = ui.confirm = null; enter(); schedule() })
+  window.hyper.notifications?.viewing(at).catch(() => {}) // spec 016: this forum is shown here, so not notified
   enter()
   schedule()
 }
@@ -70,7 +71,8 @@ async function refreshRole () {
   schedule()
 }
 
-// --- routes: #/b/<board>, #/t/<thread>, #/new/<board>, #/mentions, #/you, #/members, #/mod, #/board/<id|new> ---
+// --- routes: #/b/<board>, #/t/<thread>, #/new/<board>, #/mentions, #/you, #/members, #/mod, #/board/<id|new>,
+// #/r/<record>: a thread or a comment (a notification's link, spec 016), opened as its thread ---
 
 function route () {
   const [page = '', id = null] = location.hash.replace(/^#\/?/, '').split('/')
@@ -79,6 +81,7 @@ function route () {
 
 function enter () {
   const r = route()
+  if (r.page === 'r') return toThread(r.id)
   if (r.page === 't' && threadView.id !== r.id) {
     threadView.stop?.()
     threadView = { id: r.id, stop: null, items: [], complete: false }
@@ -88,6 +91,13 @@ function enter () {
   if (r.page === 'mod') loadModeration()
   if (r.page === 'mentions') mentionView.seenAtOpen = mine.mentions ?? 0
   window.scrollTo(0, 0)
+}
+
+// shortcut: opens the comment's thread at its top, not scrolled to the comment; scroll there if people ask.
+async function toThread (id) {
+  const record = (await hyper.get(decodeURIComponent(id || '')).catch(() => null))?.record
+  const thread = record?.type === 'thread' ? record.id : record?.type === 'comment' ? record.thread : null
+  location.replace(thread ? '#/t/' + thread : '#/b')
 }
 
 async function loadMembers () {
