@@ -51,9 +51,32 @@ same install as the desktop's right-click. Any site may ask the same way; none c
 The desktop, bookmarks and the look are kept in `shell.json` in the app's data folder
 (`%APPDATA%\HyperBrowser` on Windows).
 
+## Notifications (spec 016)
+
+Apps you allow can tell you about new messages and mentions, even while they are closed, as long as HyperBrowser
+runs (the tray counts). Quit fully and nothing arrives; at the next launch, one popup sums up what came meanwhile.
+
+- **The counter** (between the address bar and the peers): how many are unread. Click it: one row per conversation,
+  newest first (the latest 200 kept). A row opens that conversation and counts it as read.
+- **Desktop icons** show their app's count. **Popups** come when the window isn't focused or you are on another
+  tab: one per conversation (the newest replaces the last). **The tray icon** gets a red mark while something is
+  unread. What you are looking at, window focused, never pops up and isn't counted.
+- **Friend requests** notify too, under Contacts.
+- Each app asks once ("Let "Chat" notify you?"). Reading on one of your computers clears the others, and your
+  answers follow you.
+
+## Configuration (spec 016)
+
+"HyperBrowser ▾" → **Configuration…**:
+
+- **Notifications**: per app **Allowed** / **Blocked** and **Hide text** (popups and the list say "New message");
+  per conversation **Mute**.
+- **When the window closes**: **Stay in the tray** or **Quit** (moved here from the menu).
+- **Devices**: **Your devices…** opens the Devices window.
+
 ## Devices: one identity on two computers (spec 012)
 
-"HyperBrowser ▾" → **Devices…**: this computer and your other devices, one identity.
+"HyperBrowser ▾" → **Configuration…** → **Your devices…**: this computer and your other devices, one identity.
 
 - **Add a device** (on the computer already set up): a code (about 100 letters), valid once, for 10 minutes.
   **Copy** it and send it to yourself (mail, a chat), or type it.
@@ -90,7 +113,7 @@ notice says so. The tray icon (right-click) has:
 Tabs left open while the window is hidden keep running, and their sites keep being served; close a tab to let
 its site go after the usual 5 minutes.
 
-To turn the tray off: "HyperBrowser ▾" → **When the window closes** → **Quit**. Closing the window then quits
+To turn the tray off: "HyperBrowser ▾" → **Configuration…** → **When the window closes** → **Quit**. Closing the window then quits
 HyperBrowser, as before. **Stay in the tray** turns it back on.
 
 Launching HyperBrowser while it already runs shows the running one's window: one HyperBrowser per data

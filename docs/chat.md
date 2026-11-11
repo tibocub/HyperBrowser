@@ -39,6 +39,13 @@ Publishing again sends the edited pages to everyone; Chat's new record types rea
   selection in the draft stay where they were.
 - No stylesheet in either app: HyperBrowser's default theme.
 
+## Notifications (spec 016)
+
+Chat's `site.json` watches `message` (its text) and `invite` ("invited you to a group"); its page calls
+`hyper.notifications.viewing(<conversation>)` when it shows one, so an open conversation never pops up. Chat asks
+"Let Chat notify you?" like any app. Its conversations stay online first (up to 24). A new `site.json` reaches
+people only once Chat is published again (`npm run chat:publish`).
+
 ## Limits (shortcuts)
 
 - A conversation shows its latest 300 messages; past that, a new message shifts your place by the one that drops.

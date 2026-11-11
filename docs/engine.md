@@ -118,10 +118,36 @@ hypergraph pairs devices; the engine passes it through:
 - **Known issue** (`specs/requests-to-hypergraph.md` B4): closing an engine within seconds of its join can
   hang in hypergraph; the shell doesn't restart after a join for that reason.
 
+## Notifications (spec 016)
+
+`engine/notifications.js`: an app's `site.json` `notifications` (checked by `engine/manifest.js`) are copied to the
+person's settings when they say yes (`site.permit { permission: 'notifications' }`), and refreshed at each open.
+The engine watches the app's instances with hypergraph's `space.since(cursor)`: a seq per log, never stamps.
+
+- **Online**: Chat's conversations (the app `apps.set` names) held with `space.hold()`, up to 24; every other
+  watched place in turns, 2 at a time, 20 s each (`perf/turn.mjs` measures a turn: public DHT 9 to 22 s).
+- **This device**: `<engine dir>/notifications.json`: `cursors` (one per place) and `items` (the latest 200). Saved
+  only when something changed, atomically (temp file, rename), after the items were told: a crash may repeat
+  one, never lose one.
+- **The person's settings** (all their devices): `hyperbrowser/permissions` (the answer),
+  `hyperbrowser/notify/app/<app>` (`{ title, watches, hide }`), `notify/mute/<place>`, `notify/read/<place>`
+  (`{ [log, 16 hex]: next unread seq }`, 64 logs at most).
+- **History isn't news**: a place's first look starts from now; a place still catching up stays silent (checked
+  every second) until it is complete once. At a launch, what is found in the first turn (20 s) is told at once,
+  as one summary.
+- **Messages** (shell only): `notify.state` → `{ items, unread: { total, byApp, byPlace }, apps }`;
+  `notify.set { app, allow?, hide? }` or `{ place, mute }`; `notify.read { place, app? }` (with `app`: refused
+  unless the place is that app's, for `hyper.notifications.viewing`). Event `notify`: `{ items, summary, unread }`.
+  `site.open` adds `notify: 'ask'` when the shell should ask.
+- **Clean-up**: `instances.leave` and an uninstall (`site.keep false`) remove cursors, items, mute and read state.
+
+`npm run perf` runs `perf/notifications.mjs` (SC-005: 50 watched places, nothing happening: memory and CPU over a
+few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [runs] [--public]` measures a turn.
+
 ## Tests
 
 ```bash
-npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps
+npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
 npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %, the tray (spec 010)
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS

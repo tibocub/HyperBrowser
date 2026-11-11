@@ -3,7 +3,7 @@
   "description": "Forums anyone can start; the official HyperBrowser forum.",
   "entry": "index.html",
   "icon": "icon.svg",
-  "permissions": ["space"],
+  "permissions": ["space", "notifications"],
   "types": {
     "board": { "fields": { "name": "string", "about": "text", "parent": "link", "order": "int" }, "links": { "parent": ["board"] }, "put": { "permission": "decide" }, "editable": { "permission": "decide" } },
     "thread": { "fields": { "title": "string", "text": "text", "board": "link" }, "links": { "board": ["board"] } },
@@ -12,5 +12,8 @@
     "mention": { "fields": { "who": "string", "on": "link" }, "links": { "on": ["thread", "comment"] }, "index": [["who", "stamp"]] },
     "avatar": { "fields": { "icon": "bytes" }, "onePerMember": true },
     "official": { "fields": { "instance": "string" }, "put": { "permission": "decide" } }
-  }
+  },
+  "notifications": [
+    { "type": "mention", "me": "who", "says": "mentioned you", "open": "#/r/{on}" }
+  ]
 }

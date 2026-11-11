@@ -77,3 +77,22 @@ Built differently:
   run too: there is no guard to turn off.
 - **Popups use Electron's `Notification`**, with `app.setAppUserModelId('org.hyperbrowser.app')` in an installed
   build (the installer's id). No balloon fallback: to add if Tibo's check by hand shows nothing.
+
+## Step 5: apps, docs, perf
+
+- [x] Chat: `notifications` permission, watches `message` (`text`) and `invite` (says "invited you to a group");
+  `viewing(<conversation>)` when one opens.
+- [x] Forum: `notifications` permission, watch `mention` (`me: who`, says "mentioned you", `open: #/r/{on}`);
+  `viewing(<forum>)`; the `#/r/<id>` route opens a thread, or a comment's thread.
+- [x] Docs: `site-api.md`, `shell.md`, `engine.md`, `chat.md`, `forum.md`.
+- [x] `perf/notifications.mjs`, `npm run perf`, `perf/history.jsonl` (hypergraph's shape; scenarios
+  `notifications.idle.memory`, `notifications.idle.cpu`, size 50).
+
+Not built:
+- `#/r/<comment>` opens the comment's thread at its top, not scrolled to the comment.
+- The forum's `#/r` route and Chat's `viewing` call have no automated test (app UI code); the engine side does.
+- Chat and Forum must be published again (`apps:publish`, Tibo) before their watches reach anyone.
+- SC-005, `npm run perf` 2026-11-11 (Node, this PC, test DHT, 3 minutes idle, Ann gone so nothing happens): Bob's
+  engine alone in a fresh process, 209 MB before watching; while watching 50 places it never went above it (growth
+  −74 to −2 MB: start-up garbage freed). CPU in the second half: median 3.1 % of one core, max 7.5 % (the turns).
+  With the places' peers online the memory would be higher (replication): not measured.

@@ -134,6 +134,43 @@ await hyper.apps.open(key)        // the site in a tab of its own: true
 - `key`: a 52-character site key (`INVALID_PARAMS` otherwise). A site nobody serves: the error of opening it.
 - `installed` tells your site about the keys it names only (not the person's list); it needs no click.
 
+## Notifications: tell the person, even while your app is closed (spec 016)
+
+Your app's code doesn't run while it is closed, so you say in `site.json` what HyperBrowser should watch for, as data;
+it watches your app's instances (every conversation or forum the person is in) and tells the person. Nothing to run.
+
+```json
+{
+  "permissions": ["space", "notifications"],
+  "types": { "message": { "fields": { "text": "text" } }, "mention": { "fields": { "who": "string", "on": "link" } } },
+  "notifications": [
+    { "type": "message", "text": "text" },
+    { "type": "mention", "me": "who", "says": "mentioned you", "open": "#/r/{on}" }
+  ]
+}
+```
+
+- A watch: `type` (one of your types), `text` (the field shown) **or** `says` (a fixed phrase, at most 60
+  characters), `me` (optional: only records whose field holds the person's identity), `open` (optional: where in
+  your app a click goes, `#...`; `{field}` is replaced by that field, URL-encoded). At most 16. Anything else is
+  refused (`INVALID_MANIFEST`): these fields can't change once released. Without the `notifications` permission the
+  list is ignored.
+- The person is asked once, right after the identity question ("Let "<title>" notify you?"), and can change it on
+  the Configuration page (block your app, mute one conversation, hide your text). HyperBrowser's own apps ask too.
+- What notifies: records **created** after the yes, by someone else, found by what this device received (never by
+  their dates: a message written offline and received late still notifies). Not: the person's own records, an
+  edit, the history of a conversation just joined, a deleted, hidden or banned author's record.
+- Text is shown as plain text, cut to 200 characters; your app's name is its `site.json` title.
+- A click opens your app on that instance (`?instance=<key>`), with `open`'s `#...` after it.
+
+```js
+hyper.notifications.viewing(instanceKey)   // what your page shows now (or null): not notified, counted as read
+```
+
+Call it when you show one of your instances, and with `null` when you show none. HyperBrowser believes it only for
+your own app's instances, and only while your tab is current and the window focused. That is all a page gets: it
+can't read notifications or their settings.
+
 ## Contacts (spec 013)
 
 A site whose `site.json` lists `"contacts"` in `permissions` may read and change the contacts, once the person
