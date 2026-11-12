@@ -35,10 +35,21 @@ app's: opening a forum's key or link opens the app on it.
   `lib/icon.js`: 16×16 1-bit icons (32 bytes), made from a key or drawn.
 - Record types in `site.json` (`board`, `thread`, `comment`, `vote`, `mention`, `avatar`; names are SwarmFS's
   `profile`): see `specs/006-forum/data-model.md`. Only additions between versions.
-- Read state, the sort and mentions seen: the forum's `hyper.instance(key).mine` (the person's settings, on their
-  devices; each forum's apart, under the app's one cap). Bounded: one
-  `read/<thread>` entry (~90 bytes) per thread read among the ones shown; entries of threads no longer shown
-  (deleted, hidden, past the newest 500) are dropped once per visit, so at most ~45 KB of the site's 1 MB.
+- The left columns (spec 017): your forums (this app's instances), each with a number (unread mentions and
+  replies) or a dot (new posts since you last opened it), from `hyper.notifications.unread()` and `.on()`; it
+  collapses (remembered in the app's `mine`, `panel`; collapsed by default under 700 px). "+ Join or make" opens
+  the start page's two forms; each forum's "…" menu has Leave (confirmed; the owner is warned that without an admin
+  nobody can make boards or moderators any more). Switching forums is a page load (measured: 0.1 to 0.35 s with 500
+  threads), so the forum left is released and closes later. Then the open forum's boards, with dots.
+- Unread (spec 017 R5): by message numbers, never by dates. The page calls `hyper.since()` on its forum from a
+  cursor kept in the forum's `mine` (`cursor`); the threads of the records found (others' threads and replies)
+  join `unread` (`{ [thread]: [ids of its new replies] }`, at most 300 reply ids in all, pruned to the threads
+  shown). Opening a thread removes it; its new replies stay marked while it is shown. A board has a dot when one of
+  its threads is unread. Two values in the forum's `mine` (`cursor`, `unread`), the sort and mentions seen: the
+  person's settings, on their devices, each forum's apart. Shortcut: a cursor is ~60 bytes per writing member, and
+  a `mine` value at most 64 KB: a forum of more than ~1,000 writing members needs it split, or kept by the engine.
+- **The read state of spec 006 is dropped**: the old `read/<thread>` stamps are removed at the first open of each
+  forum. That first open starts from "now": what was there reads as read, and only what arrives after is marked.
 - Moderation and roles: hypergraph's (`moderateAction`, `report`, `reports`, `setRole`).
 
 ## Notifications (spec 016)
@@ -46,8 +57,11 @@ app's: opening a forum's key or link opens the app on it.
 The forum's `site.json` watches `mention` records naming the person ("mentioned you"); a click opens `#/r/<record>`,
 which opens that thread, or a comment's thread (at its top). Each forum calls `hyper.notifications.viewing(<forum>)`
 while shown. Forums are checked in turns with the other non-chat places: a mention may arrive a few minutes late.
-Replies, follows and unread dots are the next spec (forum panel). Publish again (`npm run forum:publish`) for the
-watch to reach people.
+Spec 017: a reply also writes a `mention` for the author of what it answers (not for oneself), so replies notify
+like mentions. Two `"show": "dot"` watches (`thread`, `comment`) give the forums column its dots. Follows: "Follow"
+on a board's header (its new threads) and next to each member in Members (their threads and replies); "You follow"
+on You lists them, with a Popup switch and Unfollow. A follow is a dot and a list entry, a popup only if switched
+on; its entry opens the post (`#/r/{id}`). Publish again (`npm run forum:publish`) for all this to reach people.
 
 ## Tests
 

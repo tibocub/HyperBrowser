@@ -37,6 +37,13 @@ Publishing again sends the edited pages to everyone; Chat's new record types rea
 - **A redraw keeps your place.** The message list opens at the latest message and follows new ones while you are
   at the end; scrolled up, it stays put; sending takes you to the end (`sites/chat/lib/scroll.js`). The caret and
   selection in the draft stay where they were.
+- **Unread and "New messages"** (spec 017): the conversation list shows each one's unread number
+  (`hyper.notifications.unread()`, Chat's own conversations only). A conversation opened with unread messages
+  shows a "New messages" line above the first of them (the last `count` messages from others,
+  `sites/chat/lib/scroll.js` `newLine`), in view; else it opens at the latest message. Every conversation, group or
+  direct, reads oldest at the top.
+- **One "…" per message** (spec 017): your own messages' Edit and Delete (a moderator's Delete) behind it; a
+  `<details>`, opened with Enter or Space.
 - No stylesheet in either app: HyperBrowser's default theme.
 
 ## Notifications (spec 016)

@@ -46,6 +46,7 @@ const { items, complete } = await hyper.query('profile').by(me.identity).latest(
 const stop = hyper.query('profile').live(({ items, complete }) => render(items))
 const off = hyper.on('change', ({ records }) => {})   // change, peers, members, decisions, status
 const sub = hyper.subspace(key)                       // one of your site's sub-spaces
+const { records, cursor } = await hyper.since(null)   // spec 017: what was created since a cursor (below)
 stop(); off()
 ```
 
@@ -64,6 +65,11 @@ stop(); off()
 - Errors have a `code` (`NOT_ALLOWED`, `NOT_FOUND`, `INVALID_TYPE`…) and a `message`; they are plain objects
   `{ name: 'HyperError', code, message }`, not `Error`s. Bytes fields are `Uint8Array`.
 - The official forum (`sites/forum`) is a full example: [forum.md](forum.md).
+- `hyper.since(cursor, { types, limit })` (spec 017, hypergraph's `since()`): the records created past `cursor`, by
+  what this device received (message numbers, never dates: a reply received late still counts), with the next
+  cursor. `null`: from now on (no records). Keep the cursor in `hyper.mine` to know what is new since the last
+  visit. At most 1000 records a call (the default limit; more is `INVALID_PARAMS`): call again with the new cursor
+  while you get a full batch. A cursor is ~60 bytes per log (one per writing member and device).
 
 ## Apps with instances: communities anyone can start
 
@@ -152,9 +158,10 @@ it watches your app's instances (every conversation or forum the person is in) a
 
 - A watch: `type` (one of your types), `text` (the field shown) **or** `says` (a fixed phrase, at most 60
   characters), `me` (optional: only records whose field holds the person's identity), `open` (optional: where in
-  your app a click goes, `#...`; `{field}` is replaced by that field, URL-encoded). At most 16. Anything else is
-  refused (`INVALID_MANIFEST`): these fields can't change once released. Without the `notifications` permission the
-  list is ignored.
+  your app a click goes, `#...`; `{field}` is replaced by that field, URL-encoded; `{id}` by the record's own id,
+  spec 017), `show` (optional, spec 017: `"dot"`: a match only puts a dot on that instance, no notification, no
+  popup). At most 16. Anything else is refused (`INVALID_MANIFEST`): these fields can't change once released.
+  Without the `notifications` permission the list is ignored.
 - The person is asked once, right after the identity question ("Let "<title>" notify you?"), and can change it on
   the Configuration page (block your app, mute one conversation, hide your text). HyperBrowser's own apps ask too.
 - What notifies: records **created** after the yes, by someone else, found by what this device received (never by
@@ -168,8 +175,28 @@ hyper.notifications.viewing(instanceKey)   // what your page shows now (or null)
 ```
 
 Call it when you show one of your instances, and with `null` when you show none. HyperBrowser believes it only for
-your own app's instances, and only while your tab is current and the window focused. That is all a page gets: it
-can't read notifications or their settings.
+your own app's instances, and only while your tab is current and the window focused. Seen, the instance's count and
+dot clear.
+
+Your page can read its own app's counts and add follows (spec 017). Only your app's instances, whatever your page
+names; never the person's notifications themselves or their settings:
+
+```js
+await hyper.notifications.unread()      // { [instance]: { count, dot } } for every instance of your app
+const stop = hyper.notifications.on((counts) => {})   // the same, each time it changes
+const { id } = await hyper.notifications.follow({ place, type: 'thread', where: { board }, says: 'new thread', open: '#/r/{id}' })
+await hyper.notifications.follows()     // your app's: [{ id, place, type, where?, by?, says | text, open?, popup }]
+await hyper.notifications.unfollow(id)
+```
+
+- `count`: the unread notifications there (your watches without `show`); `dot`: something new since the person
+  last viewed it (a `"dot"` watch or a follow matched). Dots are kept per device.
+- A follow is a watch added at runtime, for one of your app's instances (`place`): the same fields as a `site.json`
+  watch (no `me`, no `show`), `type` one type or a list, `where: { field: value }` (at most 4, equal values),
+  `by: <member key>`, `popup` (default `false`). It is a list entry and a dot, never a number; a popup only with
+  `popup: true`. At most 100 per app, on all the person's devices; leaving the instance drops its follows. It works
+  only while the person allows your app's notifications, like your watches.
+- These need the `notifications` permission in `site.json` (else `NOT_ALLOWED`).
 
 ## Contacts (spec 013)
 

@@ -64,6 +64,25 @@ template may use `{id}`, the matched record's own id (site.json watches and foll
 - Runs: Node 80/80 (132 s), Bare 80/80 (141 s), 2 jobs. (The run before had one Node failure: a quote typo in
   this test, edited while that run was going; fixed before it was committed.)
 
+## Step 4: docs, perf, self-test, frame check
+
+- [x] Docs: `site-api.md` (`since`, `show`, `{id}`, `unread`/`on`/`follow`/`unfollow`/`follows`), `forum.md` (the
+  columns, unread by numbers, **the old `read/<id>` read state dropped**), `chat.md`, `engine.md`.
+- [x] Shell: a quiet follow (`popup: false`) is listed, never popped up (`frame.js`).
+- [x] Self-test, own-app guards, each failing in the control run (checked): a page can't read another app's counts,
+  nor its follows, can't remove its follow, can't follow its places, doesn't hear its counts. The self-test's
+  sites A and B now declare `notifications` and a `note` type (no watch: no question).
+- [x] Self-test, Chat in a real page (SC-005), with a second person (Ann: a second engine in the shell's process,
+  on a local test DHT the self-test now runs on, `hyperdht/testnet`): 30 messages read, 5 unread → the line above
+  the 5, in view, not at the top; oldest at the top; sending goes to the end; for a group and a direct
+  conversation. The "…" menu: Edit and Delete, its summary takes the keyboard focus.
+- [x] Frame check: a quiet follow pops nothing up (fails without the `frame.js` change: checked).
+- [x] `perf/notifications.mjs`: the watched app also has a dot watch.
+- Runs (2026-11-12, this PC, 2 jobs): `npm test` 80/80 (127 s); `npm run test:bare` 80/80 (139 s);
+  `npm run test:sandbox` 5/5 (46 asserts, 107 s; self-test 25 s, control run 37 s); `npm run framecheck` PASS;
+  `npm run perf`: 192 MB before watching, memory growth at most −32 MB (SC-005: at most 200), CPU second half
+  median 4.8 % of a core, max 6.2 %, 0 notifications. Appended to `perf/history.jsonl`.
+
 ## Built differently
 
 - **A follow item is a list entry and a dot, never a number**: it doesn't count in `notify.state`'s `unread`, nor
@@ -76,10 +95,20 @@ template may use `{id}`, the matched record's own id (site.json watches and foll
   notifications (as the app's own watches).
 - The `notifications` calls need the app to declare the `notifications` permission (else `NOT_ALLOWED`).
 
-## Not built (yet)
+## Not built
 
-- The shell's own-app guards for the new calls aren't in the self-test yet (step 4, with their control run).
-  Only the 016 check's expected key list changed.
-- `open` in a follow can name only fields of its types (no `{id}`): a followed thread's entry can't link to the
-  thread itself yet.
+- Done since step 1: the self-test's own-app guards (step 4); `{id}` in `open` (step 2, asked by the lead).
 - R1's shortcut: one call running longer than 30 s on an instance could find its handle closed (`CLOSED`).
+- A forum not reachable yet isn't listed as "connecting": the column lists what `instances.list()` gives (the
+  forums held here). A forum left on another device leaves the column at the next count change.
+- SC-003 (a late reply marks its thread) is tested on the lib (a record stamped long ago) and rests on
+  hypergraph 021's own late-arrival tests; no scripted two-engine run delays a reply's replication.
+- SC-002 (after 20 switches only the visited forum stays open) isn't measured: the engine test checks the handles
+  are let go; hypergraph closes an idle space after 120 s, and keeps up to 32 recent ones open anyway.
+- Dots and numbers drawn on screen from another person's posts weren't seen by hand; the engine tests and the
+  self-test's Chat check (numbers through `unread()`) cover them.
+- Chat's line counts every unread notification of the conversation, invites too: with an unread invite the line
+  sits one message higher.
+- The R0 and look scripts were temporary modes of `shell/main.js`, not committed.
+- The self-test now imports `hyperdht/testnet.js`, a dependency of hypergraph's (not in `package.json`): dev only.
+- Chat and Forum must be published again (`apps:publish`, Tibo) before people see any of this.

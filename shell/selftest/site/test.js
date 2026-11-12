@@ -14,7 +14,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const API = ['apps', 'completeFrom', 'contacts', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
   'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
   'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'setRole',
-  'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag']
+  'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag'] // since: spec 017
 
 const common = [
   ['no Node: require/process/module/Buffer undefined', async () =>

@@ -13,7 +13,7 @@ import os from 'os'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import PearRuntime from 'pear-runtime'
-import { connect } from '../engine/protocol.js'
+import { connect, pair } from '../engine/protocol.js'
 import { createSiteView } from './views.js'
 import { startFrame } from './frame.js'
 
@@ -84,6 +84,7 @@ const appsInstalled = new Set() // the self-test's installs and opens through hy
 const appsOpened = []
 const heard = [] // the self-test's record of which subscriptions the engine still sends events for
 let selftestYes = false // the self-test's answer to "Install …?"
+let testnet = null // the self-test's own DHT (spec 017: a second person, Ann, in Chat)
 
 async function serve (key, p) {
   const { bytes, path: real } = await rpc.request('site.read', { key, path: p })
@@ -350,7 +351,8 @@ async function selftest (dir) {
     return dir
   }
   const keys = []
-  for (const [name, manifest] of [['a', { title: 'Site A', permissions: ['space'] }], ['b', { title: 'Site B', permissions: ['space'] }], ['c', { title: 'Static C' }]]) {
+  const dyn = (title) => ({ title, permissions: ['space', 'notifications'], types: { note: { fields: { text: 'string' } } } }) // spec 017: no watch, so no question
+  for (const [name, manifest] of [['a', dyn('Site A')], ['b', dyn('Site B')], ['c', { title: 'Static C' }]]) {
     keys.push((await rpc.request('site.publish', { folder: folder(name, manifest) })).key)
   }
   const [a, b, c] = keys
@@ -401,13 +403,15 @@ async function selftest (dir) {
   out.push({ site: 'shell', name: 'a page with its own <style> keeps its look', pass: !styled.includes('HB ') })
   await checkLoads(views, out)
   await checkNotifications(views, out)
-  await checkChat(win, views, out, tmp)
+  const chat = await checkChat(win, views, out, tmp)
+  await checkChatLine(chat, out, tmp)
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
   for (const v of views) v.close()
   win.destroy() // with views still open, app.exit() leaves the process running (Windows, Electron 42)
   await shutdown()
+  await testnet?.destroy()
   for (const d of [tmp, dir]) try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5 }) } catch {}
   app.exit(ok ? 0 : 1)
 }
@@ -479,9 +483,34 @@ async function checkNotifications ([a, b], out) {
   await viewing(own.key)
   await readViewed(a.webContents)
   pass("notifications: a page's viewing marks its own app's conversation read", marked.includes(own.key))
+  await checkOwnCounts(a, b, own, other, pass)
   const api = await a.webContents.executeJavaScript('Object.keys(window.hyper.notifications).join()')
   const asked = await bridge(a.webContents, { op: 'call', method: 'notify.state', args: [] }).then(() => 'read', (e) => e.code)
   pass("notifications: a page can't read the person's notifications or their settings (notify.* refused; its own app's counts only, spec 017)", api === 'viewing,unread,on,follow,unfollow,follows' && asked === 'UNKNOWN_METHOD')
+}
+
+// spec 017: a page reaches its own app's counts and follows only. Each check names B's site as the instance, which
+// the control run takes for the page's site (as with the other guards): there it reads and changes B's.
+async function checkOwnCounts (a, b, own, other, pass) {
+  const ask = (method, args = []) => bridge(a.webContents, { op: 'call', instance: b.key, method, args }).then((r) => r, (e) => ({ error: e.code }))
+  const counts = await ask('notifications.unread')
+  pass("notifications: a page can't read another app's counts", !counts.error && own.key in counts && !(other.key in counts))
+  const theirs = await rpc.request('site.call', { key: b.key, method: 'notifications.follow', args: [{ place: other.key, type: 'note', says: 'a note' }] })
+  const listed = await ask('notifications.follows')
+  pass("notifications: a page can't read another app's follows", Array.isArray(listed) && !listed.some((f) => f.id === theirs.id))
+  await ask('notifications.unfollow', [theirs.id])
+  const still = await rpc.request('site.call', { key: b.key, method: 'notifications.follows', args: [] })
+  pass("notifications: a page can't remove another app's follow", still.some((f) => f.id === theirs.id))
+  const made = await ask('notifications.follow', [{ place: other.key, type: 'note', says: 'a note' }])
+  pass("notifications: a page can't follow another app's places", made.error === 'NOT_ALLOWED')
+  const gone = await rpc.request('site.call', { key: b.key, method: 'instances.create', args: ['gone'] })
+  await wait(1000)
+  const sub = await bridge(a.webContents, { op: 'on', instance: b.key, event: 'notifications' })
+  const mark = heard.length
+  await rpc.request('site.call', { key: b.key, method: 'instances.leave', args: [gone.key] }) // B's counts change: one place fewer
+  await wait(1000)
+  pass("notifications: a page doesn't hear another app's counts", !heard.slice(mark).includes(sub.id))
+  await bridge(a.webContents, { op: 'off', id: sub.id })
 }
 
 // Chat's page, in a real browser: where a redraw leaves the message list and the caret.
@@ -518,6 +547,65 @@ async function checkChat (win, views, out, tmp) {
   await scrollUp()
   await run(`${box}.form.requestSubmit(); 0`)
   pass('chat: your own message takes you to the end', await until(async () => (await run(`${list}.children.length`)) === shown + 1) && await until(atEnd))
+  return { key, view: chat }
+}
+
+const waitFor = async (f, ms = 60000) => { for (const end = Date.now() + ms; Date.now() < end; await wait(250)) if (await f().catch(() => false)) return true; return false }
+
+// spec 017 SC-005: Chat opens at a "New messages" line just above the unread messages, in view; sending goes to the
+// end; a group and a direct conversation alike (oldest at the top). Ann: a second engine, in this process, on the
+// self-test's own DHT. 30 messages read, then 5 unread.
+async function checkChatLine ({ key, view }, out, tmp) {
+  const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
+  const { start } = await import('../engine/index.js')
+  const [x, y] = pair()
+  start(x)
+  const ann = connect(y, {})
+  try {
+    await ann.request('init', { dir: path.join(tmp, 'ann'), bootstrap: testnet.bootstrap })
+    await ann.request('site.open', { key, timeout: 60000 })
+    await ann.request('site.consent', { key, allow: true })
+    const as = (e, method, args = [], instance = null) => e.request('site.call', { key, instance, method, args })
+    for (const [e, name] of [[rpc, 'Bob'], [ann, 'Ann']]) {
+      await e.request('apps.set', { chat: key })
+      await e.request('site.permit', { key, permission: 'contacts', allow: true })
+      await e.request('site.permit', { key, permission: 'notifications', allow: true })
+      await as(e, 'contacts.setMe', [{ name }])
+    }
+    const annId = (await as(ann, 'info')).identity
+    await as(rpc, 'contacts.add', [(await as(ann, 'contacts.link')).link])
+    let direct = null
+    await waitFor(async () => (direct = (await as(rpc, 'contacts.list')).find((c) => c.identity === annId && c.state === 'friend')?.chat))
+    const group = (await as(ann, 'instances.create', ['Line', { private: true }])).key
+    await as(rpc, 'instances.join', [await as(ann, 'createInvite', [{ role: 'member' }], group)])
+    const run = (s) => view.webContents.executeJavaScript(s)
+    const list = "document.querySelector('main div[style*=overflow]')"
+    for (const [kind, place] of [['a group', group], ['a direct conversation', direct]]) {
+      if (!place) { pass(`chat: ${kind}: there`, false); continue }
+      const count = async () => (await as(rpc, 'notifications.unread'))[place]?.count ?? -1
+      await wait(3000) // the engine's first look at a place just joined: what was there is history
+      for (let i = 1; i <= 30; i++) await as(ann, 'put', ['message', { text: 'h' + i + '\nsecond line\nthird line' }], place)
+      await waitFor(async () => (await count()) === 30)
+      await rpc.request('notify.read', { place })
+      for (let i = 1; i <= 5; i++) await as(ann, 'put', ['message', { text: 'u' + i }], place)
+      const five = await waitFor(async () => (await count()) === 5)
+      await run(`location.search = '?instance=${place}'; 0`)
+      const shown = await waitFor(() => run(`(${list}?.children.length || 0) >= 36`), 30000) // 35 and the line
+      await wait(500)
+      const line = await run(`(() => { const l = ${list}; const n = l.querySelector('.new-line'); if (!n) return 'none'; const top = n.offsetTop - l.scrollTop
+        return [top >= 0 && top < l.clientHeight, n.nextElementSibling.textContent.includes('u1'), l.scrollTop > 0].join() })()`)
+      pass(`chat: ${kind} opens at a "New messages" line above the 5 unread, in view`, five && shown && line === 'true,true,true')
+      const order = await run(`[...${list}.children].filter((p) => !p.classList.contains('new-line')).map((p) => p.textContent).join('|')`)
+      pass(`chat: ${kind}: oldest at the top, newest at the bottom`, order.split('|')[0].includes('h1') && order.endsWith('u5'))
+      await run("(() => { const t = document.querySelector('textarea[name=text]'); t.value = 'from Bob'; t.form.requestSubmit(); return 0 })()")
+      const end = await waitFor(() => run(`(() => { const l = ${list}; return l.lastElementChild.textContent.includes('from Bob') && l.scrollHeight - l.scrollTop - l.clientHeight <= 8 })()`), 15000)
+      pass(`chat: ${kind}: sending takes you to the end`, end)
+    }
+    const menu = await run(`(() => { const d = ${list}.querySelector('details'); if (!d) return 'none'; d.querySelector('summary').focus(); return [document.activeElement.tagName, [...d.querySelectorAll('button')].map((b) => b.textContent).join()].join() })()`)
+    pass('chat: Edit and Delete behind one "…" per message, reachable by keyboard', menu === 'SUMMARY,Edit,Delete')
+  } finally {
+    await ann.request('close').catch(() => {})
+  }
 }
 
 // The frame check: the demo site in a frame of its own, then where everything is.
@@ -631,6 +719,9 @@ async function checkNotes (fwc, inspect, notify, calls) {
   await notify({ items: [{ app: SCRIPT.chat, place: SCRIPT.a, id: 'n4' }], summary: { count: 500 } })
   const summary = inspect().popups - before - perPlace
   const popups = !Notification.isSupported() || (perPlace === 2 && summary === 1)
+  const loud = inspect().popups
+  await notify({ items: [{ app: SCRIPT.forum, place: SCRIPT.b, id: 'n5', popup: false }], summary: null })
+  const quiet = inspect().popups === loud
   return [
     ['notifications: the counter between the address bar and the peers says 3 (spec 016)', counted],
     ["notifications: each app's desktop icon shows its share (Chat 2, Forum 1)", icons],
@@ -640,7 +731,8 @@ async function checkNotes (fwc, inspect, notify, calls) {
     ["notifications: read, the icon's count goes", down],
     ['Configuration: notifications per app, the tray setting and Devices moved there', config],
     ['Configuration: Blocked reaches the engine', blocked],
-    ['notifications: popups, one per conversation; a catch-up, one in all', popups]
+    ['notifications: popups, one per conversation; a catch-up, one in all', popups],
+    ['notifications: a quiet follow is listed, never popped up (spec 017)', quiet]
   ]
 }
 
@@ -799,7 +891,8 @@ const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContent
 app.whenReady().then(async () => {
   if (!FIRST) return
   const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST || FRAMECHECK ? 'selftest-' + process.pid : 'engine')
-  const { identity } = await startEngine(dir)
+  if (SELFTEST) testnet = await (await import('hyperdht/testnet.js')).default(3) // spec 017: two people, offline
+  const { identity } = await startEngine(dir, testnet ? { bootstrap: testnet.bootstrap } : {})
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
   log('engine up, identity ' + identity)
   if (SELFTEST) return selftest(dir)

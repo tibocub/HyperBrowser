@@ -140,6 +140,15 @@ The engine watches the app's instances with hypergraph's `space.since(cursor)`: 
   unless the place is that app's, for `hyper.notifications.viewing`). Event `notify`: `{ items, summary, unread }`.
   `site.open` adds `notify: 'ask'` when the shell should ask.
 - **Clean-up**: `instances.leave` and an uninstall (`site.keep false`) remove cursors, items, mute and read state.
+- **Spec 017**: a watch with `"show": "dot"` only sets the place's dot (`dots` in `notifications.json`, this
+  device's), cleared by `notify.read`. Follows: `hyperbrowser/notify/follow/<app>` (at most 100 per app), watches
+  with a `place`, `where` and `by`, checked by `manifest.js` `watch(w, types, true)`; their items carry `follow`
+  and `popup` and never count in `unread`. A page's own calls (`site.call`): `notifications.unread`, `.follow`,
+  `.unfollow`, `.follows`, and the `notifications` event (`site.on`): only the app's instance list, whatever
+  instance the page names. `since` is a site call too, at most 1000 records a call.
+- **Handles let go (spec 017 R1)**: an app instance's handle no subscription uses is closed 30 s after its last
+  call (`init { idle }` in tests), so its space can close once hypergraph finds it idle; a subscription keeps it,
+  and its end starts the 30 s again. `hosting` answers `handles` (those kept).
 
 `npm run perf` runs `perf/notifications.mjs` (SC-005: 50 watched places, nothing happening: memory and CPU over a
 few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [runs] [--public]` measures a turn.

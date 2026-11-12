@@ -36,7 +36,10 @@ const site = path.join(tmp, 'site')
 fs.mkdirSync(site)
 fs.writeFileSync(path.join(site, 'index.html'), 'hi')
 fs.writeFileSync(path.join(site, 'site.json'), JSON.stringify({
-  title: 'Chat', permissions: ['space', 'notifications'], types: { message: { fields: { text: 'text' } } }, notifications: [{ type: 'message', text: 'text' }]
+  title: 'Chat', // spec 017: a dot watch too, as the forum's
+  permissions: ['space', 'notifications'],
+  types: { message: { fields: { text: 'text' } }, thread: { fields: { title: 'string' } } },
+  notifications: [{ type: 'message', text: 'text' }, { type: 'thread', says: 'posted a thread', show: 'dot' }]
 }))
 const ann = await engine('ann')
 const { key } = await ann.request('site.publish', { folder: site })
