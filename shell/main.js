@@ -481,7 +481,7 @@ async function checkNotifications ([a, b], out) {
   pass("notifications: a page's viewing marks its own app's conversation read", marked.includes(own.key))
   const api = await a.webContents.executeJavaScript('Object.keys(window.hyper.notifications).join()')
   const asked = await bridge(a.webContents, { op: 'call', method: 'notify.state', args: [] }).then(() => 'read', (e) => e.code)
-  pass("notifications: a page can't read notifications or their settings (viewing only; notify.* refused)", api === 'viewing' && asked === 'UNKNOWN_METHOD')
+  pass("notifications: a page can't read the person's notifications or their settings (notify.* refused; its own app's counts only, spec 017)", api === 'viewing,unread,on,follow,unfollow,follows' && asked === 'UNKNOWN_METHOD')
 }
 
 // Chat's page, in a real browser: where a redraw leaves the message list and the caret.

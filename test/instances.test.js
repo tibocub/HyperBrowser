@@ -202,3 +202,60 @@ test('joined instances stay joined: no tab, past the grace period, after a resta
   t.alike((await h.instances.list()).map((i) => i.key), [fa.key], 'still listed')
   t.alike(await notes(h.instance(fa.key)), ['kept'], 'and held here: read with its owner offline')
 })
+
+// spec 017 R1: a forum switched away from is let go (its space may then close), never one a page still uses.
+test('an instance\'s handle is let go once no page uses it, kept while one does', async (t) => {
+  t.timeout(180000)
+  const IDLE = 800
+  const { key } = await app(t, 0)
+  const a = await opened(t, key, await engine(t, { idle: IDLE }))
+  const h = a.hyper
+  const fa = await h.instances.create('A')
+  const fb = await h.instances.create('B')
+  const handles = async () => (await a.e.rpc.request('hosting')).handles
+  const ia = h.instance(fa.key)
+  const seen = []
+  const stop = ia.query('note').live((r) => seen.push(r.items.length), { limit: 10 })
+  await ia.put('note', { text: '1' })
+  await h.instance(fb.key).put('note', { text: 'b' }) // used, no subscription
+  t.is(await handles(), 2)
+  await sleep(IDLE * 3)
+  t.is(await handles(), 1, 'B let go, A kept: a page is subscribed to it')
+  await ia.put('note', { text: '2' })
+  t.ok(await eventually(() => seen.at(-1) === 2, 10000), 'the subscribed page still works')
+
+  stop()
+  await sleep(IDLE / 4)
+  const again = []
+  const stop2 = ia.query('note').live((r) => again.push(r.items.length), { limit: 10 }) // the page came back in time
+  await sleep(IDLE * 3)
+  await ia.put('note', { text: '3' })
+  t.ok(await eventually(() => again.at(-1) === 3, 10000), 'came back in time: still works past the idle time')
+  t.is(await handles(), 1)
+  stop2()
+  await sleep(IDLE * 3)
+  t.is(await handles(), 0, 'nothing uses it: let go')
+  t.alike((await notes(ia)).sort(), ['1', '2', '3'], 'used again: a new handle')
+})
+
+test('since on the site API: what was created past a cursor, on the app\'s own space and instances', async (t) => {
+  t.timeout(120000)
+  const { people: [a] } = await app(t, 1)
+  const fa = await a.hyper.instances.create('A')
+  const ia = a.hyper.instance(fa.key)
+  const start = await ia.since(null)
+  t.alike(start.records, [], 'null: from now on')
+  await ia.put('note', { text: 'a' })
+  await ia.put('note', { text: 'b' })
+  const r = await ia.since(start.cursor, { types: ['note'] })
+  t.alike(r.records.map((x) => x.text).sort(), ['a', 'b'])
+  t.alike((await ia.since(r.cursor)).records, [], 'nothing past the new cursor')
+  t.is((await ia.since(start.cursor, { limit: 1 })).records.length, 1)
+  t.is(await codeOf(ia.since(start.cursor, { limit: 1001 })), 'INVALID_PARAMS', 'at most 1000 at a time')
+  t.is(await codeOf(ia.since(start.cursor, 'x')), 'INVALID_PARAMS')
+  t.ok(Array.isArray((await a.hyper.since(null)).records), 'the app\'s own space too')
+  const other = await app(t, 0)
+  const o = (await opened(t, other.key, a.e)).hyper
+  const fo = await o.instances.create('Other app\'s')
+  t.is(await codeOf(a.hyper.instance(fo.key).since(null)), 'NOT_ALLOWED', 'another app\'s instance')
+})

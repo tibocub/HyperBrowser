@@ -8,12 +8,16 @@ import fs from 'fs'
 import path from 'path'
 import b4a from 'b4a'
 import enc from 'hypergraph/lib/encodings.js'
+import crypto from 'hypercore-crypto'
+import { watch } from './manifest.js'
 
 const PERMITS = 'hyperbrowser/permissions' // { [app]: { notifications: true | false } } (engine/index.js)
 const APP = 'hyperbrowser/notify/app/' // + app: { title, watches, hide }
 const MUTE = 'hyperbrowser/notify/mute/' // + place: true
 const READ = 'hyperbrowser/notify/read/' // + place: { [log, 16 hex]: next unread seq }
 const INSTANCES = (app) => 'hyperbrowser/app/' + app + '/instances'
+const FOLLOW = 'hyperbrowser/notify/follow/' // + app: [{ id, place, type, where?, by?, says | text, open?, popup }] (spec 017 R3)
+const FOLLOWS_MAX = 100 // per app
 const CONTACTS = 'hyperbrowser/contacts' // engine/contacts.js: incoming requests notify (R7)
 const CONTACTS_APP = 'contacts' // HyperBrowser's own: allowed unless blocked, never asked
 const ITEMS_MAX = 200
@@ -31,12 +35,19 @@ const error = (code, message) => Object.assign(new Error(message), { code })
 // Text from records is a stranger's: one line of plain text, cut to length.
 const clean = (v, n) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '').replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, n) // eslint-disable-line no-control-regex
 
+// A record a watch (or a follow) is about: its type, the "names me" field, the follow's where and by.
+const matches = (w, r, me) => [].concat(w.type).includes(r.type) && (!w.me || r[w.me] === me) && (!w.by || r.author === w.by) &&
+  Object.entries(w.where || {}).every(([f, v]) => r[f] === v)
+const typesOf = (watches) => [...new Set(watches.flatMap((w) => [].concat(w.type)))]
+
 // sfs: the engine's SwarmFS. dir: the engine's folder. emit(event, data). turn: ms a place not held is held in
-// its turn, and the launch's catch-up window.
-export function notifications ({ sfs, dir, emit, turn = 20000 }) {
+// its turn, and the launch's catch-up window. counts(): the unread counts or dots may have changed (spec 017: the
+// pages listening to their own).
+export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) {
   const FILE = path.join(dir, 'notifications.json')
   const me = sfs.hg.identity.publicKey
-  let file = { cursors: {}, items: [] }
+  // dots (spec 017 R2): places where a dot watch or a follow found something since the person last viewed them
+  let file = { cursors: {}, items: [], dots: {} }
   const quiet = new Map() // place -> cursor: not complete here yet, its history isn't news (R6)
   const held = new Map() // place -> release()
   const timers = new Map() // place -> debounce
@@ -53,6 +64,8 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
   let turnTimer = null
   let online = new Set() // the chats held all the time
   const pending = [] // cursors to save once what they passed is told
+  const watching = new Map() // place -> the types watched there (a follow adds some)
+  let writing = Promise.resolve() // follows: one read-and-write at a time
 
   const serial = (fn) => {
     const p = queue.then(() => closed ? null : fn())
@@ -65,15 +78,17 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     ? s[PERMITS]?.[app]?.notifications !== false
     : s[PERMITS]?.[app]?.notifications === true && !!s[APP + app]
 
-  // Every place watched now: { app, place, watches }, of allowed apps, held here.
+  // Every place watched now: { app, place, watches }, of allowed apps, held here. A place's follows are watches.
   function places (s) {
     const out = []
     for (const n of Object.keys(s)) {
       if (!n.startsWith(APP)) continue
       const app = n.slice(APP.length)
-      const watches = s[n]?.watches
-      if (app === CONTACTS_APP || !allowed(s, app) || !watches?.length) continue
+      if (app === CONTACTS_APP || !allowed(s, app)) continue
+      const follows = s[FOLLOW + app] || []
       for (const place of Object.keys(s[INSTANCES(app)] || {})) {
+        const watches = [...(s[n]?.watches || []), ...follows.filter((f) => f.place === place)]
+        if (!watches.length) continue
         try { sfs.hg.space(place) } catch { continue } // left on another device: not here
         out.push({ app, place, watches })
       }
@@ -95,7 +110,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
 
   async function check ({ app, place, watches }, s) {
     const space = sfs.hg.space(place)
-    const types = [...new Set(watches.map((w) => w.type))]
+    const types = typesOf(watches)
     let cursor = file.cursors[place] ?? quiet.get(place) ?? null
     if (cursor === null) { // a first look (a first yes, a place just joined): from now on
       cursor = (await space.since(null)).cursor
@@ -125,12 +140,18 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     }
     await gone(space, place)
     const out = []
+    let dot = false
     if (s[MUTE + place] !== true) {
       for (const r of records) {
         if (r.author === me || file.items.some((x) => x.id === r.id)) continue // own records; a repeat after a crash
-        const w = watches.find((w) => w.type === r.type && (!w.me || r[w.me] === me))
+        const w = watches.find((w) => !w.show && matches(w, r, me)) // the app's own watches first: a mention counts
         if (w) out.push(await item(app, place, w, r, s))
+        if (w?.id || (!w && watches.some((w) => w.show === 'dot' && matches(w, r, me)))) dot = true // a follow: a dot, not a number
       }
+    }
+    if (dot && !file.dots[place]) {
+      file.dots[place] = true
+      dirty = true
     }
     file.items = [...out, ...file.items].slice(0, ITEMS_MAX)
     if (out.length) dirty = true
@@ -168,7 +189,8 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
       stamp: r.stamp,
       at: Date.now(),
       log: b4a.toString(log, 'hex').slice(0, 16),
-      seq
+      seq,
+      ...(w.id ? { follow: w.id, popup: w.popup === true } : {})
     }
   }
 
@@ -218,10 +240,14 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     await tell(fresh)
   }
 
+  const loud = (list) => list.filter((x) => !x.follow || x.popup).length // a quiet follow pops nothing up
+
   async function tell (fresh) {
     if (launchTimer && fresh.length) launching.push(...fresh) // the launch's catch-up: told at once, when it ends
-    else if (fresh.length) emit('notify', { items: fresh.map((x) => view(x, null)), summary: fresh.length > CATCHUP ? { count: fresh.length } : null, unread: last = await unread() })
-    else await changed()
+    else if (fresh.length) {
+      emit('notify', { items: fresh.map((x) => view(x, null)), summary: loud(fresh) > CATCHUP ? { count: loud(fresh) } : null, unread: last = await unread() })
+      counts()
+    } else await changed()
     for (const fn of pending.splice(0)) fn()
     await save()
   }
@@ -229,11 +255,12 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
   async function endLaunch () {
     launchTimer = null
     const all = launching.splice(0)
-    if (all.length) emit('notify', { items: all.map((x) => view(x, null)), summary: all.length > 1 ? { count: all.length } : null, unread: last = await unread() })
+    if (all.length) emit('notify', { items: all.map((x) => view(x, null)), summary: loud(all) > 1 ? { count: loud(all) } : null, unread: last = await unread() })
   }
 
   // Unread counts changed (a read here or on another device, a block): told with no new items.
   async function changed () {
+    counts() // a dot may have changed with no count
     const u = await unread()
     if (JSON.stringify(u) === JSON.stringify(last)) return
     last = u
@@ -262,7 +289,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     s = s || await settings()
     const out = { total: 0, byApp: {}, byPlace: {} }
     for (const x of file.items) {
-      if (isRead(s, x) || !allowed(s, x.app)) continue
+      if (x.follow || isRead(s, x) || !allowed(s, x.app)) continue // a follow: a dot, not a number (spec 017 Q5)
       out.total++
       out.byApp[x.app] = (out.byApp[x.app] || 0) + 1
       out.byPlace[x.place] = (out.byPlace[x.place] || 0) + 1
@@ -272,7 +299,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
 
   function view (x, s) {
     const hide = s ? s[APP + x.app]?.hide === true : false
-    return { app: x.app, place: x.place, id: x.id, type: x.type, author: x.author, name: x.name, text: hide ? null : x.text, open: x.open, stamp: x.stamp, at: x.at, read: s ? isRead(s, x) : false }
+    return { app: x.app, place: x.place, id: x.id, type: x.type, author: x.author, name: x.name, text: hide ? null : x.text, open: x.open, stamp: x.stamp, at: x.at, read: s ? isRead(s, x) : false, popup: !x.follow || x.popup }
   }
 
   // --- holding places online, waking on their changes ---
@@ -281,8 +308,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     if (held.has(p.place)) return
     held.set(p.place, noop)
     const space = sfs.hg.space(p.place)
-    const types = new Set(p.watches.map((w) => w.type))
-    const onChange = ({ types: t }) => { if (t.some((x) => types.has(x))) wake(p.place) }
+    const onChange = ({ types: t }) => { if (t.some((x) => watching.get(p.place)?.has(x))) wake(p.place) }
     try {
       const release = await space.hold()
       space.on('change', onChange)
@@ -308,6 +334,8 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
   // turns (R3). The place a page shows is kept open by the page itself.
   async function sync () {
     const want = places(await settings())
+    watching.clear()
+    for (const p of want) watching.set(p.place, new Set(typesOf(p.watches)))
     const chats = want.filter((p) => p.app === chat).slice(0, HELD_MAX)
     online = new Set(chats.map((p) => p.place))
     const keep = new Set([...online, ...turning])
@@ -338,7 +366,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
   let syncTimer = null
   let lastDigest = null
   let lastContacts = null
-  const decides = (n) => n === PERMITS || n.startsWith(APP) || n.startsWith(MUTE) || /^hyperbrowser\/app\/[^/]+\/instances$/.test(n)
+  const decides = (n) => n === PERMITS || n.startsWith(APP) || n.startsWith(MUTE) || n.startsWith(FOLLOW) || /^hyperbrowser\/app\/[^/]+\/instances$/.test(n)
   async function react () {
     const s = await settings()
     const digest = JSON.stringify(Object.keys(s).filter(decides).sort().map((n) => [n, s[n]]))
@@ -355,12 +383,23 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
     syncTimer = setTimeout(() => serial(react).catch(noop), 200)
   }
 
+  // An app's follows changed with fn(list) -> list: one read-and-write at a time (two follows at once would each
+  // drop the other's). On all the person's devices.
+  function setFollows (app, fn) {
+    const p = writing.then(async () => {
+      const list = fn((await settings())[FOLLOW + app] || [])
+      await sfs.hg.setSetting(FOLLOW + app, list.length ? list : null)
+    })
+    writing = p.catch(noop)
+    return p
+  }
+
   // --- start ---
 
   const ready = (async () => {
     try {
       const f = JSON.parse(await fs.promises.readFile(FILE, 'utf-8'))
-      if (f && typeof f.cursors === 'object' && Array.isArray(f.items)) file = { cursors: f.cursors || {}, items: f.items }
+      if (f && typeof f.cursors === 'object' && Array.isArray(f.items)) file = { cursors: f.cursors || {}, items: f.items, dots: f.dots || {} }
     } catch {}
     launchTimer = setTimeout(() => serial(endLaunch).catch(noop), turn)
     sfs.hg.on('settings', onSettings)
@@ -405,7 +444,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
           const s = await settings()
           const mine = new Set(Object.keys(s[INSTANCES(app)] || {}))
           drop((x) => x.app === app)
-          for (const place of mine) { delete file.cursors[place]; quiet.delete(place); unhold(place) }
+          for (const place of mine) { delete file.cursors[place]; delete file.dots[place]; quiet.delete(place); unhold(place) }
           if (app === CONTACTS_APP) delete file.cursors[CONTACTS_APP]
           dirty = true
           await save()
@@ -445,14 +484,22 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
       if (typeof place !== 'string' || !place) throw error('INVALID_PARAMS', 'notify.read needs { place }')
       await ready
       const mine = file.items.filter((x) => x.place === place) // newest first
-      if (!mine.length) return true
-      const s = await settings()
-      const marks = { ...s[READ + place] }
-      for (const x of mine) marks[x.log] = Math.max(marks[x.log] ?? 0, x.seq + 1)
-      const recent = new Set(mine.map((x) => x.log))
-      const keep = Object.keys(marks).sort((a, b) => recent.has(b) - recent.has(a)).slice(0, READ_LOGS)
-      await sfs.hg.setSetting(READ + place, Object.fromEntries(keep.map((k) => [k, marks[k]])))
-      await serial(changed)
+      if (mine.length) {
+        const s = await settings()
+        const marks = { ...s[READ + place] }
+        for (const x of mine) marks[x.log] = Math.max(marks[x.log] ?? 0, x.seq + 1)
+        const recent = new Set(mine.map((x) => x.log))
+        const keep = Object.keys(marks).sort((a, b) => recent.has(b) - recent.has(a)).slice(0, READ_LOGS)
+        await sfs.hg.setSetting(READ + place, Object.fromEntries(keep.map((k) => [k, marks[k]])))
+      } else if (!file.dots[place]) return true
+      await serial(async () => {
+        if (file.dots[place]) { // viewed: its dot goes (on this device: dots are this device's, like cursors)
+          delete file.dots[place]
+          dirty = true
+          await save()
+        }
+        await changed()
+      })
       return true
     },
 
@@ -462,6 +509,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
         unhold(place)
         quiet.delete(place)
         delete file.cursors[place]
+        delete file.dots[place]
         drop((x) => x.place === place)
         dirty = true
         await save()
@@ -469,6 +517,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
       const s = await settings()
       if (MUTE + place in s && s[MUTE + place] !== null) await sfs.hg.setSetting(MUTE + place, null)
       if (READ + place in s && s[READ + place] !== null) await sfs.hg.setSetting(READ + place, null)
+      for (const n of Object.keys(s)) if (n.startsWith(FOLLOW) && s[n]?.some((f) => f.place === place)) await setFollows(n.slice(FOLLOW.length), (l) => l.filter((f) => f.place !== place))
       await serial(changed)
     },
 
@@ -477,7 +526,41 @@ export function notifications ({ sfs, dir, emit, turn = 20000 }) {
       const s = await settings()
       if (!s[APP + app]) return
       await sfs.hg.setSetting(APP + app, null)
+      if (s[FOLLOW + app]) await sfs.hg.setSetting(FOLLOW + app, null)
       for (const place of Object.keys(s[INSTANCES(app)] || {})) await this.forget(place)
+    },
+
+    // --- a page's own (spec 017): `places` are its app's instances (the engine's list), the guard ---
+
+    // { [place]: { count, dot } } for each of them: count, the unread notifications (not follows); dot, new since viewed.
+    async unreadOf (places) {
+      await ready
+      const s = await settings()
+      const out = {}
+      for (const p of places) out[p] = { count: 0, dot: !!file.dots[p] }
+      for (const x of file.items) if (Object.hasOwn(out, x.place) && !x.follow && !isRead(s, x) && allowed(s, x.app)) out[x.place].count++
+      return out
+    },
+
+    async follow (app, types, places, spec) {
+      watch(spec, types, true)
+      if (!places.includes(spec.place)) throw error('NOT_ALLOWED', "not one of this app's instances")
+      const f = { ...spec, id: b4a.toString(crypto.randomBytes(8), 'hex'), popup: spec.popup === true }
+      await setFollows(app, (list) => {
+        if (list.length >= FOLLOWS_MAX) throw error('TOO_BIG', `an app keeps at most ${FOLLOWS_MAX} follows`)
+        return [...list, f]
+      })
+      return { id: f.id }
+    },
+
+    async unfollow (app, id) {
+      if (typeof id !== 'string') throw error('INVALID_PARAMS', "unfollow takes a follow's id")
+      await setFollows(app, (list) => list.filter((f) => f.id !== id))
+      return true
+    },
+
+    async follows (app) {
+      return (await settings())[FOLLOW + app] || []
     },
 
     async close () {

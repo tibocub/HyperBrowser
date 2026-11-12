@@ -49,7 +49,7 @@ const waitItems = (p, fn, ms = 30000) => eventually(async () => fn(await items(p
 // A group of `owner`, the others joined, everyone's view of it complete (its history is in).
 async function group (owner, others, name = 'G') {
   const g = await owner.hyper.instances.create(name)
-  const link = await owner.hyper.instance(g.key).createInvite({ role: 'member' })
+  const link = await owner.hyper.instance(g.key).createInvite({ role: 'member', uses: others.length })
   for (const p of others) await p.hyper.instances.join(link)
   for (const p of others) await eventually(() => p.hyper.instance(g.key).isComplete(), 30000)
   await sleep(2000) // the engine's own first look at the place (a record written in the very instant of a join is history)
@@ -314,4 +314,130 @@ test('watching opens no closed place: only held or open ones are checked, a sett
   await sleep(1000)
   t.alike(read.filter((k) => !['p0', 'p1', 'p9'].includes(k)), [], 'a setting change and a read open none')
   await notes.close()
+})
+
+// --- spec 017: dots, follows, a page's own counts ---
+
+const BOARDS = {
+  manifest: {
+    title: 'Forum',
+    permissions: ['space', 'notifications'],
+    types: {
+      thread: { fields: { title: 'string', board: 'string' } },
+      comment: { fields: { text: 'text', thread: 'string' } },
+      mention: { fields: { who: 'string', on: 'string' } }
+    },
+    notifications: [
+      { type: 'mention', me: 'who', says: 'mentioned you', open: '#/r/{on}' },
+      { type: 'thread', says: 'posted a thread', show: 'dot' },
+      { type: 'comment', says: 'replied', show: 'dot' }
+    ]
+  }
+}
+
+// Another app on p's engine, allowed, with one instance of its own: what the forum's page must not reach.
+async function otherApp (t, p) {
+  const tibo = await engine(t)
+  const { key } = await tibo.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
+  await p.e.rpc.request('site.open', { key })
+  await p.e.rpc.request('site.consent', { key, allow: true })
+  await p.e.rpc.request('site.permit', { key, permission: 'notifications', allow: true })
+  return (await siteApi(p.e, key).instances.create('Elsewhere')).key
+}
+
+test('manifest: a watch may say show "dot", nothing else', async (t) => {
+  const m = (notifications) => JSON.stringify({ title: 'A', permissions: ['space', 'notifications'], types: BOARDS.manifest.types, notifications })
+  t.alike(parseManifest(m(BOARDS.manifest.notifications)).notifications, BOARDS.manifest.notifications)
+  t.exception(() => parseManifest(m([{ type: 'thread', says: 'x', show: 'popup' }])), /show/)
+  t.exception(() => parseManifest(m([{ type: 'thread', says: 'x', show: true }])), /show/)
+})
+
+test('a dot watch: something new sets a dot, no notification; a page reads its own app\'s counts; viewing clears', async (t) => {
+  t.timeout(240000)
+  const { key, people: [ann, bob] } = await setup(t, BOARDS, ['Ann', 'Bob'])
+  const place = await group(ann, [bob], 'Climbing')
+  const own = (await bob.hyper.instances.create('Bob\'s')).key
+  const elsewhere = await otherApp(t, bob)
+  const heard = []
+  bob.hyper.notifications.on((d) => heard.push(d))
+  const unread = () => bob.hyper.notifications.unread()
+  t.alike(await unread(), { [place]: { count: 0, dot: false }, [own]: { count: 0, dot: false } }, 'every place of its own app, nothing new; not the other app\'s')
+
+  const ag = ann.hyper.instance(place)
+  const th = await ag.put('thread', { title: 'Hi', board: 'gear' })
+  t.ok(await eventually(async () => (await unread())[place].dot, 30000), 'a new thread: a dot')
+  t.alike(await items(bob), [], 'no notification')
+  t.is((await state(bob)).unread.total, 0, 'no number')
+  t.ok(await eventually(() => heard.some((d) => d[place]?.dot), 5000), 'the page is told')
+  await ag.put('mention', { who: bob.id, on: th.id })
+  t.ok(await eventually(async () => (await unread())[place].count === 1, 30000), 'a mention: a number')
+  t.is((await items(bob)).length, 1)
+
+  await bob.e.rpc.request('notify.read', { place, app: key }) // what the page's viewing() does
+  t.alike((await unread())[place], { count: 0, dot: false }, 'viewed: both cleared')
+  t.ok(await eventually(() => heard.at(-1)?.[place]?.dot === false && heard.at(-1)[place].count === 0, 5000), 'the page is told')
+  t.ok(heard.every((d) => !(elsewhere in d)), 'never another app\'s places')
+
+  await bob.hyper.instance(place).put('comment', { text: 'mine', thread: th.id })
+  await sleep(4000)
+  t.is((await unread())[place].dot, false, 'own records set no dot')
+  await ag.put('comment', { text: 'a reply', thread: th.id })
+  t.ok(await eventually(async () => (await unread())[place].dot, 30000), 'a comment: a dot')
+})
+
+test('follows: a board, a person; quiet unless asked, a dot not a number; unfollow; own places only', async (t) => {
+  t.timeout(300000)
+  const { people: [ann, bob, cleo] } = await setup(t, BOARDS, ['Ann', 'Bob', 'Cleo'])
+  const place = await group(ann, [bob, cleo], 'Climbing')
+  const follow = (f) => bob.hyper.notifications.follow(f)
+  const gear = await follow({ place, type: 'thread', where: { board: 'gear' }, says: 'new thread in Gear' })
+  const person = await follow({ place, type: ['thread', 'comment'], by: cleo.id, says: 'Cleo posted', popup: true })
+  t.is(typeof gear.id, 'string')
+  t.alike((await bob.hyper.notifications.follows()).map((f) => f.id).sort(), [gear.id, person.id].sort(), 'listed')
+  t.alike((await bob.hyper.notifications.follows()).find((f) => f.id === gear.id), { id: gear.id, place, type: 'thread', where: { board: 'gear' }, says: 'new thread in Gear', popup: false })
+  await sleep(1000)
+
+  const ag = ann.hyper.instance(place)
+  await ag.put('thread', { title: 'In Gear', board: 'gear' })
+  await ag.put('thread', { title: 'Elsewhere', board: 'other' })
+  await ag.put('comment', { text: 'Ann\'s', thread: 'x' })
+  await cleo.hyper.instance(place).put('comment', { text: 'Cleo\'s', thread: 'x' })
+  t.ok(await waitItems(bob, (l) => l.length === 2), 'the board\'s new thread and Cleo\'s comment')
+  await sleep(3000)
+  const l = await items(bob)
+  t.is(l.length, 2, 'nothing else')
+  t.alike(l.map((x) => [x.text, x.popup]).sort(), [['Cleo posted', true], ['new thread in Gear', false]], 'quiet unless asked')
+  t.is((await state(bob)).unread.total, 0, 'a follow is not a number')
+  t.alike((await bob.hyper.notifications.unread())[place], { count: 0, dot: true }, 'a dot')
+
+  t.is(await bob.hyper.notifications.unfollow(gear.id), true)
+  await sleep(1000)
+  await ag.put('thread', { title: 'Gear again', board: 'gear' })
+  await sleep(4000)
+  t.is((await items(bob)).length, 2, 'unfollowed: nothing')
+
+  // own places only; checked as data
+  const elsewhere = await otherApp(t, bob)
+  t.is(await codeOf(follow({ place: elsewhere, type: 'thread', says: 'x' })), 'NOT_ALLOWED', 'another app\'s place')
+  t.is(await codeOf(follow({ place: 'y'.repeat(52), type: 'thread', says: 'x' })), 'NOT_ALLOWED', 'a guessed one')
+  const bad = [
+    null,
+    { type: 'thread', says: 'x' },
+    { place, type: 'nope', says: 'x' },
+    { place, type: [], says: 'x' },
+    { place, type: 'thread' },
+    { place, type: 'thread', says: 'x', where: { nope: 1 } },
+    { place, type: 'thread', says: 'x', where: { board: {} } },
+    { place, type: 'thread', says: 'x', by: 'not a key' },
+    { place, type: 'thread', says: 'x', popup: 'yes' },
+    { place, type: 'thread', says: 'x', me: 'who' },
+    { place, type: 'thread', says: 'x', other: 1 }
+  ]
+  for (const f of bad) t.is(await codeOf(follow(f)), 'INVALID_PARAMS', String(JSON.stringify(f)).slice(0, 60))
+  t.is((await bob.hyper.notifications.follows()).length, 1, 'nothing added')
+
+  for (let i = 1; i < 100; i++) await follow({ place, type: 'thread', where: { board: 'b' + i }, says: 'x' })
+  t.is(await codeOf(follow({ place, type: 'thread', says: 'x' })), 'TOO_BIG', 'at most 100')
+  await bob.hyper.instances.leave(place)
+  t.alike(await bob.hyper.notifications.follows(), [], 'left: its follows go')
 })

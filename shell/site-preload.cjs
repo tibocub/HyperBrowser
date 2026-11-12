@@ -2,7 +2,7 @@
 // only ipcRenderer. The page never names a site: the shell takes it from this view.
 const { contextBridge, ipcRenderer } = require('electron')
 
-const METHODS = ['put', 'get', 'edit', 'del', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
+const METHODS = ['put', 'get', 'edit', 'del', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
   'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info']
@@ -89,9 +89,15 @@ function api (sub, instance = null) {
       request: (identity, name) => people('request', identity, name)
     }
     // spec 016: what this page shows now (one of the app's instances, or null), so HyperBrowser doesn't notify
-    // the person of what they are looking at. Nothing else: a page can't read notifications or their settings.
+    // the person of what they are looking at. A page can't read the person's notifications or their settings.
     o.notifications = {
-      viewing: (instance) => invoke({ op: 'viewing', instance: instance === null || instance === undefined ? null : String(instance) })
+      viewing: (instance) => invoke({ op: 'viewing', instance: instance === null || instance === undefined ? null : String(instance) }),
+      // spec 017: its own app's places only: { [place]: { count, dot } }, told again when they change; follows
+      unread: () => invoke({ op: 'call', ...at, method: 'notifications.unread', args: [] }),
+      on: (fn) => subscribe({ op: 'on', ...at, event: 'notifications' }, fn),
+      follow: (f) => invoke({ op: 'call', ...at, method: 'notifications.follow', args: [f] }),
+      unfollow: (id) => invoke({ op: 'call', ...at, method: 'notifications.unfollow', args: [String(id)] }),
+      follows: () => invoke({ op: 'call', ...at, method: 'notifications.follows', args: [] })
     }
     // other sites, through HyperBrowser (spec 014): install and open need a click on the page; install, the person's yes
     o.apps = {
