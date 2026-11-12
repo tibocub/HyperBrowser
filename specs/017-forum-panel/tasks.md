@@ -55,6 +55,15 @@ template may use `{id}`, the matched record's own id (site.json watches and foll
   the owner's leave warning, the join box, collapse kept across a reload, no console error. Dots and numbers
   from another person weren't seen on screen (the engine tests cover them).
 
+## Step 3: Chat (R8)
+
+- [x] List numbers from `notifications.unread()`/`on()`; the "New messages" line (`lib/scroll.js` `newLine`: above
+  the first of the last `count` messages from others), scrolled into view once at opening; Edit and Delete behind
+  one "…" per message (a `<details>`, kept open across redraws).
+- [x] Test (failed first): `chat.test.js` `newLine`. The page itself: the self-test (step 4).
+- Runs: Node 80/80 (132 s), Bare 80/80 (141 s), 2 jobs. (The run before had one Node failure: a quote typo in
+  this test, edited while that run was going; fixed before it was committed.)
+
 ## Built differently
 
 - **A follow item is a list entry and a dot, never a number**: it doesn't count in `notify.state`'s `unread`, nor
