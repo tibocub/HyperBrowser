@@ -350,6 +350,8 @@ test('manifest: a watch may say show "dot", nothing else', async (t) => {
   t.alike(parseManifest(m(BOARDS.manifest.notifications)).notifications, BOARDS.manifest.notifications)
   t.exception(() => parseManifest(m([{ type: 'thread', says: 'x', show: 'popup' }])), /show/)
   t.exception(() => parseManifest(m([{ type: 'thread', says: 'x', show: true }])), /show/)
+  t.ok(parseManifest(m([{ type: 'thread', says: 'x', show: 'dot', open: '#/r/{id}' }])), "{id} in open: the record's own id")
+  t.exception(() => parseManifest(m([{ type: 'thread', says: 'x', open: '#/r/{ids}' }])), /open/)
 })
 
 test('a dot watch: something new sets a dot, no notification; a page reads its own app\'s counts; viewing clears', async (t) => {
@@ -390,15 +392,15 @@ test('follows: a board, a person; quiet unless asked, a dot not a number; unfoll
   const { people: [ann, bob, cleo] } = await setup(t, BOARDS, ['Ann', 'Bob', 'Cleo'])
   const place = await group(ann, [bob, cleo], 'Climbing')
   const follow = (f) => bob.hyper.notifications.follow(f)
-  const gear = await follow({ place, type: 'thread', where: { board: 'gear' }, says: 'new thread in Gear' })
+  const gear = await follow({ place, type: 'thread', where: { board: 'gear' }, says: 'new thread in Gear', open: '#/r/{id}' })
   const person = await follow({ place, type: ['thread', 'comment'], by: cleo.id, says: 'Cleo posted', popup: true })
   t.is(typeof gear.id, 'string')
   t.alike((await bob.hyper.notifications.follows()).map((f) => f.id).sort(), [gear.id, person.id].sort(), 'listed')
-  t.alike((await bob.hyper.notifications.follows()).find((f) => f.id === gear.id), { id: gear.id, place, type: 'thread', where: { board: 'gear' }, says: 'new thread in Gear', popup: false })
+  t.alike((await bob.hyper.notifications.follows()).find((f) => f.id === gear.id), { id: gear.id, place, type: 'thread', where: { board: 'gear' }, says: 'new thread in Gear', open: '#/r/{id}', popup: false })
   await sleep(1000)
 
   const ag = ann.hyper.instance(place)
-  await ag.put('thread', { title: 'In Gear', board: 'gear' })
+  const inGear = await ag.put('thread', { title: 'In Gear', board: 'gear' })
   await ag.put('thread', { title: 'Elsewhere', board: 'other' })
   await ag.put('comment', { text: 'Ann\'s', thread: 'x' })
   await cleo.hyper.instance(place).put('comment', { text: 'Cleo\'s', thread: 'x' })
@@ -407,6 +409,7 @@ test('follows: a board, a person; quiet unless asked, a dot not a number; unfoll
   const l = await items(bob)
   t.is(l.length, 2, 'nothing else')
   t.alike(l.map((x) => [x.text, x.popup]).sort(), [['Cleo posted', true], ['new thread in Gear', false]], 'quiet unless asked')
+  t.is(l.find((x) => x.follow === gear.id || x.text === 'new thread in Gear').open, '#/r/' + encodeURIComponent(inGear.id), '{id}: the thread itself')
   t.is((await state(bob)).unread.total, 0, 'a follow is not a number')
   t.alike((await bob.hyper.notifications.unread())[place], { count: 0, dot: true }, 'a dot')
 

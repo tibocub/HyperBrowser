@@ -3,18 +3,23 @@
 
 import { mentioned, KEY } from './text.js'
 import { valid } from './icon.js'
+import { addNew } from './view.js'
 
 // shortcut: live views hold at most this many records of each type; past it, use count()/sum() per shown thread
 export const LIMITS = { boards: 200, threads: 500, comments: 2000, votes: 5000, people: 1000, thread: 1000 }
 export const MODERATORS = new Set(['owner', 'admin', 'moderator'])
 export const ADMINS = new Set(['owner', 'admin'])
+const SINCE = 1000 // records a since() call returns at most (the engine's cap)
 
 const need = (ok, message) => { if (!ok) throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }) }
 const clean = (s) => String(s ?? '').trim()
 
 export function forum (hyper) {
-  async function writeMentions (on, text) {
-    for (const who of mentioned(text)) await hyper.put('mention', { who, on })
+  // also: the author of what a reply answers (spec 017 R6: a reply notifies them), unless it is oneself
+  async function writeMentions (on, text, also = null) {
+    const who = new Set(mentioned(text))
+    if (also && also !== (await hyper.info()).identity) who.add(also)
+    for (const w of who) await hyper.put('mention', { who: w, on })
   }
 
   return {
@@ -46,7 +51,8 @@ export function forum (hyper) {
     async reply (thread, on, text) {
       need(clean(text), 'a reply needs some text')
       const c = await hyper.put('comment', { text: String(text), on: on || thread, thread })
-      await writeMentions(c.id, c.text)
+      const parent = (await hyper.get(on || thread).catch(() => null))?.record
+      await writeMentions(c.id, c.text, parent?.author)
       return c
     },
     // Edits keep mentions in step: new ones written (the old ones stay: a mention once seen stays in the list).
@@ -86,8 +92,20 @@ export function forum (hyper) {
 
     // --- the person's own (on their devices, never in the forum) ---
     mine: () => hyper.mine.all(),
-    markRead: (thread, activity) => hyper.mine.set('read/' + thread, activity),
     async forget (names) { for (const n of names) await hyper.mine.set(n, null) },
+    // spec 017 R5: what is new since the last look ({ cursor, unread }), found with since(): by message numbers.
+    // A first look (no cursor) starts from now: what was there is read.
+    async catchUp ({ cursor = null, unread = {} } = {}, me) {
+      for (;;) {
+        const r = await hyper.since(cursor, { types: ['thread', 'comment'], limit: SINCE })
+        if (cursor !== null) unread = addNew(unread, r.records, me)
+        cursor = r.cursor
+        if (r.records.length < SINCE) return { cursor, unread }
+      }
+    },
+    // two names: each value has its own 64 KB (shortcut: a cursor is ~60 bytes per writing member, so a forum of
+    // more than ~1,000 of them needs it split, or kept by the engine)
+    saveUnread: ({ cursor, unread }) => Promise.all([hyper.mine.set('cursor', cursor), hyper.mine.set('unread', unread)]),
     setSort: (how) => hyper.mine.set('sort', how),
     markMentionsSeen: (stamp) => hyper.mine.set('mentions', stamp)
   }

@@ -185,7 +185,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
       author: r.author,
       name: await nameOf(place, r.author, s),
       text: clean(w.says ?? r[w.text], TEXT_MAX), // shortcut: a record whose content was dropped here (budgets) has no text, the shell says "New message"
-      open: w.open ? w.open.replace(/\{([^}]*)\}/g, (_, f) => encodeURIComponent(String(r[f] ?? ''))) : null,
+      open: w.open ? w.open.replace(/\{([^}]*)\}/g, (_, f) => encodeURIComponent(String((f === 'id' ? r.id : r[f]) ?? ''))) : null,
       stamp: r.stamp,
       at: Date.now(),
       log: b4a.toString(log, 'hex').slice(0, 16),

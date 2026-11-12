@@ -6,7 +6,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, text } from './helpers.js'
 import { forum, people } from '../sites/forum/lib/forum.js'
-import { summarize, sortThreads, tree, visible, tally, score, voteOf, nextVote, unread, staleRead, boardTree } from '../sites/forum/lib/view.js'
+import { summarize, sortThreads, tree, visible, tally, score, voteOf, nextVote, boardTree, addNew, pruneUnread, without, NEW_MAX } from '../sites/forum/lib/view.js'
 import { render, mentioned, toStored, toDraft } from '../sites/forum/lib/text.js'
 import * as icon from '../sites/forum/lib/icon.js'
 
@@ -127,6 +127,12 @@ test('replies in a tree, votes, edit and delete (US2)', async (t) => {
   t.is(after[0].comment, null, 'its place stays, "(deleted)"')
   t.is(after.find((r) => r.id === rc.id).segs.join(' '), 'pipe elbow', 'the reply under it stays under it')
   t.is(await codeOf(c.reply(th.id, th.id, '  ')), 'INVALID_INPUT')
+
+  // spec 017 R6: a reply notifies the author of what it answers (a mention), never oneself
+  const toB = () => items(a, 'mention', [['where', { who: me.b }]])
+  t.ok(await eventually(async () => (await toB()).filter((x) => [rc.id, rd.id].includes(x.on)).length === 2, WAIT), "c's reply to b's comment and a's reply to b's thread mention b")
+  t.absent((await toB()).some((x) => x.on === rb.id), "b's reply to b's own thread mentions nobody")
+  t.absent((await items(a, 'mention', [['where', { who: me.c }]])).length, 'nobody replied to c')
 })
 
 test('moderation: report, hide, reveal, ban; admins make moderators (US3.3-6)', async (t) => {
@@ -191,33 +197,37 @@ test('sorting, unread and new, mentions with the current name; names and icons (
   t.alike((await order('top'))[0], 'Top one')
   t.alike((await order('lively'))[0], 'Old one', 'lively: two replies beat two votes, ties by activity')
 
-  // unread: never read, then read, then a new reply; kept on the person's settings across a restart
-  const activity = (await sums()).get(old.id).activity
-  t.ok(unread(activity, (await a.mine())['read/' + old.id]), 'never opened: unread')
-  await a.markRead(old.id, activity)
+  // unread (spec 017 R5): what since() finds, by message numbers, never by dates; kept on the person's devices
+  const first = await a.catchUp({}, me.a)
+  t.alike(first.unread, {}, 'a first look: what was there is read')
+  await a.saveUnread(first)
   await a.setSort('top')
-  t.absent(unread(activity, (await a.mine())['read/' + old.id]), 'opened: read')
+  const r3 = await c.reply(old.id, old.id, 'one more')
+  const later = await b.post(board.id, { title: 'Later', text: '' })
+  const own = await a.reply(top.id, top.id, 'my own')
+  await has(a, 'comment', r3.id)
+  await has(a, 'thread', later.id)
+  const next = await a.catchUp(first, me.a)
+  t.alike(next.unread, { [old.id]: [r3.id], [later.id]: [] }, "the new reply and the new thread; not one's own")
+  t.ok(own)
+  await a.saveUnread(next)
+  t.alike((await a.catchUp(next, me.a)).unread, next.unread, 'nothing new since')
   await owner.rpc.request('close')
   const again = await engine(t, { dir: owner.dir })
   await again.rpc.request('site.open', { key })
   const a2 = forum(siteApi(again, key).instance(inst))
   const kept = await a2.mine()
   t.is(kept.sort, 'top', 'the sort chosen, kept')
-  const r3 = await c.reply(old.id, old.id, 'one more')
-  t.ok(await eventually(async () => (await items(a2, 'comment')).some((x) => x.id === r3.id), WAIT))
-  const now = summarize(await items(a2, 'thread'), await items(a2, 'comment'), await items(a2, 'vote')).get(old.id).activity
-  t.ok(unread(now, kept['read/' + old.id]), 'a new reply: unread again')
-  t.alike((await items(a2, 'comment', [['on', old.id]])).filter((x) => x.stamp > kept['read/' + old.id]).map((x) => x.id), [r3.id], 'and only that reply is new')
-  t.ok(r2.stamp <= kept['read/' + old.id])
+  t.alike(kept.unread, next.unread, 'and what is unread, across a restart')
+  const opened = { cursor: kept.cursor, unread: without(kept.unread, old.id) }
+  await a2.saveUnread(opened)
+  t.alike(Object.keys((await a2.mine()).unread), [later.id], 'opened: read')
 
-  // bounded: read state of a thread no longer shown (here: deleted) is dropped
-  await a2.markRead(fresh.id, Date.now())
-  await a2.remove(fresh.id)
+  // bounded: a thread no longer shown (here: deleted) leaves the unread set
+  await b.remove(later.id)
+  t.ok(await eventually(async () => !(await items(a2, 'thread')).some((x) => x.id === later.id), WAIT))
   const shown = new Set((await items(a2, 'thread')).map((x) => x.id))
-  const stale = staleRead(await a2.mine(), shown)
-  t.alike(stale, ['read/' + fresh.id], "the deleted thread's read state is stale")
-  await a2.forget(stale)
-  t.alike(Object.keys(await a2.mine()).filter((n) => n.startsWith('read/')), ['read/' + old.id], 'one entry per shown thread read')
+  t.alike(pruneUnread(opened.unread, shown), {}, 'pruned to the threads shown')
 
   // mentions: the stored text has the key, the list is c's, the name shown is the current one
   await c.setName('cee')
@@ -245,6 +255,23 @@ test('sorting, unread and new, mentions with the current name; names and icons (
   t.is(await codeOf(c.setIcon(new Uint8Array(3))), 'INVALID_INPUT')
   t.ok(await eventually(async () => { const p = people(await items(b, 'profile'), await items(b, 'avatar')); return p.get(me.c)?.icon?.[0] === 0x80 && p.get(me.c).icon[31] === 0x01 }, WAIT), "b sees c's icon")
   t.is(icon.path(drawn), 'M0 0h1v1H0zM15 15h1v1H15z')
+})
+
+test('unread by message numbers: a late reply counts, own records don\'t, bounded (spec 017 R5)', (t) => {
+  const me = 'm'.repeat(52)
+  const ann = 'a'.repeat(52)
+  const late = { id: 'c1', type: 'comment', thread: 't1', author: ann, stamp: 1 } // written offline, long ago
+  t.alike(addNew({}, [late], me), { t1: ['c1'] }, 'a reply received late marks its thread, whatever its date')
+  t.alike(addNew({}, [{ ...late, author: me }], me), {}, 'own records are not news')
+  t.alike(addNew({ t1: ['c1'] }, [{ id: 't2', type: 'thread', author: ann }], me), { t1: ['c1'], t2: [] }, 'a new thread')
+  const many = Array.from({ length: NEW_MAX + 10 }, (_, i) => ({ id: 'c' + i, type: 'comment', thread: 't' + (i % 3), author: ann }))
+  const capped = addNew({}, many, me)
+  t.is(Object.values(capped).flat().length, NEW_MAX, 'at most NEW_MAX comment ids in all')
+  t.alike(Object.keys(capped).sort(), ['t0', 't1', 't2'], 'their threads stay unread')
+  const input = { t1: ['c1'] }
+  addNew(input, [{ id: 'c2', type: 'comment', thread: 't1', author: ann }], me)
+  t.alike(input, { t1: ['c1'] }, 'the input is left as it was')
+  t.alike(without({ t1: [], t2: [] }, 't1'), { t2: [] })
 })
 
 test('post text: the subset only, never HTML or scripts', (t) => {

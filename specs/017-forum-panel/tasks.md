@@ -30,6 +30,31 @@ Written as the work goes (one worker, plan.md's Order). One commit per step.
 - [x] Tests (failed first): `test/instances.test.js` (handles released, `since`), `test/notifications.test.js`
   (show "dot", dots and counts, follows and their guards).
 
+Lead review of step 1 (2026-11-12): `"show": "dot"` accepted as permanent. Added at the start of step 2: an `open`
+template may use `{id}`, the matched record's own id (site.json watches and follows alike).
+
+## Step 2: forum (R5, R6, R7, follows)
+
+- [x] `{id}` in `open` (`manifest.js`, `notifications.js` `item()`; tests in `notifications.test.js`).
+- [x] R5: `lib/forum.js` `catchUp()` (since() from the cursor in the forum's `mine`, `thread` and `comment`) and
+  `saveUnread()`; `lib/view.js` `addNew`, `pruneUnread`, `without`. Unread = `{ [thread]: [new comment ids] }`,
+  in `mine` (`cursor`, `unread`). The old `read/<id>` stamps are dropped at the first open: those threads read as
+  read once, nothing is marked new until something new arrives.
+- [x] R6: a reply writes a `mention` for the author of what it answers, unless it is oneself.
+- [x] R7: the forums column (collapsible, remembered in the app's `mine` `panel`, collapsed under 700 px unless
+  chosen), numbers and dots from `notifications.unread()`/`on()`, "+ Join or make" (the start page's forms), each
+  forum's "…" menu with Leave (confirmed in place; an owner gets Q4's warning, with or without admins). The boards
+  column on every page, with dots.
+- [x] Follows: "Follow" on a board's header and next to each member; "You follow" on You, with Popup and Unfollow.
+  A board: `{ type: 'thread', where: { board } }`; a person: `{ type: ['thread', 'comment'], by }`; both
+  `open: '#/r/{id}'`.
+- [x] `site.json`: dot watches on `thread` and `comment`.
+- [x] Tests (failed first): `forum.test.js` (catchUp/saveUnread across a restart, a late reply by numbers, the
+  cap, pruning; reply mentions).
+- Checked by hand in Electron (a temporary mode, not committed; one person, 3 forums): the columns, Follow,
+  the owner's leave warning, the join box, collapse kept across a reload, no console error. Dots and numbers
+  from another person weren't seen on screen (the engine tests cover them).
+
 ## Built differently
 
 - **A follow item is a list entry and a dot, never a number**: it doesn't count in `notify.state`'s `unread`, nor

@@ -1,7 +1,8 @@
 // The forum's page (spec 006): one page, hash routes, redrawn from live views. The data: lib/forum.js; what is
 // derived: lib/view.js; post text: lib/text.js; icons: lib/icon.js. The shell draws the frame; this, the content.
+// Spec 017: on the left, your forums (dots, numbers, join, leave), then this forum's boards (dots).
 import { forum, watch, people, LIMITS, MODERATORS, ADMINS } from './lib/forum.js'
-import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, unread, staleRead, ago, boardTree, SORTS } from './lib/view.js'
+import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, ago, boardTree, SORTS, addNew, pruneUnread, without } from './lib/view.js'
 import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/text.js'
 import * as icon from './lib/icon.js'
 
@@ -21,8 +22,13 @@ let peers = 0
 let notice = ''
 let title = 'Forum' // the forum's name, once known
 const drafts = {} // form key → { text, title, picks }
-const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null }
-const opened = {} // thread id → its read stamp when this visit opened it ("new" marks)
+const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null, joining: null, leaveWarning: null }
+const opened = {} // thread id → the ids of its replies new when it was opened ("new" marks)
+let news = { cursor: null, unread: {} } // spec 017 R5: what is new, found with since() (lib/forum.js catchUp)
+let forums = [] // the person's forums (this app's instances)
+let counts = {} // { [forum]: { count, dot } }: the forums' numbers and dots (HyperBrowser's, spec 017 R4)
+let follows = [] // this app's follows (boards, people)
+let collapsed = false // the forums column
 let threadView = { id: null, stop: null, items: [], complete: false }
 let mentionView = { items: [], complete: false, seenAtOpen: null }
 
@@ -44,27 +50,198 @@ async function start () {
   title = (await hyper.info()).name || title
   document.title = title
   mine = await f.mine()
+  news = { cursor: mine.cursor ?? null, unread: mine.unread || {} }
+  const stamps = Object.keys(mine).filter((n) => n.startsWith('read/')) // spec 016's read stamps, replaced by since() (R5): dropped
+  if (stamps.length) f.forget(stamps).catch(() => {})
   let pruned = false
-  watch(hyper, (state) => {
+  watch(hyper, (state, name) => {
     data = state
     names = people(state.profiles, state.avatars)
-    if (!pruned && state.complete.threads) { // once per visit: read state only for the threads shown
+    if (!pruned && state.complete.threads) { // once per visit: unread only for the threads shown
       pruned = true
-      const stale = staleRead(mine, new Set(state.threads.map((x) => x.id)))
-      for (const n of stale) delete mine[n]
-      f.forget(stale).catch(() => {})
+      news = { ...news, unread: pruneUnread(news.unread, new Set(state.threads.map((x) => x.id))) }
     }
+    if (name === 'threads' || name === 'comments') catchUpSoon()
     schedule()
   })
+  catchUpSoon()
+  panel().catch(() => {})
   hyper.query('mention').where({ who: me.identity }).live(({ items, complete }) => { mentionView.items = items; mentionView.complete = complete; schedule() }, { limit: 200 })
   hyper.on('members', () => { refreshRole(); if (route().page === 'members') loadMembers() })
   hyper.on('peers', (list) => { peers = Array.isArray(list) ? list.length : peers; schedule() })
   hyper.peers().then((list) => { peers = list.length; schedule() }, () => {})
-  window.addEventListener('hashchange', () => { ui.replyTo = ui.editing = ui.confirm = null; enter(); schedule() })
+  window.addEventListener('hashchange', () => { ui.replyTo = ui.editing = ui.confirm = ui.joining = null; enter(); schedule() })
   window.hyper.notifications?.viewing(at).catch(() => {}) // spec 016: this forum is shown here, so not notified
   enter()
   schedule()
 }
+
+// --- what is new (spec 017 R5): since() from the cursor kept in mine, by message numbers, never by dates ---
+
+let catching = null
+function catchUpSoon () {
+  clearTimeout(catching)
+  catching = setTimeout(async () => {
+    let r
+    try { r = await f.catchUp({ cursor: news.cursor }, me.identity) } catch { return }
+    const unread = { ...news.unread } // merged into what is now (a thread opened meanwhile stays read)
+    for (const [k, l] of Object.entries(r.unread)) unread[k] = [...(unread[k] || []), ...l]
+    const shown = route().page === 't' ? route().id : null
+    news = { cursor: r.cursor, unread: shown ? without(addNew(unread, [], me.identity), shown) : addNew(unread, [], me.identity) } // capped; the open thread is read
+    f.saveUnread(news).catch(() => {})
+    schedule()
+  }, 300)
+}
+
+// --- the left columns: your forums, with HyperBrowser's numbers and dots; join, make, leave ---
+
+async function panel () {
+  const root = window.hyper
+  const saved = (await root.mine.all().catch(() => ({}))).panel
+  collapsed = saved ? saved === 'collapsed' : innerWidth < 700 // narrow: collapsed unless chosen
+  await loadForums()
+  root.notifications?.on?.((u) => {
+    if (Object.keys(u).sort().join() !== forums.map((x) => x.key).sort().join()) loadForums().catch(() => {}) // joined or left elsewhere
+    counts = u
+    schedule()
+  })
+  await loadFollows()
+}
+
+async function loadForums () {
+  forums = await window.hyper.instances.list()
+  counts = (await window.hyper.notifications?.unread?.().catch(() => null)) || counts
+  schedule()
+}
+
+async function loadFollows () {
+  follows = (await window.hyper.notifications?.follows?.().catch(() => null)) || []
+  schedule()
+}
+
+function forumsColumn () {
+  const toggle = h('button', {
+    class: 'link fold-col',
+    'aria-expanded': String(!collapsed),
+    'aria-label': collapsed ? 'Show your forums' : 'Hide your forums',
+    onclick: () => { collapsed = !collapsed; schedule(); window.hyper.mine.set('panel', collapsed ? 'collapsed' : 'open').catch(() => {}) }
+  }, collapsed ? '»' : '«')
+  const row = (i) => {
+    const c = counts[i.key] || {}
+    const label = i.name || shortKey(i.key)
+    return h('li', {},
+      h('div', { class: 'forum-row' },
+        h('a', { class: 'forum', href: '?instance=' + i.key, 'aria-current': i.key === at ? 'page' : null, title: label },
+          h('span', { class: 'grow name' }, collapsed ? label.slice(0, 2) : label),
+          c.count ? h('span', { class: 'num', 'aria-label': c.count + ' unread' }, String(c.count)) : c.dot ? h('span', { class: 'dot', 'aria-label': 'new posts' }, '●') : null),
+        collapsed ? null : h('details', { class: 'menu' }, h('summary', { 'aria-label': 'Menu of ' + label }, '…'),
+          h('button', { class: 'link', onclick: () => askLeave(i) }, 'Leave'))),
+      ui.confirm === 'leave' + i.key ? h('div', { class: 'confirm-box small', role: 'alert' },
+        h('p', {}, ui.leaveWarning || 'Leave ' + label + '? Its posts stay with its members; your notifications, unread marks and follows here go.'),
+        h('button', { class: 'link', onclick: () => leave(i) }, 'Leave'), h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'Cancel')) : null)
+  }
+  return h('nav', { class: collapsed ? 'forums collapsed' : 'forums', 'aria-label': 'Your forums' },
+    h('div', { class: 'col-head' }, collapsed ? null : h('span', { class: 'grow' }, 'Forums'), toggle),
+    h('ul', {}, ...forums.map(row)),
+    h('button', { class: 'link add', 'aria-label': 'Join or make a forum', onclick: () => { ui.joining = { name: '', public: false, link: '', error: '', busy: false }; schedule() } }, collapsed ? '+' : '+ Join or make'))
+}
+
+// Q4: an owner may leave, warned: the forum lives on while members keep it; without an admin, nobody can make boards
+// or moderators any more.
+async function askLeave (i) {
+  ui.leaveWarning = null
+  if (i.role === 'owner') {
+    const admins = (await window.hyper.instance(i.key).members().catch(() => [])).filter((m) => m.role === 'admin' && !m.you)
+    ui.leaveWarning = 'You own ' + (i.name || 'this forum') + '. It lives on while its members keep it, ' + (admins.length
+      ? `and its ${admins.length === 1 ? 'admin' : admins.length + ' admins'} can still make boards and moderators.`
+      : 'but nobody can make boards or moderators any more: name an admin first (Members).') + ' Leave it?'
+  }
+  ui.confirm = 'leave' + i.key
+  schedule()
+}
+
+async function leave (i) {
+  ui.confirm = null
+  await act(async () => {
+    await window.hyper.instances.leave(i.key)
+    if (i.key !== at) return loadForums()
+    const next = forums.find((x) => x.key !== i.key)
+    location.search = next ? '?instance=' + next.key : ''
+  })
+}
+
+function joinBox () {
+  const s = ui.joining
+  const run = async (fn) => {
+    s.busy = true
+    s.error = ''
+    schedule()
+    try { await fn() } catch (err) { s.error = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
+    s.busy = false
+    schedule()
+  }
+  return windowBox('Join or make a forum',
+    h('div', { class: 'thread' }, ...joinForms(s, run, (key) => { location.search = '?instance=' + key }),
+      h('div', { class: 'row-end' }, h('button', { class: 'link', onclick: () => { ui.joining = null; schedule() } }, 'Close'))))
+}
+
+// The make and join forms: the start page's and the "+" box's.
+function joinForms (s, run, open) {
+  const root = window.hyper
+  return [s.error ? h('p', { class: 'notice', role: 'alert' }, s.error) : null,
+    h('h3', {}, 'Make a forum'),
+    h('p', { class: 'small' }, 'It is yours: you make its boards, its invites and its moderators. It lives on its members\' computers.'),
+    h('form', { class: 'row-end start', onsubmit: (e) => { e.preventDefault(); run(async () => open((await root.instances.create(s.name, { public: s.public })).key)) } },
+      h('input', { 'aria-label': 'Name of the forum', placeholder: 'Name', maxlength: 200, value: s.name, oninput: (e) => { s.name = e.target.value } }),
+      h('label', { class: 'small' }, h('input', { type: 'checkbox', checked: s.public ? '' : null, onchange: (e) => { s.public = e.target.checked } }), ' Public (anyone with its key; for good)'),
+      h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Make forum')),
+    h('h3', {}, 'Join a forum'),
+    h('form', { class: 'row-end start', onsubmit: (e) => { e.preventDefault(); run(async () => open((await root.instances.join(s.link.trim())).key)) } },
+      h('input', { class: 'wide', 'aria-label': 'Invite link', placeholder: 'hg:…', value: s.link, oninput: (e) => { s.link = e.target.value } }),
+      h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Join'))]
+}
+
+// The open forum's boards, each with a dot when a thread in it has something new.
+function boardsColumn (r) {
+  const boards = boardTree(data.boards)
+  const current = currentBoard(r)
+  const sums = [...summarize(data.threads, data.comments, data.votes).values()]
+  const fresh = (id) => sums.some((x) => x.thread.board === id && x.thread.id in news.unread)
+  const boardRow = (b, sub) => h('li', {}, h('a', { class: 'board', href: '#/b/' + b.id, 'aria-current': current?.id === b.id ? 'true' : null },
+    h('span', { class: 'mark', 'aria-label': fresh(b.id) ? 'new' : null }, fresh(b.id) ? '■' : ' '),
+    h('span', { class: 'grow' }, (sub ? '▸ ' : '') + b.name),
+    h('span', { class: 'small' }, String(sums.filter((x) => x.thread.board === b.id).length))))
+  return h('nav', { class: 'boards', 'aria-label': 'Boards' },
+    h('div', { class: 'col-head' }, h('span', { class: 'grow' }, 'Boards')),
+    boards.length ? h('ul', {}, ...boards.flatMap((b) => [boardRow(b.board), ...b.subs.map((x) => boardRow(x, true))])) : h('p', { class: 'pad small' }, data.complete.boards ? 'No board yet.' : 'Loading…'),
+    ADMINS.has(me.role) ? h('p', { class: 'pad' }, h('a', { href: '#/board/new' }, '+ New board')) : null)
+}
+
+// The board a route is in: the board page's, a thread's or a new thread's; else the first.
+function currentBoard (r) {
+  const flat = boardTree(data.boards).flatMap((b) => [b.board, ...b.subs])
+  const id = r.page === 't' ? (data.threads.find((x) => x.id === r.id) || threadView.thread)?.board : ['b', 'new'].includes(r.page) ? r.id : null
+  return flat.find((b) => b.id === id) || (r.page === 'b' ? flat[0] : null) || null
+}
+
+// --- follows (spec 017 R3): a board's new threads, a person's posts; a dot, a popup only if asked ---
+
+const followOf = (match) => follows.find((x) => x.place === at && match(x))
+
+function followButton (existing, make) {
+  return h('button', {
+    class: 'link',
+    'aria-pressed': String(!!existing),
+    onclick: () => act(async () => {
+      if (existing) await window.hyper.notifications.unfollow(existing.id)
+      else await window.hyper.notifications.follow(make())
+      await loadFollows()
+    })
+  }, existing ? 'Following' : 'Follow')
+}
+
+const followBoard = (b) => followButton(followOf((x) => x.where?.board === b.id), () => ({ place: at, type: 'thread', where: { board: b.id }, says: ('new thread in ' + b.name).slice(0, 60), open: '#/r/{id}' }))
+const followPerson = (key) => followButton(followOf((x) => x.by === key), () => ({ place: at, type: ['thread', 'comment'], by: key, says: (nameOf(key) + ' posted').slice(0, 60), open: '#/r/{id}' }))
 
 async function refreshRole () {
   me.role = await hyper.getRole(me.identity).catch(() => me.role)
@@ -82,6 +259,7 @@ function route () {
 function enter () {
   const r = route()
   if (r.page === 'r') return toThread(r.id)
+  if (r.page === 't') opened[r.id] = new Set(news.unread[r.id] || []) // its replies new at this opening are marked
   if (r.page === 't' && threadView.id !== r.id) {
     threadView.stop?.()
     threadView = { id: r.id, stop: null, items: [], complete: false }
@@ -133,7 +311,9 @@ function draw () {
   const sel = active ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null
   const r = route()
   const page = { b: frontPage, t: threadPage, new: newThreadPage, mentions: mentionsPage, you: youPage, members: membersPage, mod: moderationPage, board: boardPage }[r.page] || frontPage
-  app.replaceChildren(h('div', { class: 'desk' }, bar(), notice ? h('p', { class: 'notice', role: 'alert' }, notice, ' ', h('button', { class: 'link', onclick: () => { notice = ''; schedule() } }, 'Dismiss')) : null, nameBanner(), page(r.id)))
+  app.replaceChildren(h('div', { class: 'layout' }, forumsColumn(), boardsColumn(r),
+    h('div', { class: 'desk' }, bar(), notice ? h('p', { class: 'notice', role: 'alert' }, notice, ' ', h('button', { class: 'link', onclick: () => { notice = ''; schedule() } }, 'Dismiss')) : null, nameBanner(),
+      ui.joining ? joinBox() : null, page(r.id))))
   if (active) {
     const el = app.querySelector(`[data-k="${active}"]`)
     if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(...sel) } catch {} }
@@ -178,47 +358,30 @@ const online = () => (peers === 1 ? '1 peer online' : peers + ' peers online') +
 // --- the front page: boards, then the chosen board's threads ---
 
 function frontPage (boardId) {
-  const boards = boardTree(data.boards)
-  const flat = boards.flatMap((b) => [b.board, ...b.subs])
-  const current = flat.find((b) => b.id === boardId) || boards[0]?.board || null
+  const current = currentBoard({ page: 'b', id: boardId })
   const sums = summarize(data.threads, data.comments, data.votes)
   const tallied = tally(data.votes)
-  const all = [...sums.values()]
-  const inBoard = (id) => all.filter((s) => s.thread.board === id)
-  const isUnread = (s) => unread(s.activity, mine['read/' + s.thread.id])
+  const isUnread = (s) => s.thread.id in news.unread
   const sort = SORTS.includes(mine.sort) ? mine.sort : 'activity'
-  const list = current ? sortThreads(inBoard(current.id), sort) : []
+  const list = current ? sortThreads([...sums.values()].filter((s) => s.thread.board === current.id), sort) : []
   const unreadCount = list.filter(isUnread).length
-  const parent = current && (current.parent ? flat.find((b) => b.id === current.parent) : current)
-  const subs = parent ? boards.find((b) => b.board.id === parent.id)?.subs || [] : []
-
-  const boardRow = (b) => h('li', {}, h('a', { class: 'board', href: '#/b/' + b.id, 'aria-current': current?.id === b.id ? 'true' : null },
-    h('span', { class: 'mark', 'aria-label': inBoard(b.id).some(isUnread) ? 'unread' : null }, inBoard(b.id).some(isUnread) ? '■' : ' '),
-    h('span', { class: 'grow' }, b.name),
-    h('span', { class: 'small' }, String(inBoard(b.id).length))))
 
   return windowBox(title,
-    h('div', { class: 'panes' },
-      h('aside', { class: 'boards', 'aria-label': 'Boards' },
-        h('div', { class: 'rule', 'aria-hidden': 'true' }, '── Boards ' + '─'.repeat(40)),
-        boards.length ? h('ul', {}, ...boards.map((b) => boardRow(b.board))) : h('p', { class: 'pad small' }, data.complete.boards ? 'No board yet.' : 'Loading…'),
-        subs.length ? h('div', { class: 'rule', 'aria-hidden': 'true' }, '── Sub-forums ' + '─'.repeat(40)) : null,
-        subs.length ? h('ul', { class: 'subs' }, ...subs.map((b) => boardRow({ ...b, name: '▸ ' + b.name }))) : null,
-        ADMINS.has(me.role) ? h('p', { class: 'pad' }, h('a', { href: '#/board/new' }, '+ New board')) : null),
-      h('main', { class: 'threads' },
-        current
-          ? [h('div', { class: 'head' },
-              h('h2', {}, current.name),
-              ADMINS.has(me.role) ? h('a', { href: '#/board/' + current.id, class: 'small' }, 'Edit board') : null,
-              h('a', { class: 'btn', href: '#/new/' + current.id }, 'New thread')),
-            current.about ? h('p', { class: 'about' }, current.about) : null,
-            h('div', { class: 'sorts', role: 'group', 'aria-label': 'Sort threads' }, h('span', {}, 'Sort:'),
-              ...SORTS.map((s) => h('button', { class: 'seg', 'aria-pressed': String(s === sort), onclick: () => { mine.sort = s; schedule(); act(() => f.setSort(s)) } }, SORT_LABELS[s]))),
-            h('div', { class: 'rule', 'aria-hidden': 'true' }, '┌' + '─'.repeat(200)),
-            list.length
-              ? h('ol', { class: 'list' }, ...list.map((s) => threadRow(s, isUnread(s), tallied)))
-              : h('p', { class: 'pad' }, data.complete.threads ? 'No thread here yet: start one.' : 'Loading…')]
-          : h('p', { class: 'pad' }, data.complete.boards ? (ADMINS.has(me.role) ? 'Make the first board to start.' : 'No board yet: an admin makes them.') : 'Loading…'))),
+    h('main', { class: 'threads' },
+      current
+        ? [h('div', { class: 'head' },
+            h('h2', {}, current.name),
+            followBoard(current),
+            ADMINS.has(me.role) ? h('a', { href: '#/board/' + current.id, class: 'small' }, 'Edit board') : null,
+            h('a', { class: 'btn', href: '#/new/' + current.id }, 'New thread')),
+          current.about ? h('p', { class: 'about' }, current.about) : null,
+          h('div', { class: 'sorts', role: 'group', 'aria-label': 'Sort threads' }, h('span', {}, 'Sort:'),
+            ...SORTS.map((s) => h('button', { class: 'seg', 'aria-pressed': String(s === sort), onclick: () => { mine.sort = s; schedule(); act(() => f.setSort(s)) } }, SORT_LABELS[s]))),
+          h('div', { class: 'rule', 'aria-hidden': 'true' }, '┌' + '─'.repeat(200)),
+          list.length
+            ? h('ol', { class: 'list' }, ...list.map((s) => threadRow(s, isUnread(s), tallied)))
+            : h('p', { class: 'pad' }, data.complete.threads ? 'No thread here yet: start one.' : 'Loading…')]
+        : h('p', { class: 'pad' }, data.complete.boards ? (ADMINS.has(me.role) ? 'Make the first board to start.' : 'No board yet: an admin makes them.') : 'Loading…')),
     status(`${list.length} threads · ${unreadCount} unread`, online()))
 }
 
@@ -269,8 +432,7 @@ function threadPage (id) {
   const board = data.boards.find((b) => b.id === t.board)
   const tallied = tally(data.votes)
   const rows = tree(threadView.items, id)
-  const seen = opened[id]
-  const fresh = (c) => seen !== undefined && seen !== null && c.stamp > seen && c.author !== me.identity
+  const fresh = (c) => !!opened[id]?.has(c.id)
   const shown = visible(rows, ui.folded)
   const newCount = threadView.items.filter(fresh).length
 
@@ -403,15 +565,11 @@ function editForm (rec, isThread) {
   h('div', { class: 'row-end' }, h('button', { type: 'button', class: 'link', onclick: () => { ui.editing = null; schedule() } }, 'Cancel'), h('button', { class: 'btn' }, 'Save')))
 }
 
+// Opened: read (its new replies stay marked while it is shown, from `opened`).
 function markThreadRead (id) {
-  const t = data.threads.find((x) => x.id === id)
-  if (!t) return
-  if (!(id in opened)) opened[id] = mine['read/' + id] ?? null
-  const activity = Math.max(t.stamp, ...threadView.items.map((c) => c.stamp))
-  if (threadView.id === id && threadView.complete && (mine['read/' + id] ?? 0) < activity) {
-    mine['read/' + id] = activity
-    f.markRead(id, activity).catch(say)
-  }
+  if (!(id in news.unread)) return
+  news = { ...news, unread: without(news.unread, id) }
+  f.saveUnread(news).catch(say)
 }
 
 // --- new thread, boards ---
@@ -524,8 +682,28 @@ function youPage () {
       h('div', { class: 'icon-edit' }, grid, h('div', {}, preview,
         h('p', {}, h('button', { type: 'button', class: 'link', onclick: () => { ui.iconDraft = icon.fromKey(me.identity); schedule() } }, 'Made from my key')),
         h('p', {}, h('button', { type: 'button', class: 'link', onclick: () => { ui.iconDraft = new Uint8Array(icon.BYTES); schedule() } }, 'Clear')),
-        h('p', {}, h('button', { type: 'button', class: 'btn', onclick: () => act(async () => { await f.setIcon(new Uint8Array(bits)); say('Icon saved.') }) }, 'Save icon'))))),
-    status('Read state, sort and mentions seen stay on your devices', online()))
+        h('p', {}, h('button', { type: 'button', class: 'btn', onclick: () => act(async () => { await f.setIcon(new Uint8Array(bits)); say('Icon saved.') }) }, 'Save icon')))),
+      followsList()),
+    status('Read state, sort, follows and mentions seen stay on your devices', online()))
+}
+
+// What you follow here: a dot when something comes, a popup only if switched on.
+function followsList () {
+  const mineHere = follows.filter((x) => x.place === at)
+  const label = (x) => x.where?.board ? 'Board ' + (data.boards.find((b) => b.id === x.where.board)?.name || '(removed)') : 'Posts of ' + nameOf(x.by)
+  const setPopup = (x, popup) => act(async () => {
+    const { id, ...rest } = x
+    await window.hyper.notifications.follow({ ...rest, popup })
+    await window.hyper.notifications.unfollow(id)
+    await loadFollows()
+  })
+  return [h('h3', {}, 'You follow'),
+    mineHere.length
+      ? h('ul', { class: 'members' }, ...mineHere.map((x) => h('li', { class: 'row' },
+        h('span', { class: 'grow' }, label(x)),
+        h('label', { class: 'small' }, h('input', { type: 'checkbox', checked: x.popup ? '' : null, onchange: (e) => setPopup(x, e.target.checked) }), ' Popup'),
+        h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.notifications.unfollow(x.id); await loadFollows() }) }, 'Unfollow'))))
+      : h('p', { class: 'small' }, 'Nothing yet: Follow is on a board\'s page and next to each member.')]
 }
 
 // --- members, roles, invites ---
@@ -550,6 +728,7 @@ function membersPage () {
         byline(m.identity),
         h('span', { class: 'small' }, shortKey(m.identity)),
         h('span', { class: 'grow' }),
+        m.you ? null : followPerson(m.identity),
         m.banned ? h('span', { class: 'small' }, 'banned') : admin && !m.you && m.role !== 'owner'
           ? h('select', { 'aria-label': 'Role of ' + nameOf(m.identity), onchange: (e) => act(async () => { await f.setRole(m.identity, e.target.value); await loadMembers() }) },
             ...['member', 'moderator', 'admin'].map((r) => h('option', { value: r, selected: m.role === r ? '' : null }, r)))
@@ -583,20 +762,10 @@ async function startPage () {
     const official = s.official && !(s.forums || []).some((i) => i.key === s.official) ? s.official : null
     app.replaceChildren(h('div', { class: 'desk' }, windowBox('Forums',
       h('div', { class: 'thread' },
-        s.error ? h('p', { class: 'notice', role: 'alert' }, s.error) : null,
         h('h3', {}, 'Your forums'),
         s.forums === null ? h('p', {}, 'Loading…') : s.forums.length ? h('ul', { class: 'members' }, ...s.forums.map(forumRow)) : h('p', { class: 'small' }, 'None yet.'),
         official ? h('p', {}, h('a', { href: '?instance=' + official }, 'The official HyperBrowser forum')) : null,
-        h('h3', {}, 'Make a forum'),
-        h('p', { class: 'small' }, 'It is yours: you make its boards, its invites and its moderators. It lives on its members\' computers.'),
-        h('form', { class: 'row-end start', onsubmit: (e) => { e.preventDefault(); run(async () => open((await root.instances.create(s.name, { public: s.public })).key)) } },
-          h('input', { 'aria-label': 'Name of the forum', placeholder: 'Name', maxlength: 200, value: s.name, oninput: (e) => { s.name = e.target.value } }),
-          h('label', { class: 'small' }, h('input', { type: 'checkbox', checked: s.public ? '' : null, onchange: (e) => { s.public = e.target.checked } }), ' Public (anyone with its key; for good)'),
-          h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Make forum')),
-        h('h3', {}, 'Join a forum'),
-        h('form', { class: 'row-end start', onsubmit: (e) => { e.preventDefault(); run(async () => open((await root.instances.join(s.link.trim())).key)) } },
-          h('input', { class: 'wide', 'aria-label': 'Invite link', placeholder: 'hg:…', value: s.link, oninput: (e) => { s.link = e.target.value } }),
-          h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Join'))),
+        ...joinForms(s, run, open)),
       status('Forums made with this app', ''))))
   }
   paint()

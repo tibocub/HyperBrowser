@@ -73,7 +73,7 @@ export function watch (w, types, follow = false) {
   if (w.says !== undefined && (typeof w.says !== 'string' || !w.says.trim() || w.says.length > 60)) bad('says is 1 to 60 characters')
   if (w.open !== undefined) {
     if (typeof w.open !== 'string' || w.open[0] !== '#' || w.open.length > 200) bad('open is a place within the app: #...')
-    for (const [, f] of w.open.matchAll(/\{([^}]*)\}/g)) if (!field(f)) bad(`open: {${f}} names a field of ${of}`)
+    for (const [, f] of w.open.matchAll(/\{([^}]*)\}/g)) if (f !== 'id' && !field(f)) bad(`open: {${f}} names a field of ${of}, or {id}: the record's own`) // {id}: spec 017
   }
   if (w.show !== undefined && w.show !== 'dot') bad('show is "dot" (only a dot: no notification)')
   if (w.where !== undefined) {

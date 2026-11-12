@@ -96,12 +96,24 @@ export function visible (rows, folded) {
   return out
 }
 
-// Unread: never read, or active since. read: the activity stamp seen last, or undefined.
-export const unread = (activity, read) => read === undefined || read === null || activity > read
+// Unread (spec 017 R5): the threads with something new, from since()'s records, by message numbers, never by dates
+// (a reply received late, stamped long ago, still counts). unread: { [thread]: [ids of its new comments] }.
+export const NEW_MAX = 300 // comment ids kept in all (~60 bytes each; a mine value is at most 64 KB): past it the oldest go, their threads stay unread
+export function addNew (unread, records, me) {
+  const out = Object.fromEntries(Object.entries(unread).map(([k, v]) => [k, [...v]]))
+  for (const r of records) {
+    if (r.author === me) continue
+    if (r.type === 'thread') out[r.id] = out[r.id] || []
+    else if (r.type === 'comment' && typeof r.thread === 'string') (out[r.thread] = out[r.thread] || []).push(r.id)
+  }
+  let n = Object.values(out).reduce((a, l) => a + l.length, 0)
+  for (const l of Object.values(out)) while (n > NEW_MAX && l.length) { l.shift(); n-- }
+  return out
+}
 
-// Read state kept for threads no longer shown (deleted, hidden, or older than the newest LIMITS.threads): names to
-// drop, so the person's read state stays at most one entry per shown thread (~90 bytes each).
-export const staleRead = (mine, threadIds) => Object.keys(mine).filter((n) => n.startsWith('read/') && !threadIds.has(n.slice(5)))
+// Only the threads shown (deleted, hidden, or older than the newest LIMITS.threads go): bounded.
+export const pruneUnread = (unread, threadIds) => Object.fromEntries(Object.entries(unread).filter(([k]) => threadIds.has(k)))
+export const without = (unread, thread) => Object.fromEntries(Object.entries(unread).filter(([k]) => k !== thread))
 
 export function ago (stamp, now = Date.now()) {
   const s = Math.max(0, Math.round((now - stamp) / 1000))
