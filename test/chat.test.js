@@ -5,7 +5,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, sleep } from './helpers.js'
 import { chat } from '../sites/chat/lib/chat.js'
-import { keepScroll } from '../sites/chat/lib/scroll.js'
+import { keepScroll, newLine } from '../sites/chat/lib/scroll.js'
 
 const FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'chat')
 
@@ -47,6 +47,18 @@ test('a redraw keeps the reader in the message list, or at the end', (t) => {
   t.is(keepScroll(list('a', 300), 'a'), 300, 'scrolled up: keeps the place')
   t.is(keepScroll(list('a', 300), 'a', true), null, 'your own message: the end')
   t.is(keepScroll(list('b', 300), 'a'), null, "another conversation doesn't inherit it")
+})
+
+test('the "New messages" line: above the first of the unread messages from others (spec 017 R8)', (t) => {
+  const m = (author) => ({ author })
+  const list = [m('ann'), m('me'), m('ann'), m('bob'), m('me'), m('ann')]
+  t.is(newLine(list, 0, 'me'), -1, 'nothing unread: none, open at the end')
+  t.is(newLine(list, 1, 'me'), 5, 'one: above the last')
+  t.is(newLine(list, 2, 'me'), 3, "two: own messages in between don't count")
+  t.is(newLine(list, 3, 'me'), 2)
+  t.is(newLine(list, 50, 'me'), 0, 'more than shown: above the first from others')
+  t.is(newLine([m('me')], 2, 'me'), -1, 'none from others: none')
+  t.is(newLine([], 3, 'me'), -1)
 })
 
 test('a direct conversation and a group where the owner hands out rights', async (t) => {

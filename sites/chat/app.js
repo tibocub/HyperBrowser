@@ -1,7 +1,8 @@
 // Chat's page (spec 013): conversations on the left, the open one on the right, redrawn from live views. No
 // stylesheet: HyperBrowser's default theme, with a few inline layout rules. Data: lib/chat.js.
+// Spec 017: unread numbers in the list (HyperBrowser's counts), a "New messages" line, a "…" menu per message.
 import { chat, ROLES, MODERATORS, INVITERS } from './lib/chat.js'
-import { keepScroll } from './lib/scroll.js'
+import { keepScroll, newLine } from './lib/scroll.js'
 
 const hyper = window.hyper
 const root = document.getElementById('app')
@@ -14,6 +15,7 @@ let view = null // the open conversation: { key, messages, invites, names, membe
 let stops = []
 let joined = {} // invite ids answered here (hyper.mine)
 let notice = ''
+let counts = {} // { [conversation]: { count, dot } }: unread, from HyperBrowser (spec 017 R4)
 
 start().catch((err) => {
   root.replaceChildren(h('p', {}, err.code === 'NOT_ALLOWED' ? 'Chat needs your identity and your contacts. Reload the page to be asked again.' : 'Chat could not start: ' + err.message))
@@ -23,6 +25,8 @@ async function start () {
   if (!hyper) return root.replaceChildren(h('p', {}, 'Open Chat in HyperBrowser.'))
   me = await hyper.contacts.me()
   joined = await hyper.mine.all()
+  counts = (await hyper.notifications?.unread?.().catch(() => null)) || {}
+  hyper.notifications?.on?.((u) => { counts = u; draw() })
   hyper.contacts.on(() => refresh().catch(() => {}))
   await refresh()
   if (current) open(current)
@@ -47,15 +51,17 @@ function open (key) {
   current = key
   history.replaceState(null, '', '?instance=' + key)
   hyper.notifications?.viewing(key).catch(() => {}) // spec 016: shown here, so not notified
-  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null }
+  // unread: the count when it opened (read once shown); line: where "New messages" goes, once the messages are in
+  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false }
   const v = view
   const names = () => c.names(key).then((n) => { if (view === v) { v.names = n; draw() } }, () => {})
   const members = () => {
     c.role(key).then((r) => { v.role = r; draw() }, () => {})
     c.members(key).then((m) => { v.members = m; draw() }, () => {})
   }
-  stops.push(c.messages(key, ({ items }) => {
+  stops.push(c.messages(key, ({ items, complete }) => {
     v.messages = items.slice().reverse()
+    if (v.line === null && (complete || items.length >= v.unread)) v.line = newLine(v.messages, v.unread, me.identity)
     if (items.some((m) => !v.names.has(m.author))) names()
     draw()
   }))
@@ -81,13 +87,19 @@ function draw () {
         h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(me.identity)) } }, 'Contacts')),
       h('ul', { style: 'list-style:none; padding:0' }, convs.map((x) => h('li', {},
         h('a', { href: '#', 'aria-current': x.key === current ? 'page' : null, onclick: (e) => { e.preventDefault(); open(x.key) } },
-          x.direct ? '@ ' : '# ', titleOf(x))))),
+          x.direct ? '@ ' : '# ', titleOf(x)),
+        counts[x.key]?.count ? h('b', { 'aria-label': counts[x.key].count + ' unread' }, ' (' + counts[x.key].count + ')') : null))),
       convs.length ? null : h('p', { class: 'small' }, 'No conversations yet: become friends with someone in Contacts.'),
       h('form', { onsubmit: newGroup }, h('input', { name: 'name', placeholder: 'New group name', maxlength: 200 }), ' ', h('button', {}, 'Create'))),
     h('main', { style: 'flex:1; min-width:0' }, notice ? h('p', { role: 'alert' }, notice) : null,
       view && conv ? conversation(conv) : h('p', {}, 'Pick a conversation.'))))
   const list = root.querySelector('[data-key]')
   if (list) list.scrollTop = top ?? list.scrollHeight
+  const line = list?.querySelector('.new-line')
+  if (line && !view.placed) { // opened with unread messages: the line near the top, the first of them below it
+    view.placed = true
+    list.scrollTop = Math.max(0, line.offsetTop - 8)
+  }
   if (typing) {
     const box = root.querySelector('textarea[name=text]')
     box?.focus()
@@ -102,17 +114,28 @@ function conversation (conv) {
     if (inv.author === me.identity || joined['invite:' + inv.id]) continue
     out.push(h('p', {}, nameOf(inv.author), ' invites you to the group ', h('b', {}, inv.name), ' ', h('button', { onclick: () => join(inv) }, 'Join')))
   }
-  out.push(h('div', { 'data-key': view.key, style: 'max-height:60vh; overflow:auto' }, view.messages.map((m) => h('p', {},
-    h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(m.author)) } }, h('b', {}, nameOf(m.author))),
-    h('span', { class: 'small' }, ' ', new Date(m.stamp).toLocaleString(), m.edited ? ' (edited)' : ''), h('br'),
-    h('span', { style: 'white-space:pre-wrap' }, m.text), ' ',
-    m.author === me.identity ? h('button', { class: 'small', onclick: () => { view.editing = m; view.draft = m.text; draw() } }, 'Edit') : null,
-    m.author === me.identity || mod ? h('button', { class: 'small', onclick: () => act(() => c.remove(view.key, m, m.author === me.identity)) }, 'Delete') : null))))
+  out.push(h('div', { 'data-key': view.key, style: 'max-height:60vh; overflow:auto; position:relative' }, view.messages.map((m, i) => [
+    i === view.line ? h('p', { class: 'new-line', role: 'separator', 'aria-label': 'New messages', style: 'text-align:center; color:var(--accent, #1f4fd1); border-top:1px solid; margin:8px 0 0' }, 'New messages') : null,
+    h('p', {},
+      h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(m.author)) } }, h('b', {}, nameOf(m.author))),
+      h('span', { class: 'small' }, ' ', new Date(m.stamp).toLocaleString(), m.edited ? ' (edited)' : ''), ' ',
+      menu(m, mod), h('br'),
+      h('span', { style: 'white-space:pre-wrap' }, m.text))])))
   out.push(h('form', { onsubmit: send },
     h('textarea', { name: 'text', rows: 3, style: 'width:100%', placeholder: view.editing ? 'Edit your message' : 'Write a message (Enter sends, Shift+Enter: new line)', onkeydown: enter, oninput: (e) => { view.draft = e.target.value }, value: view.draft ?? view.editing?.text ?? '' }),
     h('button', {}, view.editing ? 'Save' : 'Send'), view.editing ? h('button', { type: 'button', onclick: () => { view.editing = view.draft = null; draw() } }, 'Cancel') : null))
   if (!conv.direct) out.push(group(conv))
   return out
+}
+
+// One discreet "…" per message: its Edit and Delete (a <details>: Enter or Space opens it). Kept open across redraws.
+function menu (m, mod) {
+  const mine = m.author === me.identity
+  if (!mine && !mod) return null
+  return h('details', { style: 'display:inline-block', open: view.menu === m.id ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = m.id; else if (view.menu === m.id) view.menu = null } },
+    h('summary', { 'aria-label': 'Message actions', title: 'Edit, delete', style: 'display:inline; cursor:pointer; list-style:none' }, '…'), ' ',
+    mine ? h('button', { class: 'small', onclick: () => { view.menu = null; view.editing = m; view.draft = m.text; draw() } }, 'Edit') : null,
+    h('button', { class: 'small', onclick: () => { view.menu = null; act(() => c.remove(view.key, m, mine)) } }, 'Delete'))
 }
 
 function group (conv) {

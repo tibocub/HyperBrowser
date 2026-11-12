@@ -65,7 +65,12 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     'hyper.apps: nothing installed or opened without a click',
     "hyper.apps: a click and the person's no install nothing",
     "a page can't stop another page's subscription",
-    "notifications: a page's viewing can't mark another app's conversation read" // spec 016
+    "notifications: a page's viewing can't mark another app's conversation read", // spec 016
+    "notifications: a page can't read another app's counts", // spec 017
+    "notifications: a page can't read another app's follows",
+    "notifications: a page can't remove another app's follow",
+    "notifications: a page can't follow another app's places",
+    "notifications: a page doesn't hear another app's counts"
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
 })
 

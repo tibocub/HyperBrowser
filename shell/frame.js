@@ -169,7 +169,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   async function notify ({ items, summary }) {
     await looked() // what the person looks at is read before it is counted
     await refresh()
-    const fresh = items.filter((x) => x.place !== lookedPlace)
+    const fresh = items.filter((x) => x.place !== lookedPlace && x.popup !== false) // spec 017: a quiet follow is listed, never popped up
     if (!fresh.length || !Notification.isSupported()) return
     const title = (x) => (notes.apps.find((a) => a.key === x.app)?.title || 'HyperBrowser')
     const show = (place, head, body, item) => {

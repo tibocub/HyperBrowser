@@ -13,7 +13,7 @@ import { notifications } from './notifications.js'
 const ANSWERS = 'hyperbrowser/identity' // setting: { [site key]: true | false }, on every device of the person
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
 // Calls of hypergraph's site handle a page may make; addProtocol and memberConnections can't cross.
-const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'linked', 'count', 'sum', 'members', 'decisions', 'tags',
+const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags',
   'relate', 'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces', 'redemptions',
   'peers', 'status', 'isComplete', 'completeFrom', 'types'])
@@ -22,6 +22,9 @@ const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join
 // spec 013: the person's contacts, for a site that declares the `contacts` permission and was allowed it
 const CONTACTS = new Set(['contacts.me', 'contacts.setMe', 'contacts.list', 'contacts.request', 'contacts.accept',
   'contacts.decline', 'contacts.remove', 'contacts.rename', 'contacts.link', 'contacts.add'])
+// spec 017: the app's own unread counts and follows, for a site that declares the `notifications` permission
+const NOTIFY = new Set(['notifications.unread', 'notifications.follow', 'notifications.unfollow', 'notifications.follows'])
+const SINCE_MAX = 1000 // records of one since() call crossing to a page
 const PERMITS = 'hyperbrowser/permissions' // setting: { [site key]: { contacts: true | false } }
 const APP_PREFIX = 'hyperbrowser/app/' // + key + '/instances': { [instance key]: true }, written by the engine only
 const INSTANCES_MAX = 1000 // per app: the list is a setting every device of the person keeps
@@ -37,6 +40,9 @@ const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'he
 // (specs/004-hosting): the same as hypergraph's grace for a closed space's topic, so a tab closed by
 // mistake or a back-and-forth comes back without finding the site's peers again.
 const GRACE = 5 * 60 * 1000
+// An instance's handle no subscription uses is closed this long after its last use (spec 017 R1): its space may then
+// close (a forum switched away from), while a page coming back at once finds it still open.
+const IDLE = 30 * 1000
 
 const error = (code, message) => Object.assign(new Error(message), { code })
 
@@ -56,6 +62,8 @@ export function start (ipc) {
   const leaving = new Map() // key -> timer: no tab shows it, left once the grace period is over
   const departing = new Map() // key -> the leave running
   let grace = GRACE
+  let idle = IDLE
+  const counters = new Set() // spec 017: the pages listening to their app's unread counts
   let opening = 0
   const subs = new Map() // id -> { key, stop }
   const bundled = new Set() // keys of the apps shipped inside HyperBrowser (spec 015): always joined, so served
@@ -106,7 +114,8 @@ export function start (ipc) {
       case 'contacts.me': return people.call('me', [])
       case 'contacts.get': return people.call('get', [p.identity])
       case 'contacts.request': return people.call('request', [p.identity, p.name])
-      case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length } // the tray's status line (spec 010)
+      // the tray's status line (spec 010); handles: the instances' handles kept (spec 017 R1)
+      case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length, handles: [...sites.values()].reduce((n, s) => n + s.instances.size, 0) }
       case 'site.installed': return installed()
       case 'devices.list': return devices()
       case 'devices.add': return { code: (await sfs.hg.addDevice(secret(p))).code } // the new device: a 'devices' event
@@ -126,12 +135,14 @@ export function start (ipc) {
   // joinCode: another device's code (spec 012): this empty folder becomes a device of that identity.
   // bundle: the official apps shipped inside HyperBrowser (spec 015), a folder made by scripts/build.js.
   // notifyTurn (tests): how long a watched place not kept online is held in its turn (spec 016 R3)
-  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName, bundle, notifyTurn }) {
+  // idle (tests): how long an unused instance's handle stays (spec 017 R1)
+  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName, bundle, notifyTurn, idle: i }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
     starting = SwarmFS.open(dir, { bootstrap, appStorageMax, joinCode, joinTimeout, deviceName })
     starting.catch(() => { starting = null }) // a failed init may be sent again
     if (g !== undefined) grace = g
+    if (i !== undefined) idle = i
     sfs = await starting
     sfs.hg.on('devices', () => rpc.emit('devices', {}))
     const list = typeof bundle === 'string' && bundle ? await readBundle(bundle) : null
@@ -140,7 +151,7 @@ export function start (ipc) {
     if (list) await unbundle(bundle, list, dir)
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
     people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance })
-    notes = notifications({ sfs, dir, emit: (event, data) => rpc.emit(event, data), turn: notifyTurn })
+    notes = notifications({ sfs, dir, emit: (event, data) => rpc.emit(event, data), turn: notifyTurn, counts: () => { for (const fn of counters) fn() } })
     if (heartbeat) {
       timer = setInterval(() => { if (Date.now() - last > 3 * heartbeat) shutdown('heartbeat') }, heartbeat)
     }
@@ -210,7 +221,7 @@ export function start (ipc) {
     notes.refresh(site.key, manifest).catch(() => {}) // an allowed app's watches follow its new versions (spec 016 R2)
     const known = sites.get(site.key)
     if (known) Object.assign(known, { manifest, tabs: known.tabs + 1 })
-    else sites.set(site.key, { site, manifest, scope: null, instances: new Map(), tabs: 1 })
+    else sites.set(site.key, { site, manifest, scope: null, instances: new Map(), idle: new Map(), tabs: 1 })
     return { key: site.key, manifest, dynamic: isDynamic(manifest), ...(await askNotify(site.key, manifest)) }
   }
 
@@ -347,6 +358,15 @@ export function start (ipc) {
   // The handle on one of the app's instances: listed for this app, and the instance itself names this app.
   async function instanceScope (s, app, key) {
     keyOf({ key })
+    clearTimeout(s.idle.get(key)) // in use: not closed under this call
+    try {
+      return await useInstance(s, app, key)
+    } finally {
+      idleLater(s, app, key)
+    }
+  }
+
+  async function useInstance (s, app, key) {
     if (!(await listed(app))[key]) throw error('NOT_ALLOWED', "not one of this app's instances: create or join it first")
     if (!s.instances.has(key)) {
       const opening = (async () => {
@@ -363,6 +383,20 @@ export function start (ipc) {
       await i.site.declareTypes(i.types).catch(() => {})
     }
     return i.scope
+  }
+
+  // The handle is closed `idle` ms after its last use, unless a subscription uses it (its off() starts this again).
+  // shortcut: a single call running longer than `idle` on an instance may see its handle closed (CLOSED); count the
+  // calls in flight if that ever shows up.
+  function idleLater (s, app, key) {
+    clearTimeout(s.idle.get(key))
+    s.idle.set(key, setTimeout(() => {
+      s.idle.delete(key)
+      if ([...subs.values()].some((x) => x.key === app && x.instance === key)) return
+      const i = s.instances.get(key)
+      s.instances.delete(key)
+      if (i) i.then((x) => x.scope.close(), () => {})
+    }, idle))
   }
 
   async function instances (s, app, method, [a, b]) {
@@ -418,6 +452,7 @@ export function start (ipc) {
     await listInstance(app, key, false)
     await notes.forget(key) // spec 016: its cursor, notifications, mute and read state
     for (const [id, x] of subs) if (x.instance === key) off({ id })
+    clearTimeout(sites.get(app)?.idle.get(key))
     const scope = sites.get(app)?.instances.get(key)
     sites.get(app)?.instances.delete(key)
     if (scope) await scope.then((i) => i.scope.close(), () => {})
@@ -438,7 +473,7 @@ export function start (ipc) {
   }
 
   async function call ({ key, sub, instance, method, args = [], chain }) {
-    if (method !== 'info' && !MINE.has(method) && !INSTANCES.has(method) && !CONTACTS.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
+    if (method !== 'info' && !MINE.has(method) && !INSTANCES.has(method) && !CONTACTS.has(method) && !NOTIFY.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
     if (!Array.isArray(args)) throw error('INVALID_PARAMS', 'args is a list')
     if (MINE.has(method)) {
       await target({ key, instance }) // an instance's: checked as any call on it
@@ -452,6 +487,8 @@ export function start (ipc) {
       await target({ key })
       return instances(opened(key), key, method, args)
     }
+    if (NOTIFY.has(method)) return notify(key, method, args)
+    if (method === 'since') args = sinceArgs(args)
     const t = await target({ key, sub, instance })
     if (method === 'info') {
       const out = { identity: t.identity.publicKey }
@@ -502,6 +539,26 @@ export function start (ipc) {
     return true
   }
 
+  // spec 017: the app's own places only, whatever instance the page names (the list is the engine's).
+  async function notify (key, method, [a]) {
+    await target({ key })
+    const { manifest } = opened(key)
+    if (!manifest.permissions.includes('notifications')) throw error('NOT_ALLOWED', "this site's site.json doesn't ask for notifications")
+    const places = Object.keys(await listed(key))
+    if (method === 'notifications.unread') return notes.unreadOf(places)
+    if (method === 'notifications.follows') return notes.follows(key)
+    if (method === 'notifications.unfollow') return notes.unfollow(key, a)
+    return notes.follow(key, manifest.types, places, a)
+  }
+
+  // since(cursor, { types, limit }): at most SINCE_MAX records a call; the page calls again with the cursor.
+  function sinceArgs ([cursor, o]) {
+    if (o !== undefined && (o === null || typeof o !== 'object' || Array.isArray(o))) throw error('INVALID_PARAMS', 'since(cursor, { types, limit })')
+    const limit = o?.limit ?? SINCE_MAX
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > SINCE_MAX) throw error('INVALID_PARAMS', `limit is 1 to ${SINCE_MAX}`)
+    return [cursor ?? null, { ...o, limit }]
+  }
+
   async function live ({ key, sub, instance, args = [], chain = [], opts }) {
     const t = await target({ key, sub, instance })
     const q = query(t, args, chain)
@@ -520,6 +577,18 @@ export function start (ipc) {
       subs.set(id, { key, contacts: true, stop: () => sfs.hg.off('settings', fn) })
       return { id }
     }
+    if (event === 'notifications') { // spec 017: the app's own counts, told when they change
+      const id = nextSub++
+      let last = JSON.stringify(await notify(key, 'notifications.unread', []))
+      const fn = () => notify(key, 'notifications.unread', []).then((u) => {
+        const now = JSON.stringify(u)
+        if (now !== last && subs.has(id)) rpc.emit('event', { id, data: u })
+        last = now
+      }, () => {})
+      counters.add(fn)
+      subs.set(id, { key, stop: () => counters.delete(fn) })
+      return { id }
+    }
     const t = await target({ key, sub, instance })
     const id = nextSub++
     const fn = (data) => rpc.emit('event', { id, data: plain(data) })
@@ -533,6 +602,8 @@ export function start (ipc) {
     if (s) {
       subs.delete(id)
       s.stop()
+      const site = s.instance && sites.get(s.key)
+      if (site) idleLater(site, s.key, s.instance) // its handle, once no page uses it (spec 017 R1)
     }
     return true
   }
@@ -546,6 +617,8 @@ export function start (ipc) {
       await scope.then((h) => h.close(), () => {})
     }
     if (s) {
+      for (const t of s.idle.values()) clearTimeout(t)
+      s.idle.clear()
       const open = [...s.instances.values()]
       s.instances.clear()
       for (const scope of open) await scope.then((i) => i.scope.close(), () => {})

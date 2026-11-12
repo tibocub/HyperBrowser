@@ -46,27 +46,44 @@ export function parseManifest (textOrBytes) {
 
 // spec 016: what the engine watches for this app, as data (contracts/notifications.md). Strict: site.json's
 // fields can't change once released, so anything unknown is refused now and may mean something later.
-const WATCH_KEYS = new Set(['type', 'me', 'text', 'says', 'open'])
 function watches (list, types) {
-  const bad = (why) => { throw error('INVALID_MANIFEST', 'site.json: notifications: ' + why) }
-  if (!Array.isArray(list) || list.length > 16) bad('a list of at most 16 watches')
-  for (const w of list) {
-    if (!w || typeof w !== 'object' || Array.isArray(w)) bad('each watch is an object')
-    for (const k of Object.keys(w)) if (!WATCH_KEYS.has(k)) bad(`unknown field ${k}`)
-    const type = types?.[w.type]
-    if (typeof w.type !== 'string' || !type) bad('a watch names one of the types this site declares')
-    const fields = type.fields || {}
-    const field = (f) => typeof f === 'string' && Object.hasOwn(fields, f)
-    if (w.me !== undefined && !field(w.me)) bad(`me names a field of ${w.type}`)
-    if ((w.text === undefined) === (w.says === undefined)) bad('text or says, one of the two')
-    if (w.text !== undefined && !field(w.text)) bad(`text names a field of ${w.type}`)
-    if (w.says !== undefined && (typeof w.says !== 'string' || !w.says.trim() || w.says.length > 60)) bad('says is 1 to 60 characters')
-    if (w.open !== undefined) {
-      if (typeof w.open !== 'string' || w.open[0] !== '#' || w.open.length > 200) bad('open is a place within the app: #...')
-      for (const [, f] of w.open.matchAll(/\{([^}]*)\}/g)) if (!field(f)) bad(`open: {${f}} names a field of ${w.type}`)
+  if (!Array.isArray(list) || list.length > 16) throw error('INVALID_MANIFEST', 'site.json: notifications: a list of at most 16 watches')
+  for (const w of list) watch(w, types)
+  return list
+}
+
+const WATCH_KEYS = new Set(['type', 'me', 'text', 'says', 'open', 'show']) // show: spec 017
+const FOLLOW_KEYS = new Set(['place', 'type', 'where', 'by', 'text', 'says', 'open', 'popup'])
+const MEMBER = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
+
+// One watch of site.json, or (follow: true) a follow a page adds at runtime (spec 017 R3): the same rules, plus
+// its place (the caller checks it is the app's), a type or a list of types, where { field: value }, by, popup.
+export function watch (w, types, follow = false) {
+  const bad = (why) => { throw follow ? error('INVALID_PARAMS', 'follow: ' + why) : error('INVALID_MANIFEST', 'site.json: notifications: ' + why) }
+  if (!w || typeof w !== 'object' || Array.isArray(w)) bad('each watch is an object')
+  for (const k of Object.keys(w)) if (!(follow ? FOLLOW_KEYS : WATCH_KEYS).has(k)) bad(`unknown field ${k}`)
+  if (follow && (typeof w.place !== 'string' || !w.place)) bad("place is one of the app's instances")
+  const names = follow && Array.isArray(w.type) ? w.type : [w.type]
+  if (!names.length || names.length > 8 || !names.every((n) => typeof n === 'string' && types?.[n])) bad('a watch names one of the types this site declares')
+  const field = (f) => typeof f === 'string' && names.every((n) => Object.hasOwn(types[n].fields || {}, f))
+  const of = names.join(', ')
+  if (w.me !== undefined && !field(w.me)) bad(`me names a field of ${of}`)
+  if ((w.text === undefined) === (w.says === undefined)) bad('text or says, one of the two')
+  if (w.text !== undefined && !field(w.text)) bad(`text names a field of ${of}`)
+  if (w.says !== undefined && (typeof w.says !== 'string' || !w.says.trim() || w.says.length > 60)) bad('says is 1 to 60 characters')
+  if (w.open !== undefined) {
+    if (typeof w.open !== 'string' || w.open[0] !== '#' || w.open.length > 200) bad('open is a place within the app: #...')
+    for (const [, f] of w.open.matchAll(/\{([^}]*)\}/g)) if (f !== 'id' && !field(f)) bad(`open: {${f}} names a field of ${of}, or {id}: the record's own`) // {id}: spec 017
+  }
+  if (w.show !== undefined && w.show !== 'dot') bad('show is "dot" (only a dot: no notification)')
+  if (w.where !== undefined) {
+    if (!w.where || typeof w.where !== 'object' || Array.isArray(w.where) || Object.keys(w.where).length > 4) bad('where is { field: value }, at most 4')
+    for (const [f, v] of Object.entries(w.where)) {
+      if (!field(f) || !['string', 'number', 'boolean'].includes(typeof v) || String(v).length > 200) bad(`where: ${f} names a field of ${of}, its value a string, number or true/false`)
     }
   }
-  return list
+  if (w.by !== undefined && (typeof w.by !== 'string' || !MEMBER.test(w.by))) bad("by is a member's key")
+  if (w.popup !== undefined && typeof w.popup !== 'boolean') bad('popup is true or false')
 }
 
 // Dynamic: asks for its space (the hypergraph API); unknown permissions are ignored.

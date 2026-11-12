@@ -30,7 +30,7 @@ export async function engine (t, { init = true, dir = tmpDir(t, 'hb'), ...opts }
 
 // A site's `window.hyper` as shell/site-preload.cjs makes it, on an engine of the tests (the site opened and
 // allowed there): sites' own code (sites/forum/lib) runs on it unchanged. `instance`: hyper.instance(key) (spec 009).
-const METHODS = ['put', 'get', 'edit', 'del', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
+const METHODS = ['put', 'get', 'edit', 'del', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
   'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info']
@@ -80,6 +80,10 @@ export function siteApi (e, key, instance = null) {
     api.contacts = {}
     for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add']) api.contacts[m] = (...args) => call('contacts.' + m, args)
     api.contacts.on = (fn) => subscribe('site.on', { event: 'contacts' }, fn)
+    // spec 017: the app's own unread counts and follows
+    api.notifications = {}
+    for (const m of ['unread', 'follow', 'unfollow', 'follows']) api.notifications[m] = (...args) => call('notifications.' + m, args)
+    api.notifications.on = (fn) => subscribe('site.on', { event: 'notifications' }, fn)
   }
   return api
 }

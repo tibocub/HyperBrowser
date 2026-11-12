@@ -14,6 +14,8 @@
     "official": { "fields": { "instance": "string" }, "put": { "permission": "decide" } }
   },
   "notifications": [
-    { "type": "mention", "me": "who", "says": "mentioned you", "open": "#/r/{on}" }
+    { "type": "mention", "me": "who", "says": "mentioned you", "open": "#/r/{on}" },
+    { "type": "thread", "says": "posted a thread", "show": "dot" },
+    { "type": "comment", "says": "replied", "show": "dot" }
   ]
 }
