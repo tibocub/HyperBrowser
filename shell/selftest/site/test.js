@@ -11,10 +11,10 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // mine: the person's own data for this site (spec 006), on their settings, not a space
 // instance, instances: the app's instances (spec 009), checked by the engine
 // contacts (only with the permission), people: through HyperBrowser (spec 013); apps: the same (spec 014)
-const API = ['apps', 'completeFrom', 'contacts', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
+const API = ['apps', 'circles', 'completeFrom', 'contacts', 'copies', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
   'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
-  'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'setRole',
-  'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag'] // since: spec 017
+  'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'setRole',
+  'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag'] // since: spec 017; circles, copies, rotateKey: 018
 
 const common = [
   ['no Node: require/process/module/Buffer undefined', async () =>
@@ -101,6 +101,9 @@ const dynamics = [
     window.hyper.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],
   ['apps: installing a site without a click installs nothing', async () => (await window.hyper.apps.install(other)) === false], // spec 014
   ['apps: opening a site without a click opens nothing', async () => (await window.hyper.apps.open(other)) === false],
+  // spec 018: copies of its own space only; joining a circle only through HyperBrowser, after a click
+  ['copies: hyper.subspace(<other site>).copies() is refused', () => refused(window.hyper.subspace(other).copies())],
+  ['circles: joining without a click joins nothing', async () => (await window.hyper.circles.join('hg:x')).joined === false],
   ['its own instance: created, then reached', async () => {
     const f = await window.hyper.instances.create('Self-test ' + me.slice(0, 4))
     await window.hyper.instance(f.key).put('profile', { name })

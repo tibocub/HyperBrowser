@@ -182,6 +182,7 @@ async function bridge (wc, msg) {
   let instance = msg.instance ?? null // one of the app's instances (spec 009): the engine checks it is
   if (!GUARDS && sites.has(sub)) { key = sub; sub = null } // control run: trusts a key from the page
   if (!GUARDS && sites.has(instance)) { key = instance; instance = null }
+  if (!GUARDS && sites.has(msg.site)) key = msg.site // spec 018's checks: another app's instance, named with its app
   if (msg.op === 'viewing') { // spec 016
     if (msg.instance !== null && typeof msg.instance !== 'string') throw Object.assign(new Error('an instance key or null'), { code: 'INVALID_PARAMS' })
     viewed.set(wc, msg.instance)
@@ -403,6 +404,7 @@ async function selftest (dir) {
   out.push({ site: 'shell', name: 'a page with its own <style> keeps its look', pass: !styled.includes('HB ') })
   await checkLoads(views, out)
   await checkNotifications(views, out)
+  await checkCircles(views, out)
   const chat = await checkChat(win, views, out, tmp)
   await checkChatLine(chat, out, tmp)
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
@@ -511,6 +513,22 @@ async function checkOwnCounts (a, b, own, other, pass) {
   await wait(1000)
   pass("notifications: a page doesn't hear another app's counts", !heard.slice(mark).includes(sub.id))
   await bridge(a.webContents, { op: 'off', id: sub.id })
+}
+
+// spec 018: copies and rotateKey reach the page's own app's instances only (each check names B's site with B's
+// private instance, which the control run takes for the page's site); a circle is joined only through HyperBrowser.
+async function checkCircles ([a, b], out) {
+  const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
+  const theirs = await rpc.request('site.call', { key: b.key, method: 'instances.create', args: ['Theirs', { private: true }] })
+  const ask = (method) => bridge(a.webContents, { op: 'call', site: b.key, instance: theirs.key, method, args: [] }).then(() => 'done', (e) => e.code)
+  pass("copies: a page can't read another app's instance's copies", (await ask('copies')) === 'NOT_ALLOWED')
+  pass("rotateKey: a page can't change another app's instance's key", (await ask('rotateKey')) === 'NOT_ALLOWED')
+  const circle = await rpc.request('circles.create', { name: 'Self-test' })
+  const { link } = await rpc.request('circles.invite', { key: circle.key })
+  const asked = await bridge(a.webContents, { op: 'call', method: 'circles.join', args: [link] }).then(() => 'joined', (e) => e.code)
+  pass('circles: a page has no circles.* call of the engine', asked === 'UNKNOWN_METHOD')
+  const clicked = await a.webContents.executeJavaScript(`window.hyper.circles.join(${JSON.stringify(link)}).then((r) => JSON.stringify(r), (e) => e.code)`, true)
+  pass("circles: a click and the person's Not now join nothing", clicked === '{"joined":false}')
 }
 
 // Chat's page, in a real browser: where a redraw leaves the message list and the caret.
