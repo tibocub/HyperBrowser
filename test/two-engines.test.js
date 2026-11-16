@@ -98,3 +98,34 @@ test('publish --instance: the app\'s instance, made once; its invite opens the a
   t.ok(await eventually(async () => (await tibo.rpc.request('site.call', { key, method: 'query', args: ['official'], chain: [['latest', [1]]] })).items[0]?.instance === instance, 20000), 'the app names its official instance')
   t.is(await tibo.rpc.request('site.call', { key, instance, method: 'getRole', args: [(await tibo.rpc.request('site.call', { key, method: 'info' })).identity] }), 'admin', 'an admin of the instance')
 })
+
+// spec 018 SC: A and B in a circle (B holds); A's private conversation with an outsider C, written while C was
+// away, is read by C while A is offline: B's copy serves it.
+test("circles: an outsider reads A's message while A is offline, from A's circle", async (t) => {
+  t.timeout(300000)
+  const APP = { title: 'Talk', permissions: ['space'], types: { message: { fields: { text: 'string' } } } }
+  const a = await engine(t)
+  const b = await engine(t)
+  const ring = await a.rpc.request('circles.create', { name: 'AB' })
+  await b.rpc.request('circles.join', { link: (await a.rpc.request('circles.invite', { key: ring.key })).link })
+  const { key } = await a.rpc.request('site.publish', { folder: siteFolder(t, { manifest: APP }) })
+  const call = (e, method, args, instance = null) => e.rpc.request('site.call', { key, instance, method, args })
+  const open = async (e) => { await e.rpc.request('site.open', { key, timeout: 60000 }); await e.rpc.request('site.consent', { key, allow: true }) }
+  await open(a)
+  const room = await call(a, 'instances.create', ['A and C', { private: true }])
+  const cdir = tmpDir(t, 'c')
+  let c = await engine(t, { dir: cdir })
+  await open(c)
+  await call(c, 'instances.join', [await call(a, 'createInvite', [{ role: 'member' }], room.key)])
+  await c.rpc.request('site.keep', { key, keep: true, timeout: 60000 }) // the app installed, as Chat is (bundled): only the conversation is A's alone
+  await c.rpc.request('close')
+  await call(a, 'put', ['message', { text: 'while you were away' }], room.key)
+  t.ok(await eventually(async () => (await call(a, 'copies', [], room.key)).kept >= 1, 120000, 500), "B keeps A's conversation")
+  await a.rpc.request('close')
+  c = await engine(t, { dir: cdir })
+  await open(c)
+  let last = null
+  const latest = () => c.rpc.request('site.call', { key, instance: room.key, method: 'query', args: ['message'], chain: [['latest', [5]]] }).then((r) => { last = JSON.stringify(r).slice(0, 300); return r }, (err) => { last = err.code + ' ' + err.message; return { items: [] } })
+  const read = await eventually(async () => (await latest()).items.some((m) => m.text === 'while you were away'), 120000, 1000)
+  t.ok(read, 'C reads it, A offline: ' + last)
+})

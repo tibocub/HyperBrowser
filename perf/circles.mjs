@@ -14,7 +14,9 @@ import { connect, pair } from '../engine/protocol.js'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CIRCLES = 3
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i === -1 ? d : Number(process.argv[i + 1]) }
-const people = arg('--people', 10)
+// shortcut: 5 by default: from 7 (3 circles of 8) hypergraph's autobase crashes while people join (Writer._loadNextNode,
+// 'node' of null, 2026-11-16); 49 (circles of 50) once that is fixed
+const people = arg('--people', 5)
 const minutes = arg('--minutes', 1)
 const CHILD = process.argv.includes('--measure')
 const tmp = CHILD ? process.argv[process.argv.indexOf('--measure') + 1] : fs.mkdtempSync(path.join(process.env.TEMP || os.tmpdir(), 'hb-perf-'))
