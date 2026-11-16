@@ -1,7 +1,7 @@
 // Chat's page (spec 013): conversations on the left, the open one on the right, redrawn from live views. No
 // stylesheet: HyperBrowser's default theme, with a few inline layout rules. Data: lib/chat.js.
 // Spec 017: unread numbers in the list (HyperBrowser's counts), a "New messages" line, a "…" menu per message.
-import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, CHANGE_KEY } from './lib/chat.js'
+import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY } from './lib/chat.js'
 import { keepScroll, newLine } from './lib/scroll.js'
 
 const hyper = window.hyper
@@ -28,6 +28,10 @@ async function start () {
   counts = (await hyper.notifications?.unread?.().catch(() => null)) || {}
   hyper.notifications?.on?.((u) => { counts = u; draw() })
   hyper.contacts.on(() => refresh().catch(() => {}))
+  // spec 019: an open "…" floats over the page; a click outside it or Escape closes it
+  const shut = () => { if (view?.menu) { view.menu = null; draw() } }
+  document.addEventListener('click', (e) => { if (!e.target.closest('details')) shut() })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut() })
   await refresh()
   if (current) open(current)
 }
@@ -131,34 +135,40 @@ function conversation (conv) {
   return out
 }
 
-// A message's text, or (spec 018) a circle's invite: a Join button for its receiver, which only asks HyperBrowser.
+// A message's text, or (spec 018) a circle's invite: an Accept button for its receiver (spec 019), which only asks HyperBrowser.
 function body (m) {
   const inv = circleOf(m)
   if (!inv) return h('span', { style: 'white-space:pre-wrap' }, m.text)
   if (m.author === me.identity) return h('span', {}, 'You invited them to the circle "' + inv.name + '"')
-  return h('button', { onclick: () => act(async () => { if ((await c.joinCircle(inv)).joined) notice = 'You joined "' + inv.name + '".' }) }, 'Join "' + inv.name + '"')
+  return h('button', { onclick: () => act(async () => { if ((await c.joinCircle(inv)).joined) notice = 'You joined "' + inv.name + '".' }) }, acceptLabel(nameOf(m.author), inv.name))
 }
+
+// A "…" menu's content floats under it, moving nothing (spec 019 FR-005); text-indent: the theme's list rows indent
+const MENU = 'display:inline-block; position:relative; text-indent:0'
+const DROP = 'position:absolute; top:100%; left:0; z-index:10; display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:4px 8px; white-space:nowrap; background:var(--paper, Canvas); color:var(--ink, CanvasText); border:1px solid; box-shadow:2px 2px 0 var(--ink, CanvasText)'
 
 // The conversation's "…" (spec 018): its copies ("Kept by N of 5 copies"), and Change key for its owner.
 function info () {
   const line = view.copies && copiesLine(view.copies)
   const owner = view.role === 'owner'
   if (!line && !owner) return null
-  return h('details', { style: 'display:inline-block; font-size:initial; font-weight:normal', open: view.menu === 'info' ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = 'info'; else if (view.menu === 'info') view.menu = null } },
+  return h('details', { style: MENU + '; font-size:initial; font-weight:normal', open: view.menu === 'info' ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = 'info'; else if (view.menu === 'info') view.menu = null } },
     h('summary', { 'aria-label': 'About this conversation', style: 'display:inline; cursor:pointer; list-style:none' }, '…'),
-    line ? h('p', { class: 'copies' }, line.text) : null,
-    line?.warn ? h('p', { class: 'copies-warn', role: 'note' }, line.warn) : null,
-    owner ? h('p', {}, h('button', { onclick: () => act(async () => { await c.changeKey(view.key); notice = 'Key changed.' }) }, 'Change key'), ' ', h('span', { class: 'small' }, CHANGE_KEY)) : null)
+    h('div', { style: DROP + '; width:280px; white-space:normal' },
+      line ? h('p', { class: 'copies', style: 'margin:0' }, line.text) : null,
+      line?.warn ? h('p', { class: 'copies-warn', role: 'note', style: 'margin:0' }, line.warn) : null,
+      owner ? h('p', { style: 'margin:0' }, h('button', { onclick: () => act(async () => { await c.changeKey(view.key); notice = 'Key changed.' }) }, 'Change key'), ' ', h('span', { class: 'small' }, CHANGE_KEY)) : null))
 }
 
 // One discreet "…" per message: its Edit and Delete (a <details>: Enter or Space opens it). Kept open across redraws.
 function menu (m, mod) {
   const mine = m.author === me.identity
   if (!mine && !mod) return null
-  return h('details', { style: 'display:inline-block', open: view.menu === m.id ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = m.id; else if (view.menu === m.id) view.menu = null } },
-    h('summary', { 'aria-label': 'Message actions', title: 'Edit, delete', style: 'display:inline; cursor:pointer; list-style:none' }, '…'), ' ',
-    mine ? h('button', { class: 'small', onclick: () => { view.menu = null; view.editing = m; view.draft = m.text; draw() } }, 'Edit') : null,
-    h('button', { class: 'small', onclick: () => { view.menu = null; act(() => c.remove(view.key, m, mine)) } }, 'Delete'))
+  return h('details', { style: MENU, open: view.menu === m.id ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = m.id; else if (view.menu === m.id) view.menu = null } },
+    h('summary', { 'aria-label': 'Message actions', title: 'Edit, delete', style: 'display:inline; cursor:pointer; list-style:none' }, '…'),
+    h('div', { style: DROP },
+      mine ? h('button', { class: 'small', onclick: () => { view.menu = null; view.editing = m; view.draft = m.text; draw() } }, 'Edit') : null,
+      h('button', { class: 'small', onclick: () => { view.menu = null; act(() => c.remove(view.key, m, mine)) } }, 'Delete')))
 }
 
 function group (conv) {

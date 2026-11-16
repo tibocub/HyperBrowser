@@ -428,6 +428,7 @@ async function selftest (dir) {
   await checkCircles(views, out)
   const chat = await checkChat(win, views, out, tmp)
   await checkChatLine(chat, out, tmp)
+  await checkMenus(win, views, out, tmp, chat)
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
@@ -652,13 +653,63 @@ async function checkChatLine ({ key, view }, out, tmp) {
     // Ann invites Bob from Contacts: Chat shows a Join button in their conversation; a click asks HyperBrowser (Not now)
     await as(ann, 'contacts.inviteToCircle', [(await as(rpc, 'contacts.me')).identity, ring.key])
     await run(`location.search = '?instance=${direct}'; 0`)
-    const button = "[...document.querySelectorAll('main button')].find((b) => b.textContent.startsWith('Join ') && b.textContent.includes('Ann only'))"
+    const button = "[...document.querySelectorAll('main button')].find((b) => b.textContent.startsWith('Accept Ann\\'s invitation to ') && b.textContent.includes('Ann only'))"
     const shown = await waitFor(() => run(`!!${button}`), 30000)
     const asked = shown && await view.webContents.executeJavaScript(`${button}.click(); 0`, true).then(() => waitFor(async () => !(await rpc.request('circles.list')).some((c) => c.key === ring.key), 3000))
-    pass("chat: a circle's invite shows a Join button; its click asks HyperBrowser, nothing joined on Not now", shown && asked)
+    pass("chat: a circle's invite shows Accept Ann's invitation; its click asks HyperBrowser, nothing joined on Not now", shown && asked)
   } finally {
     await ann.request('close').catch(() => {})
   }
+}
+
+// spec 019 FR-004, FR-005: a "…" menu opens without moving anything else on the page (every element's box before
+// and after, but the menu's own content). `menu`: an expression for the menu's element, `open`: a script opening it.
+async function moves (run, menu, open) {
+  const places = `((m) => [...document.body.querySelectorAll('*')].filter((e) => !(m.contains(e) && !e.matches('summary, [aria-haspopup]'))).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join() }).join('|'))(${menu})`
+  const before = await run(places)
+  await run(open + '; 0')
+  await wait(300)
+  return before !== await run(places)
+}
+
+// Contacts' friend "…" (Bob's friend Ann, his circle "Self-test"), Chat's message "…", a Forum's "…", in real pages.
+async function checkMenus (win, views, out, tmp, chat) {
+  const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
+  const page = async (name, query = '') => {
+    const folder = path.join(tmp, name)
+    fs.cpSync(path.join(HERE, '..', 'sites', name), folder, { recursive: true })
+    const { key } = await rpc.request('site.publish', { folder })
+    const v = await openSite(key, query)
+    views.push(v)
+    win.contentView.addChildView(v.view)
+    v.view.setBounds({ x: 0, y: 0, width: 700, height: 800 })
+    return { key, v, run: (s) => v.webContents.executeJavaScript(s) }
+  }
+  const contacts = await page('contacts')
+  const run = contacts.run
+  const friend = "document.querySelector('[data-menu]')"
+  const there = await waitFor(() => run(`!!${friend}`), 30000)
+  const moved = there && await moves(run, friend, `${friend}.querySelector('button').click()`)
+  const items = there && await run(`[...${friend}.querySelectorAll('[role=menuitem]')].map((b) => b.textContent).join()`)
+  pass('contacts: a friend\'s "…" opens a menu of circles that moves nothing on the page', there && !moved && items === 'Invite to "Self-test"')
+  const gap = there && await run(`(() => { const li = ${friend}.closest('li'); const msg = [...li.querySelectorAll('button')].find((b) => b.textContent === 'Message'); return ${friend}.querySelector('button').getBoundingClientRect().left - msg.getBoundingClientRect().right })()`)
+  pass('contacts: the "…" is a button apart from Message', gap >= 8)
+  await run("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); 0")
+  pass('contacts: Escape closes the menu, the focus back on its "…"', await run(`!${friend}.querySelector('[role=menu]') && document.activeElement === ${friend}.querySelector('button')`))
+  await run(`${friend}.querySelector('button').click(); 0`)
+  await run("document.querySelector('h1').click(); 0")
+  pass('contacts: a click outside closes it', await run(`!${friend}.querySelector('[role=menu]')`))
+
+  const msg = "document.querySelector('summary[aria-label=\"Message actions\"]').parentElement"
+  pass('chat: a message\'s "…" opens without moving anything', await chat.view.webContents.executeJavaScript(`!!${msg}`) && !(await moves((s) => chat.view.webContents.executeJavaScript(s), msg, `${msg}.querySelector('summary').click()`)))
+
+  const forum = await page('forum')
+  await waitFor(() => forum.run("!!document.querySelector('.desk')"), 30000)
+  const made = await forum.run("window.hyper.instances.create('Menus', { private: true }).then((i) => i.key, (e) => 'error ' + e.code)")
+  await forum.run(`location.search = '?instance=${made}'; 0`)
+  const fm = "document.querySelector('details.menu')"
+  const shown = await waitFor(() => forum.run(`!!${fm}`), 30000)
+  pass('forum: a forum\'s "…" opens without moving anything', shown && !(await moves(forum.run, fm, `${fm}.querySelector('summary').click()`)))
 }
 
 // The frame check: the demo site in a frame of its own, then where everything is.
@@ -730,13 +781,20 @@ async function checkCirclesWindow (fwc) {
   const members = await until(() => js("document.getElementById('cl-out').textContent.includes('(you)owner · holds')"))
   await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Copy invite link').click() })()")
   const link = await until(() => js("(document.querySelector('#cl-out .code')?.textContent || '').startsWith('hg:')"))
+  // spec 019: Invite contacts… with no friend yet; a pasted link that isn't a circle's
+  await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Invite contacts…').click() })()")
+  const friends = await until(() => js("document.getElementById('cl-out').textContent === 'No friends yet: add some in Contacts'"))
+  await js("document.getElementById('cl-join').click(); document.querySelector('#cl-out input').value = 'hg:nope'; [...document.querySelectorAll('#cl-out button')].find((b) => b.textContent === 'Join').click()")
+  const pasted = await until(() => js("document.getElementById('cl-out').textContent.startsWith('This is not a circle invite')"))
   await js("document.getElementById('cl-close').click()")
   return [
     ['Configuration: Circles: holding off, the share (1 GB), what is held (spec 018)', section],
     ['Configuration: Circles: a share under 0.1 GB is refused, saying why', refused],
     ['Circles: Create a circle lists it (1 member)', made],
     ['Circles: … → Members: you, owner, holding (the first circle turned it on)', members],
-    ['Circles: … → Copy invite link shows a link', link]
+    ['Circles: … → Copy invite link shows a link', link],
+    ['Circles: … → Invite contacts… with no friend says so (spec 019)', friends],
+    ['Circles: Join with a link… refuses a link that is not a circle invite, in the window', pasted]
   ]
 }
 

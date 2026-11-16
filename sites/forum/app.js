@@ -137,8 +137,7 @@ function forumsColumn () {
           c.count ? h('span', { class: 'num', 'aria-label': c.count + ' unread' }, String(c.count)) : c.dot ? h('span', { class: 'dot', 'aria-label': 'new posts' }, '●') : null),
         collapsed ? null : h('details', { class: 'menu', open: ui.menu === i.key ? '' : null, ontoggle: (e) => { if (e.target.open) { if (ui.menu !== i.key) readAbout(i); ui.menu = i.key } else if (ui.menu === i.key) ui.menu = null } },
           h('summary', { 'aria-label': 'Menu of ' + label }, '…'),
-          ...aboutLines(i),
-          h('button', { class: 'link', onclick: () => askLeave(i) }, 'Leave'))),
+          h('div', { class: 'drop' }, ...aboutLines(i), h('button', { class: 'link', onclick: () => askLeave(i) }, 'Leave')))),
       ui.confirm === 'leave' + i.key ? h('div', { class: 'confirm-box small', role: 'alert' },
         h('p', {}, ui.leaveWarning || 'Leave ' + label + '? Its posts stay with its members; your notifications, unread marks and follows here go.'),
         h('button', { class: 'link', onclick: () => leave(i) }, 'Leave'), h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'Cancel')) : null)

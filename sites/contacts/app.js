@@ -11,6 +11,7 @@ let circles = [] // spec 018: the circles you may invite to ({ key, name })
 let person = new URLSearchParams(location.search).get('person')
 let notice = ''
 let link = null
+let menu = null // spec 019: the friend whose "…" menu is open (kept across draw())
 
 start().catch((err) => {
   root.replaceChildren(h('p', {}, err.code === 'NOT_ALLOWED' ? 'Contacts needs your identity and your contacts. Reload the page to be asked again.' : 'Contacts could not start: ' + err.message))
@@ -18,6 +19,15 @@ start().catch((err) => {
 
 async function start () {
   if (!hyper) return root.replaceChildren(h('p', {}, 'Open Contacts in HyperBrowser.'))
+  // the "…" menu closes on a click outside it or Escape (focus back on its button)
+  document.addEventListener('click', (e) => { if (menu && !e.target.closest('[data-menu]')) { menu = null; draw() } })
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !menu) return
+    const id = menu
+    menu = null
+    draw()
+    root.querySelector('[data-menu="' + id + '"] > button')?.focus()
+  })
   hyper.contacts.on(() => refresh().catch(() => {}))
   await refresh()
 }
@@ -45,10 +55,12 @@ async function act (fn) {
 }
 
 function draw () {
+  const inMenu = document.activeElement?.closest?.('[data-menu]')?.dataset.menu // a redraw keeps the focus on the "…"
   root.replaceChildren(h('div', { style: 'max-width:720px; margin:0 auto; padding:8px' },
     h('h1', {}, 'Contacts'),
     notice ? h('p', { role: 'alert' }, notice) : null,
     person && person !== me.identity ? page(person) : home()))
+  if (inMenu) root.querySelector('[data-menu="' + inMenu + '"] > button')?.focus()
 }
 
 function home () {
@@ -82,12 +94,20 @@ function home () {
   ]
 }
 
-// spec 018: a friend's "…": Invite to circle ▸ <circle>, an invite posted in your Chat conversation with them.
+// A friend's "…" (spec 018; 019: a button with a gap from Message, its menu floating under it, moving nothing):
+// Invite to "<circle>", an invite posted in your Chat conversation with them. Enter or Space opens it, Tab reaches
+// its items; a choice, a click outside or Escape closes it.
 function more (c) {
-  return h('details', { style: 'display:inline-block' }, h('summary', { 'aria-label': 'More for ' + label(c), style: 'display:inline; cursor:pointer; list-style:none' }, '…'), ' ',
-    circles.length
-      ? ['Invite to circle ▸ ', circles.map((x) => [h('button', { onclick: () => act(async () => { await hyper.contacts.inviteToCircle(c.identity, x.key); notice = 'Invite to "' + x.name + '" sent in your Chat with ' + label(c) + '.' }) }, x.name), ' '])]
-      : h('span', { class: 'small' }, 'No circle to invite to: make one in HyperBrowser ▾ → Configuration… → Your circles…'))
+  const open = menu === c.identity
+  const choose = (x) => { menu = null; act(async () => { await hyper.contacts.inviteToCircle(c.identity, x.key); notice = 'Invite to "' + x.name + '" sent in your Chat with ' + label(c) + '.' }) }
+  return h('span', { 'data-menu': c.identity, style: 'position:relative; display:inline-block; margin-left:8px; text-indent:0' }, // text-indent: the theme's list rows indent
+    h('button', { 'aria-label': 'More for ' + label(c), 'aria-haspopup': 'menu', 'aria-expanded': String(open), onclick: () => { menu = open ? null : c.identity; draw() } }, '…'),
+    open
+      ? h('div', { role: 'menu', style: 'position:absolute; top:100%; left:0; z-index:10; margin-top:2px; padding:4px; display:flex; flex-direction:column; gap:2px; white-space:nowrap; background:var(--paper, Canvas); color:var(--ink, CanvasText); border:1px solid; box-shadow:2px 2px 0 var(--ink, CanvasText)' },
+        circles.length
+          ? circles.map((x) => h('button', { role: 'menuitem', style: 'text-align:left', onclick: () => choose(x) }, 'Invite to "' + x.name + '"'))
+          : h('span', { class: 'small', style: 'padding:2px 4px' }, 'No circle to invite to: make one in HyperBrowser ▾ → Configuration… → Your circles…'))
+      : null)
 }
 
 function page (key) {
