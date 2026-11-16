@@ -20,6 +20,7 @@ const FOLLOW = 'hyperbrowser/notify/follow/' // + app: [{ id, place, type, where
 const FOLLOWS_MAX = 100 // per app
 const CONTACTS = 'hyperbrowser/contacts' // engine/contacts.js: incoming requests notify (R7)
 const CONTACTS_APP = 'contacts' // HyperBrowser's own: allowed unless blocked, never asked
+const HB_APP = 'hyperbrowser' // spec 018: HyperBrowser's own news (a circles' share full), never blocked
 const ITEMS_MAX = 200
 const READ_LOGS = 64
 const BATCH = 500
@@ -74,9 +75,9 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
   }
   const settings = () => sfs.hg.settings()
 
-  const allowed = (s, app) => app === CONTACTS_APP
+  const allowed = (s, app) => app === HB_APP || (app === CONTACTS_APP
     ? s[PERMITS]?.[app]?.notifications !== false
-    : s[PERMITS]?.[app]?.notifications === true && !!s[APP + app]
+    : s[PERMITS]?.[app]?.notifications === true && !!s[APP + app])
 
   // Every place watched now: { app, place, watches }, of allowed apps, held here. A place's follows are watches.
   function places (s) {
@@ -561,6 +562,17 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
 
     async follows (app) {
       return (await settings())[FOLLOW + app] || []
+    },
+
+    // spec 018: one of HyperBrowser's own (the circles' share full): listed and popped up, read like any other.
+    async hyperbrowser ({ id, text }) {
+      await ready
+      const x = { app: HB_APP, place: HB_APP, id, type: 'notice', author: me, name: 'HyperBrowser', text: clean(text, TEXT_MAX), open: null, stamp: null, at: Date.now(), log: HB_APP, seq: Date.now() }
+      await serial(async () => {
+        file.items = [x, ...file.items].slice(0, ITEMS_MAX)
+        dirty = true
+        await tell([x])
+      })
     },
 
     async close () {

@@ -9,6 +9,7 @@ import { connect, VERSION } from './protocol.js'
 import { parseManifest, isDynamic, sitePath } from './manifest.js'
 import { contacts } from './contacts.js'
 import { notifications } from './notifications.js'
+import { circles } from './circles.js'
 
 const ANSWERS = 'hyperbrowser/identity' // setting: { [site key]: true | false }, on every device of the person
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
@@ -16,7 +17,7 @@ const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
 const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags',
   'relate', 'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces', 'redemptions',
-  'peers', 'status', 'isComplete', 'completeFrom', 'types'])
+  'peers', 'status', 'isComplete', 'completeFrom', 'types', 'copies', 'rotateKey'])
 const MINE = new Set(['mine.all', 'mine.set'])
 const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join', 'instances.leave'])
 // spec 013: the person's contacts, for a site that declares the `contacts` permission and was allowed it
@@ -58,6 +59,7 @@ export function start (ipc) {
   let syncing = null
   let people = null // the contacts (spec 013)
   let notes = null // the notifications (spec 016)
+  let rings = null // the circles (spec 018): the shell's circles.* and holding.*
   const sites = new Map() // key -> { site, manifest, scope: Promise<Scope> | null, instances: Map<key, Promise<Scope>>, tabs }
   const leaving = new Map() // key -> timer: no tab shows it, left once the grace period is over
   const departing = new Map() // key -> the leave running
@@ -128,7 +130,9 @@ export function start (ipc) {
         if (typeof p.password !== 'string' || !p.password) throw error('INVALID_PARAMS', 'devices.protect needs { password }')
         await sfs.hg.protectRecoveryPhrase(p.password)
         return true
-      default: throw error('UNKNOWN_METHOD', 'unknown method ' + method)
+      default:
+        if (method.startsWith('circles.') || method.startsWith('holding.')) return rings.call(method, p) // spec 018
+        throw error('UNKNOWN_METHOD', 'unknown method ' + method)
     }
   }
 
@@ -152,6 +156,7 @@ export function start (ipc) {
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
     people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance })
     notes = notifications({ sfs, dir, emit: (event, data) => rpc.emit(event, data), turn: notifyTurn, counts: () => { for (const fn of counters) fn() } })
+    rings = circles({ sfs, dir, notes, emit: (event, data) => rpc.emit(event, data) })
     if (heartbeat) {
       timer = setInterval(() => { if (Date.now() - last > 3 * heartbeat) shutdown('heartbeat') }, heartbeat)
     }
@@ -503,7 +508,18 @@ export function start (ipc) {
       return plain(await query(t, args, steps.slice(0, -1)).latest(...(end[1] || [])))
     }
     await t.ready() // sync getters (subspaces, status, types) need the space's decisions
+    if (method === 'copies') return sfs.hg.copiesOf((args[0] === undefined || args[0] === null ? t : await ownSpace(key, t, args[0])).key) // spec 018
+    if (method === 'rotateKey') return plain(await sfs.hg.space(t.key).rotateKey()) // the handle has none; t passed the guard
     return plain(await t[method](...args))
+  }
+
+  // spec 018: a key the page names for copies(key): the handle's own space, one of its sub-spaces, or (on the site's
+  // own handle) one of the app's instances. Anything else: NOT_ALLOWED.
+  async function ownSpace (key, t, k) {
+    keyOf({ key: k })
+    if (k === t.key) return t
+    if (t.key === key && (await listed(key))[k]) return target({ key, instance: k })
+    try { return t.subspace(k) } catch { throw error('NOT_ALLOWED', "not this site's space, one of its sub-spaces or instances") }
   }
 
   // The person's own data for this site (spec 006 R2): one setting per name, on every device of the person,
@@ -575,6 +591,19 @@ export function start (ipc) {
       const fn = () => rpc.emit('event', { id, data: null })
       sfs.hg.on('settings', fn)
       subs.set(id, { key, contacts: true, stop: () => sfs.hg.off('settings', fn) })
+      return { id }
+    }
+    if (event === 'copies') { // spec 018: this handle's copies, told when they change (hypergraph's 'copies' on hg)
+      const t = await target({ key, sub, instance })
+      const id = nextSub++
+      let last = JSON.stringify(sfs.hg.copiesOf(t.key))
+      const fn = () => {
+        const now = sfs.hg.copiesOf(t.key)
+        if (JSON.stringify(now) !== last && subs.has(id)) rpc.emit('event', { id, data: now })
+        last = JSON.stringify(now)
+      }
+      sfs.hg.on('copies', fn)
+      subs.set(id, { key, instance, stop: () => sfs.hg.off('copies', fn) })
       return { id }
     }
     if (event === 'notifications') { // spec 017: the app's own counts, told when they change
@@ -753,6 +782,7 @@ export function start (ipc) {
         const opening = starting
         starting = null
         await syncing // a close() before sync() has started leaks its interval (requests-to-swarmfs F3)
+        if (rings) rings.close()
         if (notes) await notes.close()
         if (people) await people.close()
         if (opening) await opening.then((s) => s.close(), () => {})

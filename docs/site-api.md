@@ -70,6 +70,14 @@ stop(); off()
   cursor. `null`: from now on (no records). Keep the cursor in `hyper.mine` to know what is new since the last
   visit. At most 1000 records a call (the default limit; more is `INVALID_PARAMS`): call again with the new cursor
   while you get a full batch. A cursor is ~60 bytes per log (one per writing member and device).
+- `hyper.copies(key?)` (spec 018, hypergraph's `copiesOf`): `{ wanted, kept, online }`, how many copies of a space
+  the person's circles keep ("Kept by N of 5 copies, M online"; warn while `online < 2`). `wanted: 0`: nothing is
+  handed (no circle holding). On a handle (`hyper.copies()`, `hyper.subspace(k).copies()`,
+  `hyper.instance(k).copies()`), or `key`: your site's space, one of its sub-spaces or one of your app's instances;
+  any other key is `NOT_ALLOWED`. `hyper.on('copies', (c) => {})` (on a handle): that space's copies changed.
+- `hyper.rotateKey()` (spec 018, hypergraph's `rotateKey`): a private space's (or instance's) new content key from
+  now on, for a lost device or a suspected leak; by a member who may decide or moderate (`NOT_ALLOWED` otherwise,
+  and on a public space). On your own space, sub-spaces and instances only.
 
 ## Apps with instances: communities anyone can start
 

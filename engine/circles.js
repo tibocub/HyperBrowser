@@ -1,0 +1,288 @@
+// Circles (spec 018): people whose computers keep each other's spaces online (hypergraph 023, 5 copies: 024).
+// The shell's own calls only (circles.*, holding.*), never a page's: making, joining, inviting, members,
+// and how much this computer holds. Holding runs whenever the engine runs; turning it off deletes what is
+// held (hypergraph), so only the person's "Turn off" does it. The person's circles are a list in their
+// settings (on every device of theirs): hg.spaces() doesn't say which spaces are circles until they are open.
+import fs from 'fs'
+import path from 'path'
+
+export const GB = 1e9 // hypergraph's 1 GB share is 1e9 bytes
+const LIST = 'hyperbrowser/circles' // { [circle key]: true }
+const CONTACTS = 'hyperbrowser/contacts' // engine/contacts.js: names of the person's friends
+const NAME_TYPE = 'circle-name' // a rename: the latest one by the owner or an admin (hypergraph has no rename)
+const TYPES = { [NAME_TYPE]: { fields: { name: 'string' } } }
+const WEEK = 7 * 24 * 3600 * 1000 // an invite's life (Q10)
+const MAX = 50 // hypergraph refuses the 51st (CIRCLE_FULL)
+const MIN_SHARE = 0.1 * GB
+const SPARE = 2 * GB // left free on the disk (Q9)
+const RECORDS = 1000 // hg/holder records read, newest first (as hypergraph does)
+const CHECK = 30000 // share full: hypergraph tells no event for it
+const DECIDERS = new Set(['owner', 'admin'])
+
+const error = (code, message) => Object.assign(new Error(message), { code })
+const noop = () => {}
+const validName = (n) => typeof n === 'string' && n.trim().length > 0 && n.length <= 64 && !/[\x00-\x1f\x7f]/.test(n) // eslint-disable-line no-control-regex
+
+// The people holding, from a circle's hg/holder records (newest first): the newest record of each of their
+// devices since their newest `left` (lib/holding.js #view reads them the same way).
+export function holdsFrom (records) {
+  const out = new Set()
+  const cut = new Set() // past their newest `left`: older records are from before it
+  const seen = new Set()
+  for (const r of records) {
+    if (cut.has(r.author)) continue
+    if (r.left) { cut.add(r.author); continue }
+    if (seen.has(r.device)) continue
+    seen.add(r.device)
+    if (r.on) out.add(r.author)
+  }
+  return out
+}
+
+// Share full (FR-007): told once when what is held reaches the share, again only after it went under 90%.
+export function shareFull ({ full }, { on, used, bytes }) {
+  if (!on) return { full: false, tell: false }
+  if (used >= bytes) return { full: true, tell: !full }
+  return { full: full && used >= 0.9 * bytes, tell: false }
+}
+
+// sfs: the engine's SwarmFS; dir: its folder; notes: the notifications (share full); emit(event, data).
+export function circles ({ sfs, dir, notes, emit }) {
+  const hg = sfs.hg
+  const FILE = path.join(dir, 'circles.json') // this device's: { set: the person chose holding, full }
+  let local = { set: false, full: false }
+  try { local = { ...local, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) } } catch {}
+  let writing = Promise.resolve()
+  let closed = false
+  const watched = new Map() // circle key -> stop()
+  let timer = null
+
+  const saveLocal = () => fs.promises.writeFile(FILE, JSON.stringify(local)).catch(noop)
+  const changed = () => {
+    if (closed) return
+    clearTimeout(timer)
+    timer = setTimeout(() => emit('circles', {}), 300)
+  }
+  hg.on('settings', changed)
+  hg.on('copies', changed)
+  const check = setInterval(() => full().catch(noop), CHECK)
+  check.unref?.()
+
+  const listed = async () => (await hg.settings())[LIST] || {}
+  function setListed (key, on) {
+    const write = writing.then(async () => {
+      const l = await listed()
+      if (on) l[key] = true
+      else delete l[key]
+      await hg.setSetting(LIST, l)
+    })
+    writing = write.catch(noop)
+    return write
+  }
+
+  // A circle of the person's, opened, or NOT_FOUND.
+  async function circle (key) {
+    if (typeof key !== 'string' || !(await listed())[key]) throw error('NOT_FOUND', 'not one of your circles')
+    let s
+    try { s = hg.space(key) } catch { throw error('NOT_FOUND', 'this circle is not on this computer') }
+    await s.ready()
+    if (!s.circle) throw error('NOT_FOUND', 'not a circle')
+    watch(s)
+    return s
+  }
+
+  function watch (s) {
+    if (watched.has(s.key)) return
+    s.on('status', changed)
+    s.on('members', changed)
+    watched.set(s.key, () => { s.off('status', changed); s.off('members', changed) })
+  }
+
+  const me = () => hg.identity.publicKey
+  const roleOf = (s) => s.getRole(me())
+  async function decider (s, what) {
+    if (!DECIDERS.has(await roleOf(s))) throw error('NOT_ALLOWED', 'only the owner and admins ' + what)
+  }
+
+  async function nameOf (s) {
+    try {
+      for (const r of (await s.query(NAME_TYPE).latest(20)).items) {
+        if (validName(r.name) && DECIDERS.has(await s.getRole(r.author))) return r.name
+      }
+    } catch {} // a circle made before its types: no rename yet
+    return s.name ?? ''
+  }
+
+  // --- holding ---
+
+  async function free () {
+    const { bavail, bsize } = await fs.promises.statfs(dir)
+    return bavail * bsize
+  }
+
+  async function holding () {
+    return { ...hg.holding(), free: await free() }
+  }
+
+  async function setHolding ({ on, bytes }) {
+    if (typeof on !== 'boolean') throw error('INVALID_PARAMS', 'holding.set needs { on: true | false }')
+    if (bytes !== undefined) {
+      if (!Number.isSafeInteger(bytes) || bytes < MIN_SHARE) throw error('INVALID_PARAMS', 'At least 0.1 GB')
+      const h = await holding()
+      const room = h.free + h.used - SPARE
+      if (bytes > room) throw error('TOO_BIG', `Only ${Math.max(0, Math.floor(room / GB * 10) / 10)} GB free on this disk`)
+    }
+    await hg.setHolding({ on, bytes })
+    local.set = true
+    await saveLocal()
+    await full()
+    changed()
+    return holding()
+  }
+
+  // The first circle made or joined turns holding on at 1 GB, unless the person chose before (FR-003) or the
+  // disk has no room for it (then it stays off: the Circles section says so).
+  async function firstCircle () {
+    if (local.set || hg.holding().on) return
+    const bytes = hg.holding().bytes
+    if (bytes > (await free()) - SPARE) return
+    await hg.setHolding({ on: true, bytes })
+    local.set = true
+    await saveLocal()
+  }
+
+  async function full () {
+    if (closed) return
+    const next = shareFull(local, hg.holding())
+    if (next.full !== local.full) {
+      local.full = next.full
+      await saveLocal()
+    }
+    if (next.tell) await notes.hyperbrowser({ id: 'share-full-' + Date.now(), text: 'Your share for your circles is full: the oldest copies you keep are dropped first. Give more room in Configuration.' })
+  }
+
+  // --- the calls ---
+
+  async function list () {
+    const out = []
+    for (const key of Object.keys(await listed())) {
+      let s
+      try { s = await circle(key) } catch { continue } // left on another device, not here yet
+      const st = s.status()
+      out.push({ key, name: await nameOf(s), members: st.members, holders: st.holders, role: await roleOf(s) })
+    }
+    return out
+  }
+
+  async function create ({ name }) {
+    if (!validName(name)) throw error('INVALID_PARAMS', "a circle's name is 1 to 64 characters")
+    const s = await hg.createCircle({ name: name.trim() })
+    await s.declareTypes(TYPES)
+    await setListed(s.key, true)
+    await firstCircle()
+    changed()
+    return { key: s.key, name: name.trim(), holding: await holding() }
+  }
+
+  async function join ({ link }) {
+    if (typeof link !== 'string' || !link.startsWith('hg:')) throw error('INVALID_PARAMS', 'an invite link (hg:...)')
+    const before = new Set(hg.spaces().map((x) => x.key))
+    const s = await hg.redeemInvite(link)
+    await s.ready()
+    if (!s.circle) {
+      if (!before.has(s.key)) await sfs.leave(s.key).catch(noop)
+      throw error('NOT_ALLOWED', 'this link is not an invite to a circle')
+    }
+    await setListed(s.key, true)
+    await firstCircle()
+    changed()
+    return { key: s.key, name: await nameOf(s), holding: await holding() }
+  }
+
+  async function members ({ key }) {
+    const s = await circle(key)
+    const contacts = (await hg.settings())[CONTACTS] || {}
+    let records = []
+    try { records = (await s.query('hg/holder').latest(RECORDS)).items } catch {}
+    const holds = holdsFrom(records)
+    if (hg.holding().on) holds.add(me())
+    return (await s.members()).filter((m) => m.role && !m.removed && !m.banned).map((m) => ({
+      identity: m.identity,
+      name: contacts[m.identity]?.name || '', // the shell shows a short key for someone not a contact
+      role: m.role,
+      you: !!m.you,
+      holds: holds.has(m.identity)
+    }))
+  }
+
+  async function invite ({ key }) {
+    const s = await circle(key)
+    await decider(s, 'invite people to a circle')
+    if (s.status().members >= MAX) throw error('CIRCLE_FULL', `This circle is full (${MAX})`)
+    const expires = Date.now() + WEEK
+    return { link: await s.createInvite({ role: 'member', uses: 1, expires }), expires }
+  }
+
+  async function rename ({ key, name }) {
+    if (!validName(name)) throw error('INVALID_PARAMS', "a circle's name is 1 to 64 characters")
+    const s = await circle(key)
+    await decider(s, 'rename a circle')
+    await s.put(NAME_TYPE, { name: name.trim() })
+    changed()
+    return true
+  }
+
+  async function setRole ({ key, identity, role }) {
+    if (role !== 'admin' && role !== 'member') throw error('INVALID_PARAMS', 'admin or member')
+    const s = await circle(key)
+    await s.setRole(identity, role)
+    changed()
+    return true
+  }
+
+  async function remove ({ key, identity }) {
+    const s = await circle(key)
+    await s.removeRole(identity)
+    changed()
+    return true
+  }
+
+  async function leave ({ key }) {
+    await circle(key)
+    watched.get(key)?.()
+    watched.delete(key)
+    await sfs.leave(key)
+    await setListed(key, false)
+    changed()
+    return true
+  }
+
+  async function call (method, p = {}) {
+    switch (method) {
+      case 'circles.list': return list()
+      case 'circles.create': return create(p)
+      case 'circles.join': return join(p)
+      case 'circles.members': return members(p)
+      case 'circles.invite': return invite(p)
+      case 'circles.rename': return rename(p)
+      case 'circles.setRole': return setRole(p)
+      case 'circles.remove': return remove(p)
+      case 'circles.leave': return leave(p)
+      case 'holding.get': return holding()
+      case 'holding.set': return setHolding(p)
+      default: throw error('UNKNOWN_METHOD', 'unknown method ' + method)
+    }
+  }
+
+  function close () {
+    closed = true
+    clearInterval(check)
+    clearTimeout(timer)
+    hg.off('settings', changed)
+    hg.off('copies', changed)
+    for (const stop of watched.values()) stop()
+    watched.clear()
+  }
+
+  return { call, close }
+}

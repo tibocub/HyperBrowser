@@ -113,7 +113,7 @@ test('holding: the share in bytes, at most the free space plus what is held minu
 test('copies and rotateKey: own space, sub-spaces and instances only; wanted 0 without a circle', async (t) => {
   t.timeout(120000)
   const a = await engine(t)
-  const { key, hyper } = await app(t, a)
+  const { hyper } = await app(t, a)
   const other = await app(t, a)
   const room = await hyper.instances.create('Room', { private: true })
   t.alike(await hyper.instance(room.key).copies(), { wanted: 0, kept: 0, online: 0 }, 'no circle: nothing handed')
@@ -128,7 +128,6 @@ test('copies and rotateKey: own space, sub-spaces and instances only; wanted 0 w
   t.pass('rotateKey on its own private instance')
   t.is(await codeOf(hyper.instance(theirs.key).rotateKey()), 'NOT_ALLOWED', "not on another app's instance")
   t.is(await codeOf(hyper.rotateKey()), 'NOT_ALLOWED', 'a public site has no content key to change')
-  t.ok(key)
 })
 
 test('copies with a circle: kept by the holder, the copies event', async (t) => {
