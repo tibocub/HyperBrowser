@@ -14,6 +14,10 @@ JavaScript (ESM), Electron 42, Node ≥ 22 and Bare ≥ 1.27. Testing: brittle (
 `npm run test:sandbox`, `npm run framecheck`, `npm run perf`. Constraints: sites are strangers; Chat's record fields
 are permanent (no change here).
 
+Engine addition (R1), approved by the lead 2026-11-17: two top-level shell calls, `contacts.list` and
+`contacts.inviteToCircle { identity, circle }`, next to `contacts.request` in `engine/index.js`; `site.call` and its
+`contacts` permission unchanged for pages.
+
 ## Constitution Check
 
 - I. Sites are strangers: joining stays in the shell (FR-002 is the shell's own window); no new page call. ✅

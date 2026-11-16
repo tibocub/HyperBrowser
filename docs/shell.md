@@ -94,13 +94,21 @@ A circle is not a group chat: only a holding group.
   go first and HyperBrowser notifies you once (again only after it went under 90%).
 - **Your circles…** opens the circles window: each circle with its members and how many hold. **Create a circle**
   (a name). The first circle made or joined shows a notice once (what it costs, what holders see): **OK** goes
-  on, **Not now** makes or joins nothing. Each circle's **…**: **Copy invite link** (owner and admins: one
-  person, 7 days), **Members** (name or short key, role, "holds"; for the owner and admins a **…** per person:
+  on, **Not now** makes or joins nothing. **Join with a link…** (next to Create a circle, spec 019): paste the link
+  someone sent you, **Join**: no "Join?" question (pasting is the yes), only that notice the first time; "You
+  joined "<name>"", or "This invite was already used or has expired", "This circle is full (50)", "This is not a
+  circle invite" (a forum's or a site's link: the engine joins it, sees it isn't a circle and leaves; its one use is
+  spent). Each circle's **…**: **Copy invite link** (owner and admins: one person, 7 days), **Invite contacts…**
+  (owner and admins, spec 019: your friends with a box each, those already in greyed "already in"; **Send** posts
+  each ticked friend their own one-use, 7-day invite in your Chat conversation with them, then "Invites sent to N
+  friends in Chat", naming those that failed and why; no friend yet: "No friends yet: add some in Contacts"),
+  **Members** (name or short key, role, "holds"; for the owner and admins a **…** per person:
   **Make admin** / **Make member**, **Remove**), **Rename** (owner and admins: a `circle-name` record in the circle,
   since hypergraph has no rename; the newest by someone owner or admin *now* counts, so a removed admin's rename
   stops counting and the name goes back to the last one by a current owner or admin), **Leave** (the owner is warned
   when no admin is left to invite people).
-- **Inviting a friend**: Contacts → the friend's **…** → **Invite to circle ▸ <circle>** posts a **Join "<circle>"**
+- **Inviting a friend**: Contacts → the friend's **…** (a button; its menu floats under it, spec 019) → **Invite to
+  "<circle>"**, or the circles window's **Invite contacts…**, posts an **Accept <you>'s invitation to "<circle>"**
   button in your Chat conversation with them. Their click opens HyperBrowser's own question (or the notice, the
   first time); a page can never join a circle by itself. A used or expired link says "This invite was already
   used or has expired"; a full circle, "This circle is full (50)".

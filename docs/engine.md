@@ -176,12 +176,19 @@ few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [ru
   the latest by the owner or an admin wins, else the name it was made with.
 - **Share full**: checked every 30 s and after `holding.set`; told once when what is held reaches the share
   (a HyperBrowser item, app and place `hyperbrowser`), again only after it went under 90% (`circles.json` `full`).
+- **The shell's contacts calls** (spec 019, besides `contacts.me`, `contacts.get { identity }` and
+  `contacts.request { identity, name }`): `contacts.list` → the list as `hyper.contacts.list()` gives it, and
+  `contacts.inviteToCircle { identity, circle }` → `true` (a friend only, else `NOT_FOUND`; owner and admins), for the
+  circles window's Invite contacts…. Top-level messages: no page reaches them; a page still goes through `site.call`
+  and the `contacts` permission (`NOT_ALLOWED` without it).
 - **Site calls**: `copies` (on the page's handle, or a key: its own space, a sub-space, an app instance) and
   `rotateKey` (on the handle, through `hg.space(key)`: the site handle has none); `site.on { event: 'copies' }`
   tells that handle's copies when hypergraph's `copies` event changes them.
 
-`npm run perf:circles [-- --people 49 --minutes 1]` (`perf/circles.mjs`): 3 circles, Configuration's reads
-(`circles.list` + each `circles.members`) and the engine's idle CPU while holding, Tibo's engine alone.
+`npm run perf:circles [-- --people 49 --friends 10 --minutes 1]` (`perf/circles.mjs`): 3 circles, Configuration's
+reads (`circles.list` + each `circles.members`) and the engine's idle CPU while holding, Tibo's engine alone; and
+(spec 019) Invite contacts… to `--friends` friends, one `contacts.inviteToCircle` after another (10: 133 ms in all,
+8 to 24 ms each, 2026-11-17).
 
 ## Tests
 
