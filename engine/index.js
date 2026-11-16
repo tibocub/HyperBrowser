@@ -116,6 +116,9 @@ export function start (ipc) {
       case 'contacts.me': return people.call('me', [])
       case 'contacts.get': return people.call('get', [p.identity])
       case 'contacts.request': return people.call('request', [p.identity, p.name])
+      // spec 019: the circles window's Invite contacts… (pages keep site.call and its permission)
+      case 'contacts.list': return people.call('list', [])
+      case 'contacts.inviteToCircle': return people.call('inviteToCircle', [p.identity, p.circle])
       // the tray's status line (spec 010); handles: the instances' handles kept (spec 017 R1)
       case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length, handles: [...sites.values()].reduce((n, s) => n + s.instances.size, 0) }
       case 'site.installed': return installed()

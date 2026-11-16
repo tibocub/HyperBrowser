@@ -62,3 +62,28 @@ export function checkShare (text, { used, free }) {
   if (bytes > room) return { error: 'Only ' + gb(Math.max(0, Math.floor(room / GB * 10) / 10 * GB)) + ' free on this disk' }
   return { bytes, drop: Math.max(0, used - bytes) }
 }
+
+// --- spec 019: the circles window's Invite contacts… and Join with a link… ---
+
+// The person's friends against a circle's members → [{ identity, name, in }]: those in it can't be ticked.
+export function inviteRows (contacts, members) {
+  const inside = new Set(members.map((m) => m.identity))
+  return contacts.filter((c) => c.state === 'friend').map((c) => ({ identity: c.identity, name: c.name || shortKey(c.identity), in: inside.has(c.identity) }))
+}
+
+// Send's results [{ name, error? }] → what the window says.
+export function invitedLine (results) {
+  const sent = results.filter((r) => !r.error).length
+  const failed = results.filter((r) => r.error).map((r) => r.name + ' (' + r.error + ')')
+  return 'Invites sent to ' + sent + (sent === 1 ? ' friend' : ' friends') + ' in Chat' + (failed.length ? '. Not sent to ' + failed.join(', ') : '')
+}
+
+const USED = new Set(['INVITE_EXPIRED', 'INVITE_USED_UP', 'INVITE_REVOKED'])
+const NOT_CIRCLE = new Set(['NOT_ALLOWED', 'INVALID_PARAMS', 'INVITE_INVALID']) // engine/circles.js join's refusals
+// circles.join's error → the person's words.
+export function joinError ({ code, message }) {
+  if (USED.has(code)) return 'This invite was already used or has expired'
+  if (code === 'CIRCLE_FULL') return 'This circle is full (50)'
+  if (NOT_CIRCLE.has(code)) return 'This is not a circle invite'
+  return message
+}

@@ -299,7 +299,7 @@ async function circles (wc, { op, link, name, activated }) {
   if (GUARDS && !activated) return { joined: false } // only right after a click on the page
   if (!GUARDS) return { joined: !!(await rpc.request('circles.join', { link })) } // control run: no question
   if (SELFTEST) return { joined: false } // the person's Not now
-  return ui.joinCircle(link, typeof name === 'string' ? name : '')
+  return { joined: (await ui.joinCircle(link, typeof name === 'string' ? name : '')).joined } // the page learns no more
 }
 
 ipcMain.handle('circles', async (evt, msg) => {
