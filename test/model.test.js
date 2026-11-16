@@ -1,6 +1,6 @@
 // The frame's pure logic (spec 002 FR-005, FR-007; data-model.md): the address and the desktop's cells.
 import test from 'brittle'
-import { parseAddress, shortKey, place, upsert, move, remove, COLUMNS, checkShare, gb } from '../shell/model.js'
+import { parseAddress, shortKey, place, upsert, move, remove, COLUMNS, checkShare, gb, inviteRows, invitedLine, joinError } from '../shell/model.js'
 
 const KEY = 'yb'.repeat(26) // 52 z32 letters
 
@@ -66,4 +66,32 @@ test('the share: GB with decimals, 0.1 at least, at most free + held - 2 GB; low
   t.is(gb(0.1e9), '0.1 GB')
   t.is(gb(1234567890), '1.2 GB')
   t.is(gb(0), '0 GB')
+})
+
+// spec 019 FR-001: Invite contacts…: who can be ticked, and what Send says
+test('invite contacts: friends only, those already in the circle marked; the result line names failures', (t) => {
+  const z = (c) => c.repeat(52)
+  const contacts = [
+    { identity: z('a'), name: 'Ann', state: 'friend' },
+    { identity: z('b'), name: 'Bob', state: 'friend' },
+    { identity: z('c'), name: 'Cid', state: 'incoming' },
+    { identity: z('d'), name: '', state: 'friend' }
+  ]
+  t.alike(inviteRows(contacts, [{ identity: z('b') }, { identity: z('o') }]), [
+    { identity: z('a'), name: 'Ann', in: false },
+    { identity: z('b'), name: 'Bob', in: true },
+    { identity: z('d'), name: shortKey(z('d')), in: false }
+  ], 'requests are not friends; no name: the short key')
+  t.alike(inviteRows([], []), [])
+  t.is(invitedLine([{ name: 'Ann' }, { name: 'Bob' }]), 'Invites sent to 2 friends in Chat')
+  t.is(invitedLine([{ name: 'Ann' }]), 'Invites sent to 1 friend in Chat')
+  t.is(invitedLine([{ name: 'Ann' }, { name: 'Bob', error: 'not a friend' }]), 'Invites sent to 1 friend in Chat. Not sent to Bob (not a friend)')
+})
+
+// spec 019 FR-002 (and 018's Join from Chat): why a circle's invite didn't join
+test('joining errors: used or expired, full, not a circle invite', (t) => {
+  for (const code of ['INVITE_EXPIRED', 'INVITE_USED_UP', 'INVITE_REVOKED']) t.is(joinError({ code }), 'This invite was already used or has expired', code)
+  t.is(joinError({ code: 'CIRCLE_FULL' }), 'This circle is full (50)')
+  for (const code of ['NOT_ALLOWED', 'INVALID_PARAMS', 'INVITE_INVALID']) t.is(joinError({ code }), 'This is not a circle invite', code)
+  t.is(joinError({ code: 'ERROR', message: 'timed out' }), 'timed out', 'anything else: as it is')
 })
