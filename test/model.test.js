@@ -57,7 +57,7 @@ test('the share: GB with decimals, 0.1 at least, at most free + held - 2 GB; low
   t.alike(checkShare('1', disk), { bytes: 1e9, drop: 0 })
   t.alike(checkShare(' 2.5 ', disk), { bytes: 2.5e9, drop: 0 }, 'decimals')
   t.alike(checkShare('1,5', disk), { bytes: 1.5e9, drop: 0 }, 'a decimal comma too')
-  t.alike(checkShare('0.1', disk), { bytes: 0.1e9, drop: 0 }, '0.1 is the least')
+  t.alike(checkShare('0.1', disk), { bytes: 0.1e9, drop: 0.3e9 }, '0.1 is the least (below what is held: 0.3 GB would go)')
   for (const bad of ['', 'lots', '0', '0.05', '-1', '1e400', 'NaN']) t.is(checkShare(bad, disk).error, 'At least 0.1 GB', JSON.stringify(bad))
   t.alike(checkShare('8.4', disk), { bytes: 8.4e9, drop: 0 }, 'free + held - 2 GB: allowed')
   t.is(checkShare('8.5', disk).error, 'Only 8.4 GB free on this disk', 'past it: how much there is')

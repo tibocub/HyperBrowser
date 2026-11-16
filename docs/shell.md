@@ -73,6 +73,37 @@ runs (the tray counts). Quit fully and nothing arrives; at the next launch, one 
   per conversation **Mute**.
 - **When the window closes**: **Stay in the tray** or **Quit** (moved here from the menu).
 - **Devices**: **Your devices…** opens the Devices window.
+- **Circles** (spec 018): below.
+
+## Circles: friends' computers keep your conversations online (spec 018)
+
+A circle is up to 50 people whose computers keep copies of each other's conversations and boards (5 copies of
+each, in all your circles together), so a friend reads your message while your computer is off. Holders can't
+read private ones; they see how many spaces each member has, their sizes, when they change, and the IP address.
+A circle is not a group chat: only a holding group.
+
+"HyperBrowser ▾" → **Configuration…** → **Circles**:
+
+- **Keeping copies** / **Off**: whether this computer keeps copies for your circles. It runs whenever
+  HyperBrowser runs (**Stay in the tray** keeps it going with the window closed; **Quit** stops everything): there is
+  no pause, because **Off** deletes what this computer keeps (it asks first: "This deletes the X GB you keep for
+  your circles"). The first circle you make or join turns it on at 1 GB, unless you chose before.
+- **Share (GB)**: how much it may keep, decimals allowed, at least 0.1; at most the disk's free space plus what it
+  keeps now, minus 2 GB ("Only X GB free on this disk"). Lowering it below what is kept asks first ("Y GB will be
+  dropped now, oldest first"). "You hold X of Y GB" says where it stands. When the share is full, the oldest copies
+  go first and HyperBrowser notifies you once (again only after it went under 90%).
+- **Your circles…** opens the circles window: each circle with its members and how many hold. **Create a circle**
+  (a name). The first circle made or joined shows a notice once (what it costs, what holders see): **OK** goes
+  on, **Not now** makes or joins nothing. Each circle's **…**: **Copy invite link** (owner and admins: one
+  person, 7 days), **Members** (name or short key, role, "holds"; for the owner and admins a **…** per person:
+  **Make admin** / **Make member**, **Remove**), **Rename** (owner and admins), **Leave** (the owner is warned
+  when no admin is left to invite people).
+- **Inviting a friend**: Contacts → the friend's **…** → **Invite to circle ▸ <circle>** posts a **Join "<circle>"**
+  button in your Chat conversation with them. Their click opens HyperBrowser's own question (or the notice, the
+  first time); a page can never join a circle by itself. A used or expired link says "This invite was already
+  used or has expired"; a full circle, "This circle is full (50)".
+- In Chat and Forum: "Kept by N of 5 copies, M online" in a conversation's or private board's **…**, a warning
+  under 2 online, and **Change key** (the owner: a new key from now on, for a lost device or a suspected leak).
 
 ## Devices: one identity on two computers (spec 012)
 

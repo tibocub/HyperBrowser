@@ -63,6 +63,17 @@
   </div>
 </section>
 
+<section id="circles" class="window" role="dialog" aria-labelledby="cl-title" hidden>
+  <div class="title"><span id="cl-title">Circles</span></div>
+  <div class="body">
+    <div class="head">Your circles</div>
+    <ul id="cl-list"></ul>
+    <div class="field"><label for="cl-name">Name</label><input id="cl-name" autocomplete="off" maxlength="64"><button id="cl-create" class="push">Create a circle</button></div>
+    <div id="cl-out"></div>
+    <div class="row"><button id="cl-close" class="push">Close</button></div>
+  </div>
+</section>
+
 <section id="config" class="window" role="dialog" aria-labelledby="cf-title" hidden>
   <div class="title"><span id="cf-title">Configuration</span></div>
   <div class="body">
@@ -74,6 +85,15 @@
     </div>
     <div class="head">Devices</div>
     <div class="row left"><button id="cf-devices" class="push">Your devices…</button></div>
+    <div class="head">Circles</div>
+    <p class="hint">Your computer keeps copies of your circles' conversations and boards, so they stay reachable while their people are offline. It runs while HyperBrowser runs.</p>
+    <div class="choices" role="group" aria-label="Keep copies for your circles">
+      <button class="choice" data-hold="on">Keeping copies</button><button class="choice" data-hold="off">Off</button>
+    </div>
+    <div class="field share"><label for="cf-share">Share (GB)</label><input id="cf-share" inputmode="decimal" autocomplete="off"><button id="cf-share-set" class="choice">Set</button></div>
+    <p id="cf-held" class="hint"></p>
+    <div id="cf-hold-out"></div>
+    <div class="row left"><button id="cf-circles" class="push">Your circles…</button></div>
     <div class="row"><button id="cf-close" class="push">Close</button></div>
   </div>
 </section>

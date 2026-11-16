@@ -5,7 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 const METHODS = ['put', 'get', 'edit', 'del', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
-  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info']
+  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info', 'copies', 'rotateKey'] // copies, rotateKey: spec 018
 const FILTERS = ['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice']
 
 const handlers = new Map() // subscription id -> fn
@@ -98,6 +98,14 @@ function api (sub, instance = null) {
       follow: (f) => invoke({ op: 'call', ...at, method: 'notifications.follow', args: [f] }),
       unfollow: (id) => invoke({ op: 'call', ...at, method: 'notifications.unfollow', args: [String(id)] }),
       follows: () => invoke({ op: 'call', ...at, method: 'notifications.follows', args: [] })
+    }
+    // spec 018: a circle's invite, joined by HyperBrowser only (a click on the page, then the person's yes) → { joined }
+    o.circles = {
+      join: async (link, name) => {
+        const r = await ipcRenderer.invoke('circles', { op: 'join', link: String(link), name: name === undefined ? undefined : String(name), activated: navigator.userActivation.isActive })
+        if (r.error) throw failure(r.error)
+        return r.result
+      }
     }
     // other sites, through HyperBrowser (spec 014): install and open need a click on the page; install, the person's yes
     o.apps = {

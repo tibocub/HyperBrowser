@@ -3,11 +3,11 @@
 // the frame covers the whole window on the desktop tab, while a tab has no page yet, and while a menu is
 // open (transparent over the site). Its messages are taken from its own view only (contracts/frame.md).
 // No OS frame and no app menu: the taskbar row is the title bar (drag, double-click, our window buttons).
-import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeImage, Notification } from 'electron'
+import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeImage, Notification, dialog } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { parseAddress, shortKey, upsert, move, remove } from './model.js'
+import { parseAddress, shortKey, upsert, move, remove, checkShare, gb } from './model.js'
 import { startTray, hasTray } from './tray.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -18,6 +18,9 @@ const THEMES = new Set(['system', 'light', 'dark'])
 const ACCENTS = new Set(['#1f4fd1', '#c2410c', '#0b7a52'])
 const DEV = !app.isPackaged // devtools: F12, Ctrl+Shift+I
 const NOTICE = 'HyperBrowser keeps running in the tray to host your sites; turn this off in HyperBrowser ▾'
+// spec 018: the circles' calls the frame page may make (the engine's own, passed as they are)
+const CIRCLES = new Set(['circles.list', 'circles.members', 'circles.invite', 'circles.rename', 'circles.setRole', 'circles.remove', 'circles.leave', 'holding.get', 'holding.set'])
+const USED = new Set(['INVITE_EXPIRED', 'INVITE_USED_UP', 'INVITE_REVOKED'])
 
 // The frame's pixel icons (spec 008): one PNG a glyph in shell/icons/, dark pixels are the glyph (white or
 // transparent around). Sent to the frame as SVG paths, one 1×1 run a row, so they keep currentColor.
@@ -84,7 +87,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const s = saved?.settings || {}
     return {
       desktop: { icons },
-      settings: { theme: THEMES.has(s.theme) ? s.theme : 'system', accent: ACCENTS.has(s.accent) ? s.accent : '#1f4fd1', tray: s.tray !== false, trayNoticed: !!s.trayNoticed }
+      settings: { theme: THEMES.has(s.theme) ? s.theme : 'system', accent: ACCENTS.has(s.accent) ? s.accent : '#1f4fd1', tray: s.tray !== false, trayNoticed: !!s.trayNoticed, circleNoticed: !!s.circleNoticed }
     }
   }
 
@@ -343,6 +346,45 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   // The Devices window's calls (spec 012): the engine's devices.*, its errors as they are.
   const engine = (method, params) => rpc.request(method, params).then((result) => ({ result }), (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
 
+  // --- circles (spec 018) ---
+
+  // Q8's notice, once, on the first circle made or joined: OK goes on, Not now does nothing.
+  async function circleNotice () {
+    if (data.settings.circleNoticed) return true
+    const h = await rpc.request('holding.get').catch(() => ({ bytes: 1e9 }))
+    const r = await dialog.showMessageBox(win, {
+      type: 'info', buttons: ['OK', 'Not now'], defaultId: 0, cancelId: 1, message: 'Keep copies for your circle?',
+      detail: `Your computer will keep copies of your circle's conversations and boards (up to ${gb(h.bytes)}), so they stay reachable while their people are offline. It can't read private ones. Holders see how many spaces each member has, their sizes, when they change, and your IP address.`
+    })
+    if (r.response !== 0) return false
+    data.settings.circleNoticed = true
+    save()
+    return true
+  }
+
+  // A circle's invite from a page (Chat's Join button, main.js asked): the notice the first time, else the person's
+  // yes; then the join. The name comes from the page: said so. → { joined }
+  async function joinCircle (link, name) {
+    show()
+    const named = name ? `"${name.slice(0, 64)}"` : 'this circle'
+    const first = !data.settings.circleNoticed
+    if (first ? !(await circleNotice()) : (await dialog.showMessageBox(win, { type: 'question', buttons: ['Join', 'Cancel'], defaultId: 0, cancelId: 1, message: `Join ${named}?`, detail: 'Your computer will keep copies of its people\'s conversations and boards. The name comes from the invite: you see the real one once in.' })).response !== 0) return { joined: false }
+    try {
+      const c = await rpc.request('circles.join', { link })
+      if (!fwc.isDestroyed()) fwc.send('frame-circles', { open: true, note: `You joined "${c.name}".` })
+      return { joined: true }
+    } catch (err) {
+      const said = USED.has(err.code) ? 'This invite was already used or has expired' : err.code === 'CIRCLE_FULL' ? 'This circle is full (50)' : err.message
+      await dialog.showMessageBox(win, { type: 'warning', message: 'Could not join', detail: said })
+      return { joined: false }
+    }
+  }
+
+  async function createCircle (name) {
+    if (!(await circleNotice())) return { result: null } // Not now: nothing made
+    return engine('circles.create', { name })
+  }
+
   function setIcons (icons) {
     data.desktop.icons = icons
     save()
@@ -405,6 +447,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         join(a.code.trim())
         return { result: true }
       case 'cover': cover = !!a.full; layout(); return { result: true }
+      // spec 018: Configuration's Circles and the circles window
+      case 'circles.create': return createCircle(a.name)
+      case 'share.check': return rpc.request('holding.get').then((h) => { const r = checkShare(a.text, h); return r.error ? { error: { code: 'INVALID_PARAMS', message: r.error } } : { result: r } }, (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
       // spec 016: the list's rows and the Configuration page
       case 'notify.open': {
         const x = notes.items.find((i) => i.id === a.id)
@@ -424,7 +469,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         if (Number.isFinite(a.height) && a.height > 0 && a.height < 400) bars = Math.ceil(a.height)
         layout()
         return { result: true }
-      default: return { error: { code: 'UNKNOWN_METHOD', message: 'unknown op ' + op } }
+      default: return CIRCLES.has(op) ? engine(op, a) : { error: { code: 'UNKNOWN_METHOD', message: 'unknown op ' + op } }
     }
   }
 
@@ -488,6 +533,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   // for the frame check (npm run test:sandbox): where everything is
   const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
   const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') } // the engine's 'devices' event
+  const circlesChanged = () => { if (!fwc.isDestroyed()) fwc.send('frame-circles', {}) } // the engine's 'circles' event
   // After a join (or a failed one, back on the old folder): another engine, maybe another identity. The open
   // tabs were the old engine's; installed icons are installed again on this one.
   function joinedNow ({ identity: id, said }) {
@@ -505,5 +551,5 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     setIcons(upsert(data.desktop.icons, { id: icon?.id || key, key, title: icon?.title || title, kind: 'installed' }))
     keepSite(key, true)
   }
-  return { win, inspect, show, devices, joined: joinedNow, open: openKey, installed, install, notify: (d) => notify(d).catch(() => {}), looked: () => looked().catch(() => {}) }
+  return { win, inspect, show, devices, circles: circlesChanged, joinCircle, joined: joinedNow, open: openKey, installed, install, notify: (d) => notify(d).catch(() => {}), looked: () => looked().catch(() => {}) }
 }

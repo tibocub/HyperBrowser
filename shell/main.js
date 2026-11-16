@@ -93,6 +93,7 @@ async function serve (key, p) {
 
 function onEvent (event, data) {
   if (event === 'devices') return ui?.devices()
+  if (event === 'circles') return ui?.circles()
   if (event === 'notify') return ui?.notify(data)
   if (event === 'closing') {
     if (!quitting && data.reason !== 'close') { console.error('engine stopped:', data.reason); app.exit(1) } // 'close': asked (a join)
@@ -285,6 +286,26 @@ ipcMain.handle('apps', async (evt, msg) => {
   if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
   try {
     return { result: await apps(evt.sender, msg || {}) }
+  } catch (err) {
+    return { error: { code: err.code || 'ERROR', message: err.message } }
+  }
+})
+
+// hyper.circles.join (spec 018): a page offers a circle's invite (Chat's Join button); only HyperBrowser joins, after
+// a click on the page and the person's yes (the notice the first time). A page has no circles.* call of the engine.
+async function circles (wc, { op, link, name, activated }) {
+  if (op !== 'join') throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
+  if (typeof link !== 'string' || !link.startsWith('hg:')) throw Object.assign(new Error('an invite link (hg:...)'), { code: 'INVALID_PARAMS' })
+  if (GUARDS && !activated) return { joined: false } // only right after a click on the page
+  if (!GUARDS) return { joined: !!(await rpc.request('circles.join', { link })) } // control run: no question
+  if (SELFTEST) return { joined: false } // the person's Not now
+  return ui.joinCircle(link, typeof name === 'string' ? name : '')
+}
+
+ipcMain.handle('circles', async (evt, msg) => {
+  if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
+  try {
+    return { result: await circles(evt.sender, msg || {}) }
   } catch (err) {
     return { error: { code: err.code || 'ERROR', message: err.message } }
   }
@@ -632,6 +653,7 @@ async function framecheck (dir) {
   fs.cpSync(path.join(HERE, '..', 'sites', 'demo'), path.join(tmp, 'site'), { recursive: true })
   const { key } = await rpc.request('site.publish', { folder: path.join(tmp, 'site') })
   const { fake, calls } = scripted()
+  fs.writeFileSync(path.join(tmp, 'shell.json'), JSON.stringify({ settings: { circleNoticed: true } })) // spec 018: Q8's notice seen (a dialog would wait)
   const { win, inspect, notify } = startFrame({ rpc: fake, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
   const timeout = setTimeout(() => { console.log('FRAMECHECK TIMEOUT'); app.exit(2) }, 90000)
   const settled = async () => inspect().ready === 1 && await inspect().fwc.executeJavaScript("document.getElementById('tabs').children.length === 2").catch(() => false)
@@ -652,6 +674,7 @@ async function framecheck (dir) {
   await i.fwc.executeJavaScript("document.getElementById('dv-add').click()")
   const coded = await until(() => i.fwc.executeJavaScript("(document.querySelector('#dv-out .code')?.textContent.length || 0) > 20"))
   if (process.env.HB_SHOT) fs.writeFileSync(process.env.HB_SHOT, (await i.fwc.capturePage()).toPNG())
+  const circles = await checkCirclesWindow(i.fwc)
   const notes = await checkNotes(i.fwc, inspect, notify, calls)
   clearTimeout(timeout)
   const b = win.getBounds()
@@ -667,6 +690,7 @@ async function framecheck (dir) {
     ['the icons are drawn from shell/icons/*.png (plus.png: a 5×5 cross)', css.glyphs && css.plus === 'M2 0h1v1H2zM2 1h1v1H2zM0 2h5v1H0zM2 3h1v1H2zM2 4h1v1H2z'],
     ['Devices: this computer listed (spec 012)', listed],
     ['Devices: Add a device shows a code', coded],
+    ...circles,
     ...notes
   ]
   for (const [name, pass] of out) console.log((pass ? 'PASS ' : 'FAIL ') + 'frame  ' + name)
@@ -676,6 +700,30 @@ async function framecheck (dir) {
   await shutdown()
   for (const d of [tmp, dir]) try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5 }) } catch {}
   app.exit(ok ? 0 : 1)
+}
+
+// spec 018: Configuration's Circles section (holding off, its share), then the circles window: a circle made, its
+// members (you, holding), an invite link.
+async function checkCirclesWindow (fwc) {
+  const js = (s) => fwc.executeJavaScript(s)
+  await js("document.getElementById('dv-close').click(); document.getElementById('hb').click(); document.getElementById('m-config').click()")
+  const section = await until(() => js("document.getElementById('cf-held').textContent === 'You hold 0 GB of 1 GB (off)' && document.querySelector('[data-hold=\"off\"]').getAttribute('aria-pressed') === 'true' && document.getElementById('cf-share').value === '1'"))
+  await js("document.getElementById('cf-share').value = '0.05'; document.getElementById('cf-share-set').click()")
+  const refused = await until(() => js("document.getElementById('cf-hold-out').textContent === 'At least 0.1 GB'"))
+  await js("document.getElementById('cf-circles').click(); document.getElementById('cl-name').value = 'Frame'; document.getElementById('cl-create').click()")
+  const made = await until(() => js("[...document.querySelectorAll('#cl-list li')].some((l) => l.textContent.startsWith('Frame1 member'))"))
+  await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Members').click() })()")
+  const members = await until(() => js("document.getElementById('cl-out').textContent.includes('(you)owner · holds')"))
+  await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Copy invite link').click() })()")
+  const link = await until(() => js("(document.querySelector('#cl-out .code')?.textContent || '').startsWith('hg:')"))
+  await js("document.getElementById('cl-close').click()")
+  return [
+    ['Configuration: Circles: holding off, the share (1 GB), what is held (spec 018)', section],
+    ['Configuration: Circles: a share under 0.1 GB is refused, saying why', refused],
+    ['Circles: Create a circle lists it (1 member)', made],
+    ['Circles: … → Members: you, owner, holding (the first circle turned it on)', members],
+    ['Circles: … → Copy invite link shows a link', link]
+  ]
 }
 
 // spec 016's frame check: the engine's notify.* answered with scripted notifications (3 unread: 2 in a Chat

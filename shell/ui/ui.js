@@ -288,13 +288,15 @@ function openConfig () {
   $('config').hidden = false
   frame.send('cover', { full: true })
   drawConfig()
+  drawHolding()
 }
 function closeConfig () {
   $('config').hidden = true
-  if (!menuOpen && $('devices').hidden) frame.send('cover', { full: false })
+  if (!menuOpen && $('devices').hidden && $('circles').hidden) frame.send('cover', { full: false })
 }
 $('cf-close').onclick = closeConfig
 $('cf-devices').onclick = () => { closeConfig(); openDevices() }
+$('cf-circles').onclick = () => { closeConfig(); openCircles() }
 
 function toggle (label, on, fn) {
   const b = el('button', 'choice', label)
@@ -422,6 +424,180 @@ $('dv-phrase').onclick = async () => {
   show(...nodes)
 }
 
+// --- circles (spec 018): Configuration's Circles section and the circles window ---
+
+const gbs = (b) => (Math.round(b / 1e8) / 10) + ' GB' // hypergraph's GB: 1e9 bytes
+let H = null // the last holding.get: { on, bytes, used, free }
+const holdOut = $('cf-hold-out')
+
+// Holding runs while HyperBrowser runs (Q14): its switch, its share, what is held. Off deletes what is held: asked.
+async function drawHolding () {
+  const r = await frame.send('holding.get')
+  if (r?.error) return
+  H = r.result
+  for (const b of document.querySelectorAll('[data-hold]')) b.setAttribute('aria-pressed', String((b.dataset.hold === 'on') === H.on))
+  if (document.activeElement !== $('cf-share')) $('cf-share').value = String(Math.round(H.bytes / 1e8) / 10)
+  $('cf-held').textContent = 'You hold ' + gbs(H.used) + ' of ' + gbs(H.bytes) + (H.on ? '' : ' (off)')
+}
+for (const b of document.querySelectorAll('[data-hold]')) {
+  b.onclick = () => {
+    if (!H || (b.dataset.hold === 'on') === H.on) return
+    if (b.dataset.hold === 'on') return frame.send('holding.set', { on: true }).then(drawHolding)
+    holdOut.replaceChildren(line('This deletes the ' + gbs(H.used) + ' you keep for your circles. Their spaces will be kept by others.'),
+      push('Turn off', async () => { holdOut.replaceChildren(); await frame.send('holding.set', { on: false }); drawHolding() }),
+      push('Cancel', () => holdOut.replaceChildren()))
+  }
+}
+$('cf-share-set').onclick = async () => {
+  const r = await frame.send('share.check', { text: $('cf-share').value })
+  if (r?.error) return holdOut.replaceChildren(line(r.error.message))
+  const set = async () => {
+    const s = await frame.send('holding.set', { on: H.on, bytes: r.result.bytes })
+    holdOut.replaceChildren(...(s?.error ? [line(s.error.message)] : []))
+    drawHolding()
+  }
+  if (!r.result.drop) return set()
+  holdOut.replaceChildren(line(gbs(r.result.drop) + ' will be dropped now, oldest first.'), push('Set', set), push('Cancel', () => { holdOut.replaceChildren(); drawHolding() }))
+}
+$('cf-share').onkeydown = (e) => { if (e.key === 'Enter') $('cf-share-set').click() }
+
+const clOut = $('cl-out')
+const clShow = (...nodes) => clOut.replaceChildren(...nodes)
+const short = (k) => k.slice(0, 6) + '…'
+const DECIDERS = ['owner', 'admin']
+
+function openCircles (note = null) {
+  $('circles').hidden = false
+  frame.send('cover', { full: true })
+  clShow(...(note ? [line(note)] : []))
+  drawCircles()
+}
+function closeCircles () {
+  $('circles').hidden = true
+  if (!menuOpen) frame.send('cover', { full: false })
+}
+$('cl-close').onclick = closeCircles
+// the engine's 'circles' event, or main after a join from Chat ({ open, note })
+frame.onCircles((d) => {
+  if (d?.open) return openCircles(d.note || null)
+  if (!$('circles').hidden) drawCircles()
+  if (!$('config').hidden) drawHolding()
+})
+
+// A "…" menu: a <details>, opened with Enter or Space.
+function more (label, items) {
+  const d = el('details')
+  const sum = el('summary', '', '…')
+  sum.setAttribute('aria-label', label)
+  const box = el('div')
+  for (const [text, fn] of items) {
+    const b = el('button', 'item', text)
+    b.onclick = () => { d.open = false; fn() }
+    box.append(b)
+  }
+  d.append(sum, box)
+  return d
+}
+
+async function drawCircles () {
+  const r = await frame.send('circles.list')
+  if (r?.error) return
+  $('cl-list').replaceChildren(...(r.result.length
+    ? r.result.map((c) => {
+      const li = el('li')
+      li.dataset.key = c.key
+      const decides = DECIDERS.includes(c.role)
+      li.append(el('span', 'grow', c.name || short(c.key)), el('span', 'dim', c.members + (c.members === 1 ? ' member, ' : ' members, ') + c.holders + ' holding'),
+        more('More for ' + (c.name || 'this circle'), [
+          ...(decides ? [['Copy invite link', () => invite(c)]] : []),
+          ['Members', () => members(c)],
+          ...(decides ? [['Rename', () => rename(c)]] : []),
+          ['Leave', () => askLeave(c)]
+        ]))
+      return li
+    })
+    : [el('li', 'dim', 'No circle yet')]))
+}
+
+$('cl-create').onclick = async () => {
+  const name = $('cl-name').value.trim()
+  if (!name) return clShow(line('Give the circle a name first.'))
+  const r = await frame.send('circles.create', { name })
+  if (r?.error) return clShow(line(r.error.message))
+  if (!r.result) return // Not now: nothing made
+  $('cl-name').value = ''
+  clShow(line('"' + name + '" made.' + (r.result.holding.on ? '' : ' Your computer keeps no copies yet: turn it on in Configuration.')))
+  drawCircles()
+}
+
+async function invite (c) {
+  const r = await frame.send('circles.invite', { key: c.key })
+  if (r?.error) return clShow(line(r.error.message))
+  const link = r.result.link
+  clShow(line('An invite to "' + (c.name || 'this circle') + '": one person, for 7 days. Send it to them, or invite a friend from Contacts (… → Invite to circle).'),
+    line(link, 'code'), push('Copy', () => navigator.clipboard.writeText(link).then(() => say('Invite link copied'), () => say('Select the link and copy it'))))
+}
+
+function rename (c) {
+  const box = el('input')
+  box.value = c.name
+  box.maxLength = 64
+  box.setAttribute('aria-label', 'New name')
+  clShow(line('Rename "' + (c.name || 'this circle') + '" for everyone in it:'), box, push('Rename', async () => {
+    const r = await frame.send('circles.rename', { key: c.key, name: box.value })
+    clShow(...(r?.error ? [line(r.error.message)] : []))
+    drawCircles()
+  }))
+  box.focus()
+}
+
+// The owner leaving gets the forum's warning (Q6): the circle lives on; without an admin nobody can invite.
+async function askLeave (c) {
+  const name = '"' + (c.name || 'this circle') + '"'
+  let text = 'Leave ' + name + '? Your computer stops keeping its people\'s copies, and they stop keeping yours.'
+  if (c.role === 'owner') {
+    const m = await frame.send('circles.members', { key: c.key })
+    const admins = (m?.result || []).filter((x) => x.role === 'admin' && !x.you).length
+    text = 'You own ' + name + '. It lives on while its members keep it, ' + (admins
+      ? 'and its ' + (admins === 1 ? 'admin' : admins + ' admins') + ' can still invite people.'
+      : 'but nobody can invite people any more: make someone admin first (Members).') + ' Leave it?'
+  }
+  clShow(line(text), push('Leave', async () => {
+    const r = await frame.send('circles.leave', { key: c.key })
+    clShow(line(r?.error ? r.error.message : 'Left.'))
+    drawCircles()
+  }), push('Cancel', () => clShow()))
+}
+
+async function members (c) {
+  const r = await frame.send('circles.members', { key: c.key })
+  if (r?.error) return clShow(line(r.error.message))
+  const decides = DECIDERS.includes(c.role)
+  const ul = el('ul', 'members')
+  for (const m of r.result) {
+    const who = m.name || short(m.identity)
+    const li = el('li')
+    li.append(el('span', 'grow', who + (m.you ? ' (you)' : '')), el('span', 'dim', m.role + (m.holds ? ' · holds' : '')))
+    if (decides && !m.you && m.role !== 'owner') {
+      li.append(more('More for ' + who, [
+        m.role === 'admin' ? ['Make member', () => setRole(c, m, 'member')] : ['Make admin', () => setRole(c, m, 'admin')],
+        ['Remove', async () => {
+          const x = await frame.send('circles.remove', { key: c.key, identity: m.identity })
+          if (x?.error) return clShow(line(x.error.message))
+          members(c)
+        }]
+      ]))
+    }
+    ul.append(li)
+  }
+  clShow(line('Members of "' + (c.name || 'this circle') + '" (' + r.result.length + ' of 50):'), ul)
+}
+async function setRole (c, m, role) {
+  const x = await frame.send('circles.setRole', { key: c.key, identity: m.identity, role })
+  if (x?.error) return clShow(line(x.error.message))
+  members(c)
+}
+
 // --- toolbar ---
 
 $('back').onclick = () => send('back')
@@ -452,6 +628,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase()
   if (e.key === 'Escape' && menuOpen) { closeMenus(); return }
   if (e.key === 'Escape' && !$('devices').hidden) { closeDevices(); return }
+  if (e.key === 'Escape' && !$('circles').hidden) { closeCircles(); return }
   if (e.key === 'Escape' && !$('config').hidden) { closeConfig(); return }
   if (mod && k === 'l') { e.preventDefault(); toAddress() }
   else if (mod && k === 't') { e.preventDefault(); send('select', { id: 0 }); toAddress() }
