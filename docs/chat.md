@@ -46,6 +46,21 @@ Publishing again sends the edited pages to everyone; Chat's new record types rea
   `<details>`, opened with Enter or Space.
 - No stylesheet in either app: HyperBrowser's default theme.
 
+## Circle invites (spec 018)
+
+A friend is invited to a circle from Contacts (… → **Invite to circle ▸ <circle>**): the engine
+(`contacts.inviteToCircle(identity, circle)`) writes a `message` in your direct conversation with them, with two
+fields added to Chat's `message` type (permanent once published, additions only):
+
+- `circle` (string): the circle's invite link (`hg:…`, one use, 7 days);
+- `circleName` (string): the circle's name as you see it.
+
+Its `text` is `Join my circle "<name>": <link>`, so an older Chat shows the plain link. This Chat shows a
+**Join "<name>"** button instead, which calls `hyper.circles.join(link, name)`: HyperBrowser's own question, never a
+join by the page. A conversation whose owner hasn't opened this Chat yet has the old `message` type and refuses the
+new fields: the engine then writes the text only. Chat's `invite` type (group invites) isn't reused: an older Chat
+would join a circle's link as a group and spend its one use.
+
 ## Notifications (spec 016)
 
 Chat's `site.json` watches `message` (its text) and `invite` ("invited you to a group"); its page calls

@@ -2,7 +2,7 @@
 // their guards. Engines on a local DHT; hypergraph's circles (023) and copies (024) underneath.
 import test from 'brittle'
 import { engine, siteFolder, siteApi, codeOf, eventually } from './helpers.js'
-import { holdsFrom, shareFull, GB } from '../engine/circles.js'
+import { holdsFrom, shareFull, pickName, GB } from '../engine/circles.js'
 
 const APP = { manifest: { title: 'Talk', permissions: ['space'], types: { message: { fields: { text: 'string' } } } } }
 
@@ -23,6 +23,16 @@ test('who holds, per member: their newest record per device since their last lea
   t.alike([...holdsFrom([r(z('c'), z('4'), false, true), r(z('c'), z('4'), true)])], [], 'left: not holding')
   t.alike([...holdsFrom([r(z('c'), z('4'), true), r(z('c'), z('5'), false, true), r(z('c'), z('6'), true)])], [z('c')], 'joined again after leaving: only the records after it count')
   t.alike([...holdsFrom([r(z('c'), z('4'), false), r(z('c'), z('5'), false, true), r(z('c'), z('6'), true)])], [], 'a device holding before the leave no longer counts')
+})
+
+test("a circle's name: the newest rename by an owner or admin as of now; a member's is ignored", (t) => {
+  const r = (author, name) => ({ author, name })
+  const deciders = new Set([z('o'), z('a')])
+  t.is(pickName([], deciders, 'Made'), 'Made', 'no rename: the name it was made with')
+  t.is(pickName([r(z('m'), 'By a member'), r(z('o'), 'By the owner')], deciders, 'Made'), 'By the owner', "a member's rename is ignored")
+  t.is(pickName([r(z('o'), 'Newest'), r(z('a'), 'Older')], deciders, 'Made'), 'Newest', "the owner's newest wins")
+  t.is(pickName([r(z('x'), 'By a removed admin'), r(z('o'), 'Before')], deciders, 'Made'), 'Before', 'someone no longer admin: no longer counts')
+  t.is(pickName([r(z('o'), '')], deciders, 'Made'), 'Made', 'an empty name never counts')
 })
 
 test('share full: told once when it fills, again only after it went under 90%', (t) => {
@@ -82,8 +92,13 @@ test('circles: make, invite (one use), join, members and who holds, admin, renam
   await a.rpc.request('circles.remove', { key: made.key, identity: bId })
   t.ok(await eventually(async () => (await members()).length === 1, 30000), 'removed')
 
-  // the shell's only: a page reaches none of it
-  const { key } = await app(t, a)
+  // the shell's only: a page reaches none of it; an app's join of a circle link leaves it at once
+  const { key, hyper } = await app(t, a)
+  const other = await c.rpc.request('circles.create', { name: 'Not via a page' })
+  const before = (await a.rpc.request('hosting')).sites
+  t.is(await codeOf(hyper.instances.join((await c.rpc.request('circles.invite', { key: other.key })).link)), 'NOT_ALLOWED', "a page's instances.join of a circle link is refused")
+  t.is((await a.rpc.request('hosting')).sites, before, 'and the circle is left at once')
+  t.alike((await a.rpc.request('circles.list')).map((x) => x.key), [made.key], 'not one of the circles')
   for (const method of ['circles.list', 'circles.join', 'holding.set']) {
     t.is(await codeOf(a.rpc.request('site.call', { key, method, args: [] })), 'UNKNOWN_METHOD', method + ': not a site call')
   }

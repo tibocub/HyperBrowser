@@ -437,17 +437,26 @@ export function start (ipc) {
     if (typeof link !== 'string' || !link.startsWith('hg:')) throw error('INVALID_PARAMS', "join takes an instance's link (hg:...)")
     const before = new Set(sfs.hg.spaces().map((x) => x.key))
     let site = null
+    let failed = null
     try {
       site = await sfs.visit(link)
     } catch (err) {
-      if (err.code !== 'NOT_FOUND') throw err // a space that isn't a site: refused below
+      failed = err // NOT_FOUND: a space that isn't a site, refused below
     }
-    if (!site || site.app !== app) {
+    // spec 018: a circle's invite is joined through HyperBrowser only: a page's join of one is left at once (its one
+    // use is spent: hypergraph can't tell a circle's link before redeeming it)
+    const circle = sfs.hg.spaces().find((x) => !before.has(x.key) && !x.parent && isCircle(x.key))
+    if (failed && failed.code !== 'NOT_FOUND' && !circle) throw failed
+    if (circle || !site || site.app !== app) {
       for (const x of sfs.hg.spaces()) if (!before.has(x.key) && !x.parent) await sfs.leave(x.key).catch(() => {}) // joined for nothing
       throw error('NOT_ALLOWED', "that link is not to one of this app's instances")
     }
     await listInstance(app, site.key, true)
     return site
+  }
+
+  function isCircle (key) {
+    try { return sfs.hg.space(key).circle } catch { return false } // not open: not read as one
   }
 
   // Off the list first, so nothing reaches it while it goes.

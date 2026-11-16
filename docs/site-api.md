@@ -78,6 +78,11 @@ stop(); off()
 - `hyper.rotateKey()` (spec 018, hypergraph's `rotateKey`): a private space's (or instance's) new content key from
   now on, for a lost device or a suspected leak; by a member who may decide or moderate (`NOT_ALLOWED` otherwise,
   and on a public space). On your own space, sub-spaces and instances only.
+- `hyper.circles.join(link, name?)` (spec 018): offers a circle's invite to the person; only HyperBrowser joins, after
+  a click on your page and their yes (its notice the first time) → `{ joined: true | false }`. `name` is shown as
+  the invite's ("the name comes from the invite"). Known limit: `hyper.instances.join` with a circle's link is
+  refused (`NOT_ALLOWED`) and the circle left at once, but the link's one use is spent (hypergraph can't tell a
+  circle's link before redeeming it).
 
 ## Apps with instances: communities anyone can start
 

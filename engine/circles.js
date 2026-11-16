@@ -39,6 +39,13 @@ export function holdsFrom (records) {
   return out
 }
 
+// A circle's name: the newest `circle-name` record (newest first) by someone owner or admin as of now (a removed
+// admin's rename stops counting), else the name it was made with.
+export function pickName (records, deciders, made) {
+  const r = records.find((x) => validName(x.name) && deciders.has(x.author))
+  return r ? r.name : made
+}
+
 // Share full (FR-007): told once when what is held reaches the share, again only after it went under 90%.
 export function shareFull ({ full }, { on, used, bytes }) {
   if (!on) return { full: false, tell: false }
@@ -106,11 +113,9 @@ export function circles ({ sfs, dir, notes, emit }) {
 
   async function nameOf (s) {
     try {
-      for (const r of (await s.query(NAME_TYPE).latest(20)).items) {
-        if (validName(r.name) && DECIDERS.has(await s.getRole(r.author))) return r.name
-      }
-    } catch {} // a circle made before its types: no rename yet
-    return s.name ?? ''
+      const deciders = new Set((await s.members()).filter((m) => DECIDERS.has(m.role)).map((m) => m.identity))
+      return pickName((await s.query(NAME_TYPE).latest(20)).items, deciders, s.name ?? '')
+    } catch { return s.name ?? '' } // a circle made before its types: no rename yet
   }
 
   // --- holding ---

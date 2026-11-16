@@ -642,6 +642,13 @@ async function checkChatLine ({ key, view }, out, tmp) {
     }
     const menu = await run(`(() => { const d = ${list}.querySelector('details'); if (!d) return 'none'; d.querySelector('summary').focus(); return [document.activeElement.tagName, [...d.querySelectorAll('button')].map((b) => b.textContent).join()].join() })()`)
     pass('chat: Edit and Delete behind one "…" per message, reachable by keyboard', menu === 'SUMMARY,Edit,Delete')
+    // spec 018: a page's instances.join of a circle link (Ann's) doesn't leave Bob in the circle (the engine's guard:
+    // the control run doesn't change it; its one use is spent, a known limit)
+    const ring = await ann.request('circles.create', { name: 'Ann only' })
+    const { link } = await ann.request('circles.invite', { key: ring.key })
+    const before = (await rpc.request('hosting')).sites
+    const said = await run(`window.hyper.instances.join(${JSON.stringify(link)}).then(() => 'joined', (e) => e.code)`)
+    pass("circles: a page's instances.join of a circle link leaves the person out of it", said === 'NOT_ALLOWED' && (await rpc.request('hosting')).sites === before && !(await rpc.request('circles.list')).some((c) => c.key === ring.key))
   } finally {
     await ann.request('close').catch(() => {})
   }
