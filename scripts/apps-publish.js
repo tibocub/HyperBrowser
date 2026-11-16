@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // npm run apps:publish -- --dir <owner engine folder>: publishes every official app (scripts/apps.js) once, from
 // that engine folder (default ~/.hyperbrowser, as engine/cli.js), writes their keys into shell/preset.json and
-// says which changed. A different key already in preset.json is kept unless --replace. Then stops: run `node engine/cli.js publish <folder>` to stay online for visitors.
+// says which changed. A different key already in preset.json is kept unless --replace. Then stops, or with --stay
+// stays online for other HyperBrowsers until Ctrl+C (`npm run apps:seed`).
 import process from 'process'
 import os from 'os'
 import path from 'path'
@@ -11,14 +12,15 @@ import { connect, pair } from '../engine/protocol.js'
 import { publishApps } from './apps.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), bootstrap: undefined, preset: path.join(ROOT, 'shell', 'preset.json'), replace: false }
+const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), bootstrap: undefined, preset: path.join(ROOT, 'shell', 'preset.json'), replace: false, stay: false }
 const argv = process.argv.slice(2)
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--dir') opts.dir = argv[++i]
   else if (argv[i] === '--bootstrap') opts.bootstrap = argv[++i].split(',').map((hp) => ({ host: hp.split(':')[0], port: Number(hp.split(':')[1]) }))
   else if (argv[i] === '--replace') opts.replace = true
   else if (argv[i] === '--preset') opts.preset = argv[++i] // the tests' copy
-  else { console.error('usage: apps-publish [--dir <engine folder>] [--bootstrap host:port,...] [--preset <file>] [--replace]'); process.exit(1) }
+  else if (argv[i] === '--stay') opts.stay = true
+  else { console.error('usage: apps-publish [--dir <engine folder>] [--bootstrap host:port,...] [--preset <file>] [--replace] [--stay]'); process.exit(1) }
 }
 
 const [a, b] = pair()
@@ -40,6 +42,12 @@ try {
   console.error(`${err.code || 'ERROR'}: ${err.message}`)
   code = 1
 }
-await rpc.request('close').catch(() => {})
-await engine.closed
-process.exit(code)
+const stop = async () => {
+  await rpc.request('close').catch(() => {})
+  await engine.closed
+  process.exit(code)
+}
+if (opts.stay && !code) { // keeps every app (and the forum) online for other HyperBrowsers until Ctrl+C
+  console.log('online; Ctrl+C to stop')
+  process.on('SIGINT', stop)
+} else await stop()

@@ -60,7 +60,12 @@ instance, Apps, Chat, Contacts) once from that engine folder, writes their keys 
 in `preset.json` is listed in the store only), a `"description"` in its `site.json`, then the command again. Run it from the same
 checkout as before: a folder's key is tied to its path, so another checkout (a worktree) makes new sites. A key
 already in `preset.json` that differs is never overwritten (it says `KEPT`) unless you add `--replace`. It stops
-when done: to stay online for visitors, `node engine/cli.js publish <folder>` as above.
+when done; `--stay` keeps every app and the forum online for other HyperBrowsers until Ctrl+C. Tibo's shortcut,
+publishing from `../hyperbrowser-owner` and staying online:
+
+```bash
+npm run apps:seed
+```
 
 ### Bundled apps (spec 015)
 
