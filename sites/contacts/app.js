@@ -7,6 +7,7 @@ const root = document.getElementById('app')
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 let me = null
 let list = []
+let circles = [] // spec 018: the circles you may invite to ({ key, name })
 let person = new URLSearchParams(location.search).get('person')
 let notice = ''
 let link = null
@@ -24,6 +25,7 @@ async function start () {
 async function refresh () {
   me = await hyper.contacts.me()
   list = await hyper.contacts.list()
+  circles = await hyper.contacts.circles().catch(() => [])
   draw()
 }
 
@@ -72,12 +74,20 @@ function home () {
     h('section', {}, h('h2', {}, 'Friends'), of('friend').length
       ? h('ul', {}, of('friend').map((c) => h('li', {},
         h('a', { href: '?person=' + c.identity, onclick: (e) => { e.preventDefault(); go(c.identity) } }, label(c)), ' ',
-        h('button', { onclick: () => act(() => hyper.people.chat(c.identity)) }, 'Message'))))
+        h('button', { onclick: () => act(() => hyper.people.chat(c.identity)) }, 'Message'), ' ', more(c))))
       : h('p', {}, 'No friends yet. Add someone by their key or send them a contact link.')),
     of('outgoing').length ? h('section', {}, h('h2', {}, 'Sent, waiting'), h('ul', {}, of('outgoing').map((c) => h('li', {},
       label(c), ' ', h('code', { class: 'small' }, short(c.identity)), ' ',
       h('button', { onclick: () => act(() => hyper.contacts.remove(c.identity)) }, 'Cancel'))))) : null
   ]
+}
+
+// spec 018: a friend's "…": Invite to circle ▸ <circle>, an invite posted in your Chat conversation with them.
+function more (c) {
+  return h('details', { style: 'display:inline-block' }, h('summary', { 'aria-label': 'More for ' + label(c), style: 'display:inline; cursor:pointer; list-style:none' }, '…'), ' ',
+    circles.length
+      ? ['Invite to circle ▸ ', circles.map((x) => [h('button', { onclick: () => act(async () => { await hyper.contacts.inviteToCircle(c.identity, x.key); notice = 'Invite to "' + x.name + '" sent in your Chat with ' + label(c) + '.' }) }, x.name), ' '])]
+      : h('span', { class: 'small' }, 'No circle to invite to: make one in HyperBrowser ▾ → Configuration… → Your circles…'))
 }
 
 function page (key) {

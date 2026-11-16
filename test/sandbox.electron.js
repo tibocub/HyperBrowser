@@ -70,7 +70,12 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     "notifications: a page can't read another app's follows",
     "notifications: a page can't remove another app's follow",
     "notifications: a page can't follow another app's places",
-    "notifications: a page doesn't hear another app's counts"
+    "notifications: a page doesn't hear another app's counts",
+    'copies: hyper.subspace(<other site>).copies() is refused', // spec 018
+    'circles: joining without a click joins nothing',
+    "copies: a page can't read another app's instance's copies",
+    "rotateKey: a page can't change another app's instance's key",
+    "circles: a click and the person's Not now join nothing"
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
 })
 

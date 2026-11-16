@@ -46,3 +46,19 @@ export function move (icons, id, col, row) {
 }
 
 export const remove = (icons, id) => icons.filter((x) => x.id !== id)
+
+// --- spec 018: the circles' share (Configuration → Circles) ---
+
+const GB = 1e9 // hypergraph's 1 GB share
+export const gb = (bytes) => (Math.round(bytes / GB * 10) / 10) + ' GB'
+
+// What the person typed in the share field (GB, decimals) → { bytes, drop } (drop: what goes at once, below what is
+// held) or { error }. At most the disk's free space plus what is held, minus 2 GB; the engine checks it again.
+export function checkShare (text, { used, free }) {
+  const n = Number(String(text).trim().replace(',', '.'))
+  if (!String(text).trim() || !Number.isFinite(n) || n < 0.1) return { error: 'At least 0.1 GB' }
+  const bytes = Math.round(n * GB)
+  const room = free + used - 2 * GB
+  if (bytes > room) return { error: 'Only ' + gb(Math.max(0, Math.floor(room / GB * 10) / 10 * GB)) + ' free on this disk' }
+  return { bytes, drop: Math.max(0, used - bytes) }
+}

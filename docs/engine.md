@@ -153,10 +153,40 @@ The engine watches the app's instances with hypergraph's `space.since(cursor)`: 
 `npm run perf` runs `perf/notifications.mjs` (SC-005: 50 watched places, nothing happening: memory and CPU over a
 few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [runs] [--public]` measures a turn.
 
+## Circles (spec 018)
+
+`engine/circles.js`: hypergraph's circles (023, 5 copies 024) for the shell only; no page reaches `circles.*` or
+`holding.*` (`site.call` refuses them: `UNKNOWN_METHOD`).
+
+- **Messages**: `circles.list` → `[{ key, name, members, holders, role }]`; `circles.create { name }` and
+  `circles.join { link }` → `{ key, name, holding }`; `circles.invite { key }` → `{ link, expires }` (one use,
+  7 days; owner and admins; `CIRCLE_FULL` at 50); `circles.members { key }` → `[{ identity, name, role, you,
+  holds }]`; `circles.rename { key, name }`, `circles.setRole { key, identity, role: 'admin' | 'member' }`,
+  `circles.remove { key, identity }`, `circles.leave { key }`; `holding.get` → `{ on, bytes, used, free }`;
+  `holding.set { on, bytes? }` (`bytes` at least 0.1 GB, at most the disk's free space + what is held − 2 GB, else
+  `TOO_BIG` "Only X GB free on this disk"). Event `circles` (300 ms after a change): read again.
+- **The list** is the person's setting `hyperbrowser/circles` (`{ [key]: true }`), written on create, join and
+  leave: `hg.spaces()` doesn't say which spaces are circles until they are open.
+- **Holding** runs while the engine runs. The first circle made or joined turns it on at 1 GB unless the person
+  set it before on this device (`<engine dir>/circles.json` `set`) or the disk lacks the room; `holding.set
+  { on: false }` deletes what is held (hypergraph).
+- **Who holds** (`holds`): from the circle's `hg/holder` records, the newest per device since the person's newest
+  `left` (as hypergraph reads them; `holdsFrom`).
+- **Rename**: hypergraph has no rename, so a `circle-name` record (`{ name }`, declared on the circle at create);
+  the latest by the owner or an admin wins, else the name it was made with.
+- **Share full**: checked every 30 s and after `holding.set`; told once when what is held reaches the share
+  (a HyperBrowser item, app and place `hyperbrowser`), again only after it went under 90% (`circles.json` `full`).
+- **Site calls**: `copies` (on the page's handle, or a key: its own space, a sub-space, an app instance) and
+  `rotateKey` (on the handle, through `hg.space(key)`: the site handle has none); `site.on { event: 'copies' }`
+  tells that handle's copies when hypergraph's `copies` event changes them.
+
+`npm run perf:circles [-- --people 49 --minutes 1]` (`perf/circles.mjs`): 3 circles, Configuration's reads
+(`circles.list` + each `circles.members`) and the engine's idle CPU while holding, Tibo's engine alone.
+
 ## Tests
 
 ```bash
-npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications
+npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications, circles (spec 018)
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
 npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %, the tray (spec 010)
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS

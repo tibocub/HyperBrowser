@@ -5,7 +5,7 @@
   "icon": "icon.svg",
   "permissions": ["space", "contacts", "notifications"],
   "types": {
-    "message": { "fields": { "text": "text" } },
+    "message": { "fields": { "text": "text", "circle": "string", "circleName": "string" } },
     "invite": { "fields": { "link": "string", "name": "string" } }
   },
   "notifications": [

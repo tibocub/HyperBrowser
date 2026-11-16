@@ -444,3 +444,32 @@ test('follows: a board, a person; quiet unless asked, a dot not a number; unfoll
   await bob.hyper.instances.leave(place)
   t.alike(await bob.hyper.notifications.follows(), [], 'left: its follows go')
 })
+
+// spec 018: HyperBrowser's own news (a circles' share full): listed, counted, popped up, read like any other; no app
+// to allow first.
+test("HyperBrowser's own notification: listed and unread at once, read like the others", async (t) => {
+  const set = {}
+  const told = []
+  const hg = {
+    identity: { publicKey: 'me' },
+    settings: async () => ({ ...set }),
+    setSetting: async (n, v) => { set[n] = v },
+    on () {},
+    off () {},
+    spaces: () => [],
+    space: () => { throw new Error('none') }
+  }
+  const notes = notifications({ sfs: { hg }, dir: tmpDir(t), emit: (event, data) => told.push([event, data]), turn: 100 })
+  await notes.state()
+  await sleep(500) // past the launch's catch-up (one summary for everything found in its first turn)
+  await notes.hyperbrowser({ id: 'share-full-1', text: 'Your share for your circles is full' })
+  const s = await notes.state()
+  t.alike(s.items.map((x) => [x.app, x.place, x.name, x.text, x.popup]), [['hyperbrowser', 'hyperbrowser', 'HyperBrowser', 'Your share for your circles is full', true]])
+  t.is(s.unread.total, 1, 'unread')
+  t.ok(told.some(([e, d]) => e === 'notify' && d.items.some((x) => x.id === 'share-full-1')), 'told: a popup')
+  await notes.read({ place: 'hyperbrowser' })
+  t.is((await notes.state()).unread.total, 0, 'read')
+  await notes.hyperbrowser({ id: 'share-full-2', text: 'full again' })
+  t.is((await notes.state()).unread.total, 1, 'a second one is unread again')
+  await notes.close()
+})

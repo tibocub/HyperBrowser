@@ -52,6 +52,14 @@ app's: opening a forum's key or link opens the app on it.
   forum. That first open starts from "now": what was there reads as read, and only what arrives after is marked.
 - Moderation and roles: hypergraph's (`moderateAction`, `report`, `reports`, `setRole`).
 
+## Copies and Change key (spec 018)
+
+Each forum's **…** in the forums column says "Kept by N of 5 copies, M online" (`hyper.instance(k).copies()`, read
+when the menu opens) once your circles keep it, with "Few copies online: people may not get this while you're
+offline" under 2 online. **Change key** (`rotateKey()`) shows on a private forum you own. Note: the Forum makes
+public and invite-only forums, not private (encrypted) ones, and its boards are records inside a forum, not spaces
+of their own: so "private boards" have no copies line of their own, and Change key shows on no forum it makes today.
+
 ## Notifications (spec 016)
 
 The forum's `site.json` watches `mention` records naming the person ("mentioned you"); a click opens `#/r/<record>`,

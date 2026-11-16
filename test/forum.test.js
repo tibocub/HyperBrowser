@@ -5,7 +5,7 @@ import test from 'brittle'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, text } from './helpers.js'
-import { forum, people } from '../sites/forum/lib/forum.js'
+import { forum, people, copiesLine, CHANGE_KEY } from '../sites/forum/lib/forum.js'
 import { summarize, sortThreads, tree, visible, tally, score, voteOf, nextVote, boardTree, addNew, pruneUnread, without, NEW_MAX } from '../sites/forum/lib/view.js'
 import { render, mentioned, toStored, toDraft } from '../sites/forum/lib/text.js'
 import * as icon from '../sites/forum/lib/icon.js'
@@ -291,4 +291,11 @@ test('post text: the subset only, never HTML or scripts', (t) => {
   t.ok(html.includes('<pre><code>&lt;img src=x onerror=alert(1)&gt;</code></pre>'))
   t.ok(html.includes('＠ann</a>'))
   t.absent(/<script|<img src=x|href="https|href="javascript|src="https|src="\.\./.test(html), 'nothing else becomes a tag')
+})
+
+// spec 018: a forum's copies in its "…", and the Change key line
+test('copies line and Change key text (the same as Chat)', (t) => {
+  t.is(copiesLine({ wanted: 0, kept: 0, online: 0 }), null)
+  t.alike(copiesLine({ wanted: 5, kept: 5, online: 1 }), { text: 'Kept by 5 of 5 copies, 1 online', warn: "Few copies online: people may not get this while you're offline" })
+  t.is(CHANGE_KEY, 'A new key from now on; for a lost device or a suspected leak')
 })

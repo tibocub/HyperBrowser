@@ -109,16 +109,25 @@ button:disabled { cursor: default; opacity: .35; }
 .swatch[aria-pressed="true"] { background: var(--paper); outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* the Devices window (spec 012) */
-#devices { top: 60px; z-index: 5; -webkit-app-region: no-drag; }
-#devices ul { list-style: none; margin: 4px 0 12px; padding: 0; }
-#devices li { display: flex; align-items: center; gap: 8px; padding: 2px 0 2px 8px; }
+#devices, #circles { top: 60px; z-index: 5; -webkit-app-region: no-drag; }
+#devices ul, #circles ul { list-style: none; margin: 4px 0 12px; padding: 0; }
+#devices li, #circles li { display: flex; align-items: center; gap: 8px; padding: 2px 0 2px 8px; }
 #devices li .choice { margin-left: auto; }
-#devices .head { padding: 0; }
+#devices .head, #circles .head { padding: 0; }
 .row.left { justify-content: flex-start; flex-wrap: wrap; }
-#dv-out:not(:empty) { margin: 14px 0; padding: 10px 12px; border: 1px solid var(--ink); }
-#dv-out p, #devices .note { margin: 0 0 10px; word-break: normal; }
-#dv-out .code { user-select: all; word-break: break-all; text-decoration: underline; } /* not bold: Cozette bold has no m */
-#devices textarea, #devices input { box-sizing: border-box; width: 100%; padding: 4px 8px; border: 1px solid var(--ink); background: var(--paper); font: inherit; color: inherit; user-select: text; }
+#dv-out:not(:empty), #cl-out:not(:empty), #cf-hold-out:not(:empty) { margin: 14px 0; padding: 10px 12px; border: 1px solid var(--ink); }
+#dv-out p, #devices .note, #cl-out p, #cf-hold-out p { margin: 0 0 10px; word-break: normal; }
+#dv-out .code, #cl-out .code { user-select: all; word-break: break-all; text-decoration: underline; } /* not bold: Cozette bold has no m */
+#devices textarea, #devices input, #circles input, #cf-share { box-sizing: border-box; width: 100%; padding: 4px 8px; border: 1px solid var(--ink); background: var(--paper); font: inherit; color: inherit; user-select: text; }
+/* spec 018: a "…" per circle and per member */
+#circles li .grow { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#circles details { position: relative; }
+#circles summary { list-style: none; cursor: pointer; padding: 0 8px; border: 1px solid var(--ink); }
+#circles summary::-webkit-details-marker { display: none; }
+#circles details[open] > div { position: absolute; right: 0; z-index: 6; min-width: 180px; padding: 4px 0; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+#config .hint { margin: 0 0 6px; padding: 0 14px 0 22px; word-break: normal; }
+#config .share { padding: 0 14px 0 22px; margin: 4px 0; }
+#config .share input { width: 7em; flex: 0 0 auto; }
 #devices textarea { height: 64px; resize: none; margin-bottom: 10px; }
 .field { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
 .field input { flex: 1 1 auto; }

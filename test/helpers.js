@@ -33,7 +33,7 @@ export async function engine (t, { init = true, dir = tmpDir(t, 'hb'), ...opts }
 const METHODS = ['put', 'get', 'edit', 'del', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
-  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info']
+  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info', 'copies', 'rotateKey']
 const FILTERS = ['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice']
 
 export function siteApi (e, key, instance = null) {
@@ -78,7 +78,7 @@ export function siteApi (e, key, instance = null) {
     api.instance = (k) => siteApi(e, key, String(k))
     // spec 013: a site with the contacts permission
     api.contacts = {}
-    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add']) api.contacts[m] = (...args) => call('contacts.' + m, args)
+    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add', 'circles', 'inviteToCircle']) api.contacts[m] = (...args) => call('contacts.' + m, args)
     api.contacts.on = (fn) => subscribe('site.on', { event: 'contacts' }, fn)
     // spec 017: the app's own unread counts and follows
     api.notifications = {}

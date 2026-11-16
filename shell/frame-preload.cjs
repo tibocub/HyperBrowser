@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld('frame', {
   send: (op, args) => ipcRenderer.invoke('frame', { op, args }),
   onState: (fn) => ipcRenderer.on('frame-state', (e, state) => fn(state)),
   onFocusAddress: (fn) => ipcRenderer.on('frame-focus', () => fn()),
-  onDevices: (fn) => ipcRenderer.on('frame-devices', () => fn())
+  onDevices: (fn) => ipcRenderer.on('frame-devices', () => fn()),
+  onCircles: (fn) => ipcRenderer.on('frame-circles', (e, d) => fn(d)) // spec 018
 })
