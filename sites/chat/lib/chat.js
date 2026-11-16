@@ -9,6 +9,17 @@ export const MODERATORS = new Set(['owner', 'admin', 'moderator'])
 export const INVITERS = new Set(['owner', 'admin', 'inviter'])
 export const LIMIT = 300 // shortcut: a conversation shows its latest messages only; page back with `until` when needed
 
+// spec 018: "Kept by N of 5 copies, M online" from hyper.copies(), and the warning under 2 online; null when nothing
+// is handed (no circle holding).
+export function copiesLine ({ wanted, kept, online }) {
+  if (!wanted) return null
+  return { text: `Kept by ${kept} of ${wanted} copies, ${online} online`, warn: online < 2 ? "Few copies online: people may not get this while you're offline" : null }
+}
+export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspected leak'
+
+// spec 018: a circle's invite in a message (docs/chat.md: `circle`, `circleName`), or null
+export const circleOf = (m) => typeof m.circle === 'string' && m.circle.startsWith('hg:') ? { link: m.circle, name: m.circleName || 'a circle' } : null
+
 const need = (ok, message) => { if (!ok) throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }) }
 
 export function chat (hyper) {
@@ -66,6 +77,12 @@ export function chat (hyper) {
     grant: (key, identity, role) => at(key).setRole(identity, role),
     ban: (key, identity) => at(key).moderateAction('ban', identity, { reason: 'banned from the group' }),
     removeMember: (key, identity) => at(key).removeRole(identity),
-    leave: (key) => hyper.instances.leave(key)
+    leave: (key) => hyper.instances.leave(key),
+
+    // spec 018
+    copies: (key) => at(key).copies(),
+    onCopies: (key, fn) => at(key).on('copies', fn),
+    changeKey: (key) => at(key).rotateKey(),
+    joinCircle: (inv) => hyper.circles.join(inv.link, inv.name)
   }
 }

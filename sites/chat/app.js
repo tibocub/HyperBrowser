@@ -1,7 +1,7 @@
 // Chat's page (spec 013): conversations on the left, the open one on the right, redrawn from live views. No
 // stylesheet: HyperBrowser's default theme, with a few inline layout rules. Data: lib/chat.js.
 // Spec 017: unread numbers in the list (HyperBrowser's counts), a "New messages" line, a "…" menu per message.
-import { chat, ROLES, MODERATORS, INVITERS } from './lib/chat.js'
+import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, CHANGE_KEY } from './lib/chat.js'
 import { keepScroll, newLine } from './lib/scroll.js'
 
 const hyper = window.hyper
@@ -52,8 +52,9 @@ function open (key) {
   history.replaceState(null, '', '?instance=' + key)
   hyper.notifications?.viewing(key).catch(() => {}) // spec 016: shown here, so not notified
   // unread: the count when it opened (read once shown); line: where "New messages" goes, once the messages are in
-  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false }
+  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null }
   const v = view
+  const copies = () => c.copies(key).then((x) => { if (view === v) { v.copies = x; draw() } }, () => {}) // spec 018
   const names = () => c.names(key).then((n) => { if (view === v) { v.names = n; draw() } }, () => {})
   const members = () => {
     c.role(key).then((r) => { v.role = r; draw() }, () => {})
@@ -67,6 +68,8 @@ function open (key) {
   }))
   stops.push(c.invites(key, ({ items }) => { v.invites = items; draw() }))
   stops.push(hyper.instance(key).on('members', members))
+  stops.push(c.onCopies(key, (x) => { v.copies = x; draw() }))
+  copies()
   names()
   members()
   draw()
@@ -109,7 +112,7 @@ function draw () {
 
 function conversation (conv) {
   const mod = MODERATORS.has(view.role)
-  const out = [h('h2', {}, conv.direct ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(conv.direct.identity)) } }, titleOf(conv)) : '# ' + titleOf(conv))]
+  const out = [h('h2', {}, conv.direct ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(conv.direct.identity)) } }, titleOf(conv)) : '# ' + titleOf(conv), ' ', info())]
   for (const inv of view.invites) {
     if (inv.author === me.identity || joined['invite:' + inv.id]) continue
     out.push(h('p', {}, nameOf(inv.author), ' invites you to the group ', h('b', {}, inv.name), ' ', h('button', { onclick: () => join(inv) }, 'Join')))
@@ -120,12 +123,32 @@ function conversation (conv) {
       h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(m.author)) } }, h('b', {}, nameOf(m.author))),
       h('span', { class: 'small' }, ' ', new Date(m.stamp).toLocaleString(), m.edited ? ' (edited)' : ''), ' ',
       menu(m, mod), h('br'),
-      h('span', { style: 'white-space:pre-wrap' }, m.text))])))
+      body(m))])))
   out.push(h('form', { onsubmit: send },
     h('textarea', { name: 'text', rows: 3, style: 'width:100%', placeholder: view.editing ? 'Edit your message' : 'Write a message (Enter sends, Shift+Enter: new line)', onkeydown: enter, oninput: (e) => { view.draft = e.target.value }, value: view.draft ?? view.editing?.text ?? '' }),
     h('button', {}, view.editing ? 'Save' : 'Send'), view.editing ? h('button', { type: 'button', onclick: () => { view.editing = view.draft = null; draw() } }, 'Cancel') : null))
   if (!conv.direct) out.push(group(conv))
   return out
+}
+
+// A message's text, or (spec 018) a circle's invite: a Join button for its receiver, which only asks HyperBrowser.
+function body (m) {
+  const inv = circleOf(m)
+  if (!inv) return h('span', { style: 'white-space:pre-wrap' }, m.text)
+  if (m.author === me.identity) return h('span', {}, 'You invited them to the circle "' + inv.name + '"')
+  return h('button', { onclick: () => act(async () => { if ((await c.joinCircle(inv)).joined) notice = 'You joined "' + inv.name + '".' }) }, 'Join "' + inv.name + '"')
+}
+
+// The conversation's "…" (spec 018): its copies ("Kept by N of 5 copies"), and Change key for its owner.
+function info () {
+  const line = view.copies && copiesLine(view.copies)
+  const owner = view.role === 'owner'
+  if (!line && !owner) return null
+  return h('details', { style: 'display:inline-block; font-size:initial; font-weight:normal', open: view.menu === 'info' ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = 'info'; else if (view.menu === 'info') view.menu = null } },
+    h('summary', { 'aria-label': 'About this conversation', style: 'display:inline; cursor:pointer; list-style:none' }, '…'),
+    line ? h('p', { class: 'copies' }, line.text) : null,
+    line?.warn ? h('p', { class: 'copies-warn', role: 'note' }, line.warn) : null,
+    owner ? h('p', {}, h('button', { onclick: () => act(async () => { await c.changeKey(view.key); notice = 'Key changed.' }) }, 'Change key'), ' ', h('span', { class: 'small' }, CHANGE_KEY)) : null)
 }
 
 // One discreet "…" per message: its Edit and Delete (a <details>: Enter or Space opens it). Kept open across redraws.

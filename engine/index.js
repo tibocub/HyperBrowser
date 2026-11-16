@@ -22,7 +22,7 @@ const MINE = new Set(['mine.all', 'mine.set'])
 const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join', 'instances.leave'])
 // spec 013: the person's contacts, for a site that declares the `contacts` permission and was allowed it
 const CONTACTS = new Set(['contacts.me', 'contacts.setMe', 'contacts.list', 'contacts.request', 'contacts.accept',
-  'contacts.decline', 'contacts.remove', 'contacts.rename', 'contacts.link', 'contacts.add'])
+  'contacts.decline', 'contacts.remove', 'contacts.rename', 'contacts.link', 'contacts.add', 'contacts.circles', 'contacts.inviteToCircle'])
 // spec 017: the app's own unread counts and follows, for a site that declares the `notifications` permission
 const NOTIFY = new Set(['notifications.unread', 'notifications.follow', 'notifications.unfollow', 'notifications.follows'])
 const SINCE_MAX = 1000 // records of one since() call crossing to a page
@@ -154,7 +154,7 @@ export function start (ipc) {
     await sweep()
     if (list) await unbundle(bundle, list, dir)
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
-    people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance })
+    people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance, circles: (method, p) => rings.call(method, p) })
     notes = notifications({ sfs, dir, emit: (event, data) => rpc.emit(event, data), turn: notifyTurn, counts: () => { for (const fn of counters) fn() } })
     rings = circles({ sfs, dir, notes, emit: (event, data) => rpc.emit(event, data) })
     if (heartbeat) {

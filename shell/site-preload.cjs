@@ -78,7 +78,7 @@ function api (sub, instance = null) {
     o.instance = (key) => api(null, String(key))
     // the person's contacts (spec 013): only for a site whose site.json asks for "contacts", once allowed
     o.contacts = {}
-    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add']) {
+    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add', 'circles', 'inviteToCircle']) {
       o.contacts[m] = (...args) => invoke({ op: 'call', ...at, method: 'contacts.' + m, args })
     }
     o.contacts.on = (fn) => subscribe({ op: 'on', ...at, event: 'contacts' }, () => fn())

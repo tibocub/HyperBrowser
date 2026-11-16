@@ -14,6 +14,14 @@ const SINCE = 1000 // records a since() call returns at most (the engine's cap)
 const need = (ok, message) => { if (!ok) throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }) }
 const clean = (s) => String(s ?? '').trim()
 
+// spec 018: "Kept by N of 5 copies, M online" from hyper.copies(), and the warning under 2 online; null when nothing
+// is handed (no circle holding).
+export function copiesLine ({ wanted, kept, online }) {
+  if (!wanted) return null
+  return { text: `Kept by ${kept} of ${wanted} copies, ${online} online`, warn: online < 2 ? "Few copies online: people may not get this while you're offline" : null }
+}
+export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspected leak'
+
 export function forum (hyper) {
   // also: the author of what a reply answers (spec 017 R6: a reply notifies them), unless it is oneself
   async function writeMentions (on, text, also = null) {

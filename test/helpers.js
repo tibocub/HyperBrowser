@@ -78,7 +78,7 @@ export function siteApi (e, key, instance = null) {
     api.instance = (k) => siteApi(e, key, String(k))
     // spec 013: a site with the contacts permission
     api.contacts = {}
-    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add']) api.contacts[m] = (...args) => call('contacts.' + m, args)
+    for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add', 'circles', 'inviteToCircle']) api.contacts[m] = (...args) => call('contacts.' + m, args)
     api.contacts.on = (fn) => subscribe('site.on', { event: 'contacts' }, fn)
     // spec 017: the app's own unread counts and follows
     api.notifications = {}

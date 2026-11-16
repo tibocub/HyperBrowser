@@ -1,7 +1,7 @@
 // The forum's page (spec 006): one page, hash routes, redrawn from live views. The data: lib/forum.js; what is
 // derived: lib/view.js; post text: lib/text.js; icons: lib/icon.js. The shell draws the frame; this, the content.
 // Spec 017: on the left, your forums (dots, numbers, join, leave), then this forum's boards (dots).
-import { forum, watch, people, LIMITS, MODERATORS, ADMINS } from './lib/forum.js'
+import { forum, watch, people, LIMITS, MODERATORS, ADMINS, copiesLine, CHANGE_KEY } from './lib/forum.js'
 import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, ago, boardTree, SORTS, addNew, pruneUnread, without } from './lib/view.js'
 import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/text.js'
 import * as icon from './lib/icon.js'
@@ -31,6 +31,7 @@ let follows = [] // this app's follows (boards, people)
 let collapsed = false // the forums column
 let threadView = { id: null, stop: null, items: [], complete: false }
 let mentionView = { items: [], complete: false, seenAtOpen: null }
+const about = {} // spec 018: { [forum]: { copies, private } }, read when its "…" opens
 
 // --- start ---
 
@@ -134,7 +135,9 @@ function forumsColumn () {
         h('a', { class: 'forum', href: '?instance=' + i.key, 'aria-current': i.key === at ? 'page' : null, title: label },
           h('span', { class: 'grow name' }, collapsed ? label.slice(0, 2) : label),
           c.count ? h('span', { class: 'num', 'aria-label': c.count + ' unread' }, String(c.count)) : c.dot ? h('span', { class: 'dot', 'aria-label': 'new posts' }, '●') : null),
-        collapsed ? null : h('details', { class: 'menu' }, h('summary', { 'aria-label': 'Menu of ' + label }, '…'),
+        collapsed ? null : h('details', { class: 'menu', open: ui.menu === i.key ? '' : null, ontoggle: (e) => { if (e.target.open) { if (ui.menu !== i.key) readAbout(i); ui.menu = i.key } else if (ui.menu === i.key) ui.menu = null } },
+          h('summary', { 'aria-label': 'Menu of ' + label }, '…'),
+          ...aboutLines(i),
           h('button', { class: 'link', onclick: () => askLeave(i) }, 'Leave'))),
       ui.confirm === 'leave' + i.key ? h('div', { class: 'confirm-box small', role: 'alert' },
         h('p', {}, ui.leaveWarning || 'Leave ' + label + '? Its posts stay with its members; your notifications, unread marks and follows here go.'),
@@ -144,6 +147,27 @@ function forumsColumn () {
     h('div', { class: 'col-head' }, collapsed ? null : h('span', { class: 'grow' }, 'Forums'), toggle),
     h('ul', {}, ...forums.map(row)),
     h('button', { class: 'link add', 'aria-label': 'Join or make a forum', onclick: () => { ui.joining = { name: '', public: false, link: '', error: '', busy: false }; schedule() } }, collapsed ? '+' : '+ Join or make'))
+}
+
+// spec 018: a forum's copies ("Kept by N of 5 copies", a warning under 2 online), and Change key on a private one
+// its owner has. Read when its "…" opens.
+async function readAbout (i) {
+  const x = window.hyper.instance(i.key)
+  const [copies, info] = await Promise.all([x.copies().catch(() => null), x.info().catch(() => null)])
+  about[i.key] = { copies, private: !!info?.private }
+  schedule()
+}
+
+function aboutLines (i) {
+  const a = about[i.key]
+  const line = a?.copies && copiesLine(a.copies)
+  return [
+    line ? h('p', { class: 'small copies' }, line.text) : null,
+    line?.warn ? h('p', { class: 'small copies-warn', role: 'note' }, line.warn) : null,
+    a?.private && i.role === 'owner'
+      ? h('p', { class: 'small' }, h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.instance(i.key).rotateKey(); notice = 'Key changed.' }) }, 'Change key'), ' ', CHANGE_KEY)
+      : null
+  ]
 }
 
 // Q4: an owner may leave, warned: the forum lives on while members keep it; without an admin, nobody can make boards

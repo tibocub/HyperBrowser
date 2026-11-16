@@ -649,6 +649,13 @@ async function checkChatLine ({ key, view }, out, tmp) {
     const before = (await rpc.request('hosting')).sites
     const said = await run(`window.hyper.instances.join(${JSON.stringify(link)}).then(() => 'joined', (e) => e.code)`)
     pass("circles: a page's instances.join of a circle link leaves the person out of it", said === 'NOT_ALLOWED' && (await rpc.request('hosting')).sites === before && !(await rpc.request('circles.list')).some((c) => c.key === ring.key))
+    // Ann invites Bob from Contacts: Chat shows a Join button in their conversation; a click asks HyperBrowser (Not now)
+    await as(ann, 'contacts.inviteToCircle', [(await as(rpc, 'contacts.me')).identity, ring.key])
+    await run(`location.search = '?instance=${direct}'; 0`)
+    const button = "[...document.querySelectorAll('main button')].find((b) => b.textContent.startsWith('Join ') && b.textContent.includes('Ann only'))"
+    const shown = await waitFor(() => run(`!!${button}`), 30000)
+    const asked = shown && await view.webContents.executeJavaScript(`${button}.click(); 0`, true).then(() => waitFor(async () => !(await rpc.request('circles.list')).some((c) => c.key === ring.key), 3000))
+    pass("chat: a circle's invite shows a Join button; its click asks HyperBrowser, nothing joined on Not now", shown && asked)
   } finally {
     await ann.request('close').catch(() => {})
   }

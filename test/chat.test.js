@@ -4,7 +4,7 @@ import test from 'brittle'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, sleep } from './helpers.js'
-import { chat } from '../sites/chat/lib/chat.js'
+import { chat, copiesLine, circleOf } from '../sites/chat/lib/chat.js'
 import { keepScroll, newLine } from '../sites/chat/lib/scroll.js'
 
 const FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'chat')
@@ -17,7 +17,7 @@ async function person (t, key, name) {
   await e.rpc.request('site.permit', { key, permission: 'contacts', allow: true })
   const hyper = siteApi(e, key)
   await hyper.contacts.setMe({ name })
-  return { hyper, c: chat(hyper), id: (await hyper.contacts.me()).identity }
+  return { e, hyper, c: chat(hyper), id: (await hyper.contacts.me()).identity }
 }
 
 // a and b friends through a contact link: b's contact entry for a
@@ -109,4 +109,38 @@ test('a direct conversation and a group where the owner hands out rights', async
   t.ok(await eventually(async () => (await texts(bob, g.key)).includes('after Dan'), 15000), 'members read it')
   await sleep(3000)
   t.absent((await texts(dan, g.key)).includes('after Dan'), 'Dan, banned, doesn\'t')
+})
+
+// spec 018: a conversation's copies line, and a circle's invite as a message
+test('copies: "Kept by N of 5 copies, M online", a warning under 2 online, nothing without a circle', (t) => {
+  t.is(copiesLine({ wanted: 0, kept: 0, online: 0 }), null, 'nothing handed: no line')
+  t.alike(copiesLine({ wanted: 5, kept: 4, online: 3 }), { text: 'Kept by 4 of 5 copies, 3 online', warn: null })
+  t.is(copiesLine({ wanted: 5, kept: 2, online: 1 }).warn, "Few copies online: people may not get this while you're offline")
+  t.alike(circleOf({ text: 'hi' }), null, 'a plain message')
+  t.alike(circleOf({ text: 'x', circle: 'hg:abc', circleName: 'Family' }), { link: 'hg:abc', name: 'Family' })
+  t.alike(circleOf({ text: 'x', circle: 'https://evil' }), null, 'only an hg: link')
+})
+
+test("a circle's invite from Contacts: a message in the friends' conversation, with its link in the text too; joined by HyperBrowser", async (t) => {
+  t.timeout(240000)
+  const tibo = await engine(t)
+  const { key } = await tibo.rpc.request('site.publish', { folder: FOLDER })
+  const a = await person(t, key, 'Ann')
+  const b = await person(t, key, 'Bob')
+  const friend = await befriend(a, b)
+  const ofA = await contactOf(a, b)
+  t.alike(await a.hyper.contacts.circles(), [], 'no circle yet')
+  const ring = await a.e.rpc.request('circles.create', { name: 'Family' })
+  t.alike(await a.hyper.contacts.circles(), [{ key: ring.key, name: 'Family' }], 'the circles Ann may invite to')
+  t.is(await codeOf(a.hyper.contacts.inviteToCircle('y'.repeat(52), ring.key)), 'NOT_FOUND', 'only a friend')
+  await a.hyper.contacts.inviteToCircle(b.id, ring.key)
+  let m = null
+  await eventually(async () => (m = (await b.hyper.instance(friend.chat).query('message').latest(5)).items.find((x) => x.circle)), 30000)
+  t.ok(m, 'Bob gets it in their conversation (' + ofA.chat.slice(0, 6) + ')')
+  t.is(m.circleName, 'Family')
+  t.ok(m.text.startsWith('Join my circle "Family": hg:') && m.text.endsWith(m.circle), 'an older Chat shows the plain link')
+  t.alike(circleOf(m), { link: m.circle, name: 'Family' })
+  t.alike(await b.hyper.contacts.circles(), [], "Bob's circles: none he may invite to")
+  await b.e.rpc.request('circles.join', { link: m.circle }) // what HyperBrowser's flow does after Bob's yes
+  t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).length === 2, 30000), 'Bob is in')
 })

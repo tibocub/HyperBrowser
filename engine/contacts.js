@@ -28,8 +28,9 @@ const topicOf = (identity) => crypto.hash(b4a.from('hyperbrowser/contacts/1/' + 
 const noop = () => {}
 
 // sfs: the engine's SwarmFS. joinInstance(app, link) → the site, an instance of `app` (else NOT_ALLOWED);
-// listInstance(app, key, on); leaveInstance(app, key). bootstrap: the DHT's (tests).
-export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveInstance }) {
+// listInstance(app, key, on); leaveInstance(app, key). bootstrap: the DHT's (tests). circles(method, params): the
+// engine's circles.* (spec 018).
+export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveInstance, circles }) {
   let chat = null // the Chat app's key (apps.set): direct conversations are its instances
   let types = null // its record types, for the conversations made here
   let writing = Promise.resolve()
@@ -152,6 +153,9 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
         return { link }
       }
       case 'add': return add(a)
+      // spec 018: the circles the person may invite to ({ key, name }), and an invite to one in a friend's conversation
+      case 'circles': return (await circles('circles.list')).filter((x) => x.role === 'owner' || x.role === 'admin').map((x) => ({ key: x.key, name: x.name }))
+      case 'inviteToCircle': return inviteToCircle(a, b)
       default: throw error('UNKNOWN_METHOD', 'no contacts.' + method)
     }
   }
@@ -186,6 +190,25 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       list[identity] = { name: c.name, state: 'friend', chat: site.key, at: Date.now() }
       return view(identity, list[identity])
     })
+  }
+
+  // A one-use invite to `circle`, as a message in the direct conversation with friend `identity`: its text keeps the
+  // plain link (an older Chat shows it), `circle` and `circleName` make Chat's Join button (docs/chat.md).
+  async function inviteToCircle (identity, circle) {
+    const c = (await all())[identity]
+    if (c?.state !== 'friend' || !c.chat) throw error('NOT_FOUND', 'not a friend')
+    const ring = (await circles('circles.list')).find((x) => x.key === circle)
+    if (!ring) throw error('NOT_FOUND', 'not one of your circles')
+    const { link } = await circles('circles.invite', { key: circle })
+    const text = `Join my circle "${ring.name}": ${link}`
+    const space = sfs.hg.space(c.chat)
+    try {
+      await space.put('message', { text, circle: link, circleName: ring.name })
+    } catch (err) {
+      if (err.code === 'NOT_ALLOWED') throw err
+      await space.put('message', { text }) // a conversation whose types predate the fields: the text only
+    }
+    return true
   }
 
   async function add (link) {
