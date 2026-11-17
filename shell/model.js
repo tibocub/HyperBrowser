@@ -63,6 +63,17 @@ export function checkShare (text, { used, free }) {
   return { bytes, drop: Math.max(0, used - bytes) }
 }
 
+// --- spec 021: storage numbers in Members (hypergraph 026) ---
+
+// A member's held/share across all their circles, e.g. '0.8/3 GB'; '' when not holding or not reported.
+export function storageText ({ share, used } = {}) {
+  if (share == null) return ''
+  return ((used || 0) < 0.1 * GB ? '<0.1' : String(Math.round(used / GB * 10) / 10)) + '/' + gb(share)
+}
+
+// The circle's room after its 5 copies, e.g. 'TOTAL ≈ 4.2 GB'; '' while no share is known.
+export const totalText = (total) => (total == null ? '' : 'TOTAL ≈ ' + gb(total))
+
 // --- spec 019: the circles window's Invite contacts… and Join with a link… ---
 
 // The person's friends against a circle's members → [{ identity, name, in }]: those in it can't be ticked.

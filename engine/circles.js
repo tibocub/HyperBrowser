@@ -174,7 +174,7 @@ export function circles ({ sfs, dir, notes, emit }) {
       let s
       try { s = await circle(key) } catch { continue } // left on another device, not here yet
       const st = s.status()
-      out.push({ key, name: await nameOf(s), members: st.members, holders: st.holders, role: await roleOf(s) })
+      out.push({ key, name: await nameOf(s), members: st.members, holders: st.holders, total: st.total ?? null, role: await roleOf(s) })
     }
     return out
   }
@@ -216,7 +216,9 @@ export function circles ({ sfs, dir, notes, emit }) {
       name: contacts[m.identity]?.name || '', // the shell shows a short key for someone not a contact
       role: m.role,
       you: !!m.you,
-      holds: holds.has(m.identity)
+      holds: holds.has(m.identity),
+      share: m.share ?? null, // spec 021 (hypergraph 026): bytes, across all their circles; null: not reported
+      used: m.used ?? null
     }))
   }
 

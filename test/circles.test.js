@@ -80,6 +80,9 @@ test('circles: make, invite (one use), join, members and who holds, admin, renam
   const row = (await members()).find((m) => m.identity === bId)
   t.alike([row.role, row.you, typeof row.name], ['member', false, 'string'], 'a member, named (short key until a contact)')
   t.ok(await eventually(async () => (await a.rpc.request('circles.list'))[0].holders === 2, 30000), 'the list counts who holds')
+  // spec 021: each holder's share and use (hypergraph 026), the circle's room after 5 copies
+  t.ok(await eventually(async () => (await members()).every((m) => m.share === GB && typeof m.used === 'number'), 30000), "each one's share and use")
+  t.ok(await eventually(async () => (await a.rpc.request('circles.list'))[0].total === 2 * GB / 5, 30000), 'the total: shares / 5')
 
   t.is(await codeOf(b.rpc.request('circles.invite', { key: made.key })), 'NOT_ALLOWED', 'a member invites nobody')
   t.is(await codeOf(b.rpc.request('circles.rename', { key: made.key, name: 'Mine' })), 'NOT_ALLOWED', 'a member renames nothing')

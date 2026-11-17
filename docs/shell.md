@@ -93,7 +93,7 @@ A circle is not a group chat: only a holding group.
   dropped now, oldest first"). "You hold X of Y GB" says where it stands. When the share is full, the oldest copies
   go first and HyperBrowser notifies you once (again only after it went under 90%).
 - **Your circles…** opens the circles window: each circle with its members and how many hold. **Create a circle**
-  (a name). The first circle made or joined shows a notice once (what it costs, what holders see): **OK** goes
+  (a name). The first circle made or joined shows a notice once (what it costs, what holders see, and that members see each computer's share and how much it holds): **OK** goes
   on, **Not now** makes or joins nothing. **Join with a link…** (next to Create a circle, spec 019): paste the link
   someone sent you, **Join**: no "Join?" question (pasting is the yes), only that notice the first time; "You
   joined "<name>"", or "This invite was already used or has expired", "This circle is full (50)", "This is not a
@@ -102,7 +102,10 @@ A circle is not a group chat: only a holding group.
   (owner and admins, spec 019: your friends with a box each, those already in greyed "already in"; **Send** posts
   each ticked friend their own one-use, 7-day invite in your Chat conversation with them, then "Invites sent to N
   friends in Chat", naming those that failed and why; no friend yet: "No friends yet: add some in Contacts"),
-  **Members** (name or short key, role, "holds"; for the owner and admins a **…** per person:
+  **Members** (name or short key, role, "holds", and (spec 021) what each holder holds out of their share, e.g.
+  "0.8/3 GB" (one decimal, "<0.1" under 0.1 GB; across all their circles, as the tooltip says; nothing for someone
+  not holding or not reported yet); under the list "TOTAL ≈ 4.2 GB", the circle's room after its 5 copies
+  (everyone's shares ÷ 5, approximate: shares also serve other circles); for the owner and admins a **…** per person:
   **Make admin** / **Make member**, **Remove**), **Rename** (owner and admins: a `circle-name` record in the circle,
   since hypergraph has no rename; the newest by someone owner or admin *now* counts, so a removed admin's rename
   stops counting and the name goes back to the last one by a current owner or admin), **Leave** (the owner is warned

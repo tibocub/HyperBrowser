@@ -780,6 +780,12 @@ async function checkCirclesWindow (fwc) {
   const made = await until(() => js("[...document.querySelectorAll('#cl-list li')].some((l) => l.textContent.startsWith('Frame1 member'))"))
   await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Members').click() })()")
   const members = await until(() => js("document.getElementById('cl-out').textContent.includes('(you)owner · holds')"))
+  // spec 021: this computer's held/share and the circle's TOTAL (its share ÷ 5); the Members window read again until hypergraph has its record
+  const numbers = await until(async () => {
+    await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Members').click() })()")
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    return js("(() => { const t = document.getElementById('cl-out').textContent; return t.includes('(you)owner · holds · <0.1/') && t.includes('TOTAL ≈ ') })()")
+  })
   await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Copy invite link').click() })()")
   const link = await until(() => js("(document.querySelector('#cl-out .code')?.textContent || '').startsWith('hg:')"))
   // spec 019: Invite contacts… with no friend yet; a pasted link that isn't a circle's
@@ -793,6 +799,7 @@ async function checkCirclesWindow (fwc) {
     ['Configuration: Circles: a share under 0.1 GB is refused, saying why', refused],
     ['Circles: Create a circle lists it (1 member)', made],
     ['Circles: … → Members: you, owner, holding (the first circle turned it on)', members],
+    ["Circles: … → Members: what you hold of your share (<0.1/1 GB) and the circle's TOTAL (spec 021)", numbers],
     ['Circles: … → Copy invite link shows a link', link],
     ['Circles: … → Invite contacts… with no friend says so (spec 019)', friends],
     ['Circles: Join with a link… refuses a link that is not a circle invite, in the window', pasted]

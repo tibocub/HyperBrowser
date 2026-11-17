@@ -170,10 +170,12 @@ few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [ru
 `engine/circles.js`: hypergraph's circles (023, 5 copies 024) for the shell only; no page reaches `circles.*` or
 `holding.*` (`site.call` refuses them: `UNKNOWN_METHOD`).
 
-- **Messages**: `circles.list` → `[{ key, name, members, holders, role }]`; `circles.create { name }` and
+- **Messages**: `circles.list` → `[{ key, name, members, holders, total, role }]`; `circles.create { name }` and
   `circles.join { link }` → `{ key, name, holding }`; `circles.invite { key }` → `{ link, expires }` (one use,
   7 days; owner and admins; `CIRCLE_FULL` at 50); `circles.members { key }` → `[{ identity, name, role, you,
-  holds }]`; `circles.rename { key, name }`, `circles.setRole { key, identity, role: 'admin' | 'member' }`,
+  holds, share, used }]` (spec 021, hypergraph 026: `share`, `used` bytes across all their circles, null when not
+  holding or not reported; `total` the circle's shares ÷ 5, null while none is known; the frame adds `held` and
+  `totalLine`, the window's words: `storageText`, `totalText` in `shell/model.js`); `circles.rename { key, name }`, `circles.setRole { key, identity, role: 'admin' | 'member' }`,
   `circles.remove { key, identity }`, `circles.leave { key }`; `holding.get` → `{ on, bytes, used, free }`;
   `holding.set { on, bytes? }` (`bytes` at least 0.1 GB, at most the disk's free space + what is held − 2 GB, else
   `TOO_BIG` "Only X GB free on this disk"). Event `circles` (300 ms after a change): read again.
