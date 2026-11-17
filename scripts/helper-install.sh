@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT=/opt/hyperbrowser
 HOME_DIR=/var/lib/hyperbrowser # the user's: its config (~/.config) and engine folder (~/.local/share)
 GITHUB=${HB_GITHUB:-https://github.com/tibocub}
-REPOS="swarmwire hypergraph SwarmFS HyperBrowser" # each one's file: dependencies first
+REPOS="swarmwire hypergraph SwarmFS hyperDNS HyperBrowser" # each one's file: dependencies first
 NAME=hyperbrowser
 
 if [ "$(id -u)" != 0 ]; then echo "Run it with sudo." >&2; exit 1; fi

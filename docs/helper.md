@@ -20,7 +20,7 @@ sudo bash helper-install.sh
 ```
 
 It makes a `hyperbrowser` system user (no login, home `/var/lib/hyperbrowser`), clones HyperBrowser and the
-engine's own dependencies beside it into `/opt/hyperbrowser` (`swarmwire`, `hypergraph`, `SwarmFS`: `file:`
+engine's own dependencies beside it into `/opt/hyperbrowser` (`swarmwire`, `hypergraph`, `SwarmFS`, `hyperDNS`: `file:`
 dependencies, as on a developer's machine; `HB_GITHUB=<url>` clones from elsewhere), runs `npm ci --omit=dev` in
 each (no Electron), and installs, enables and starts `scripts/hyperbrowser-helper.service` (systemd: starts at boot,
 restarted on failure, stopped with SIGTERM, which closes the engine cleanly).
