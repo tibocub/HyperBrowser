@@ -33,7 +33,7 @@ export async function engine (t, { init = true, dir = tmpDir(t, 'hb'), ...opts }
 const METHODS = ['put', 'get', 'edit', 'del', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
-  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info', 'copies', 'rotateKey']
+  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info', 'copies', 'rotateKey', 'secure', 'trimHistory']
 const FILTERS = ['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice']
 
 export function siteApi (e, key, instance = null) {

@@ -17,6 +17,24 @@ export function copiesLine ({ wanted, kept, online }) {
 }
 export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspected leak'
 
+// spec 023 (hypergraph 027): Secure this place and Trim history in a group's "…" (the same texts as the Forum's)
+export const SECURE_TEXT = 'New keys now, and a new address its members follow by themselves: the people removed or banned can no longer see who joins, who writes or when. What they could read before, they keep.'
+export const FORGET_TEXT = "Also delete everything written before now, on every member's device. Copies others already took can't be recalled."
+export const TRIM_TEXT = "Older messages are deleted on every member's device and every copy your circles keep. Copies others already took can't be recalled."
+export const SUGGEST_SECURE = 'They can no longer read what comes next. To also hide who joins and writes from now on: … then Secure this place.'
+export const RENEW_WAITING = "Keep HyperBrowser open until another admin's device has joined."
+const DAY = 24 * 3600e3
+const UNITS = { days: DAY, weeks: 7 * DAY, months: 30 * DAY, years: 365 * DAY }
+export const trimBefore = (n, unit, now = Date.now()) => now - n * UNITS[unit]
+export function renewError (err, nameOf = () => null) {
+  if (err.code === 'ALREADY_RENEWED') {
+    const key = (String(err.message).match(/[ybndrfg8ejkmcpqxot1uwisza345h769]{52}/) || [])[0]
+    return 'Already renewed by ' + ((key && nameOf(key)) || 'someone else') + '.'
+  }
+  if (err.code === 'NOT_ALLOWED') return 'Only owners and admins can do this.'
+  return err.message
+}
+
 // spec 018: a circle's invite in a message (docs/chat.md: `circle`, `circleName`), or null
 export const circleOf = (m) => typeof m.circle === 'string' && m.circle.startsWith('hg:') ? { link: m.circle, name: m.circleName || 'a circle' } : null
 
@@ -86,6 +104,11 @@ export function chat (hyper) {
     copies: (key) => at(key).copies(),
     onCopies: (key, fn) => at(key).on('copies', fn),
     changeKey: (key) => at(key).rotateKey(),
+    // spec 023: a group's owner and admins
+    secure: (key, { forgetHistory = false } = {}) => at(key).secure({ forget: forgetHistory }),
+    trimHistory: (key, before) => at(key).trimHistory({ before }),
+    info: (key) => at(key).info(),
+    status: (key) => at(key).status(),
     joinCircle: (inv) => hyper.circles.join(inv.link, inv.name)
   }
 }

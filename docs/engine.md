@@ -209,7 +209,10 @@ few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [ru
   and the `contacts` permission (`NOT_ALLOWED` without it).
 - **Site calls**: `copies` (on the page's handle, or a key: its own space, a sub-space, an app instance) and
   `rotateKey` (on the handle, through `hg.space(key)`: the site handle has none); `site.on { event: 'copies' }`
-  tells that handle's copies when hypergraph's `copies` event changes them.
+  tells that handle's copies when hypergraph's `copies` event changes them. Spec 023: `secure` and `trimHistory`
+  likewise (through `hg.space(key)`; hypergraph lets owners and admins only). A place renewed here or on another
+  device of the person: every app's instance list names its new key (on hypergraph's `spaces` event, one pass at a
+  time), and a call naming the old key reaches the new place.
 
 `npm run perf:circles [-- --people 49 --friends 10 --minutes 1]` (`perf/circles.mjs`): 3 circles, Configuration's
 reads (`circles.list` + each `circles.members`) and the engine's idle CPU while holding, Tibo's engine alone; and

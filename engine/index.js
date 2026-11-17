@@ -18,7 +18,7 @@ const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
 const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags',
   'relate', 'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces', 'redemptions',
-  'peers', 'status', 'isComplete', 'completeFrom', 'types', 'copies', 'rotateKey'])
+  'peers', 'status', 'isComplete', 'completeFrom', 'types', 'copies', 'rotateKey', 'secure', 'trimHistory'])
 const MINE = new Set(['mine.all', 'mine.set'])
 const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join', 'instances.leave'])
 // spec 013: the person's contacts, for a site that declares the `contacts` permission and was allowed it
@@ -37,7 +37,7 @@ const MINE_PREFIX = 'hyperbrowser/site/' // + key + '/' + name: a site's own set
 const MINE_VALUE_MAX = 64 * 1024 // one value, as JSON
 const MINE_SITE_MAX = 1024 * 1024 // all of a site's names and values, as JSON
 const FILTERS = new Set(['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice'])
-const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'helpers']
+const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'helpers', 'moved', 'movedTo', 'renewal'] // the last three: spec 023
 // A site no tab shows, not installed and not the person's own, is left this long after its last tab closes
 // (specs/004-hosting): the same as hypergraph's grace for a closed space's topic, so a tab closed by
 // mistake or a back-and-forth comes back without finding the site's peers again.
@@ -57,6 +57,7 @@ export function start (ipc) {
   let nextSub = 1
   let answering = Promise.resolve()
   let keeping = Promise.resolve() // mine.set one at a time: two at once would each pass the cap
+  let following = Promise.resolve() // spec 023: followMoves one at a time
   let syncing = null
   let people = null // the contacts (spec 013)
   let notes = null // the notifications (spec 016)
@@ -155,6 +156,7 @@ export function start (ipc) {
     if (i !== undefined) idle = i
     sfs = await starting
     sfs.hg.on('devices', () => rpc.emit('devices', {}))
+    sfs.hg.on('spaces', () => { followMoves().catch(() => {}) }) // spec 023: a place renewed on another device
     const list = typeof bundle === 'string' && bundle ? await readBundle(bundle) : null
     for (const a of list?.apps || []) bundled.add(a.key)
     await sweep()
@@ -369,6 +371,9 @@ export function start (ipc) {
   // The handle on one of the app's instances: listed for this app, and the instance itself names this app.
   async function instanceScope (s, app, key) {
     keyOf({ key })
+    const old = key
+    key = current(key) // spec 023: a renewed place's new key
+    if (old !== key && !(await listed(app))[key] && (await listed(app))[old]) await listInstance(app, key, true)
     clearTimeout(s.idle.get(key)) // in use: not closed under this call
     try {
       return await useInstance(s, app, key)
@@ -378,7 +383,10 @@ export function start (ipc) {
   }
 
   async function useInstance (s, app, key) {
-    if (!(await listed(app))[key]) throw error('NOT_ALLOWED', "not one of this app's instances: create or join it first")
+    const list = await listed(app)
+    const now = current(key) // spec 023: renewed: the new place, listed under either key
+    if (!list[key] && !list[now]) throw error('NOT_ALLOWED', "not one of this app's instances: create or join it first")
+    key = now
     if (!s.instances.has(key)) {
       const opening = (async () => {
         const site = await sfs.site(key)
@@ -525,7 +533,49 @@ export function start (ipc) {
     await t.ready() // sync getters (subspaces, status, types) need the space's decisions
     if (method === 'copies') return sfs.hg.copiesOf((args[0] === undefined || args[0] === null ? t : await ownSpace(key, t, args[0])).key) // spec 018
     if (method === 'rotateKey') return plain(await sfs.hg.space(t.key).rotateKey()) // the handle has none; t passed the guard
+    if (method === 'secure') return secure(t, args[0]) // spec 023, likewise; hypergraph lets owners and admins only
+    if (method === 'trimHistory') {
+      const before = args[0]?.before
+      if (typeof before !== 'number' || Number.isNaN(before)) throw error('INVALID_PARAMS', 'trimHistory({ before }): a time in ms')
+      return plain(await sfs.hg.space(t.key).trimHistory({ before }))
+    }
     return plain(await t[method](...args))
+  }
+
+  // spec 023 (hypergraph 027): "Secure this place": a new key now, then the place renewed (`forget`: its history
+  // before now deleted). The app's list follows (followMoves); the page gets the new key.
+  async function secure (t, opts = {}) {
+    if (opts === null || typeof opts !== 'object' || (opts.forget !== undefined && typeof opts.forget !== 'boolean')) throw error('INVALID_PARAMS', 'secure({ forget }): forget is true or false')
+    const fresh = await sfs.hg.space(t.key).secure({ forget: !!opts.forget })
+    await followMoves()
+    return { key: fresh.key }
+  }
+
+  // A place renewed (here or on another device of the person): every app's list names its new key, and a page
+  // still on the old key reaches the new place (useInstance).
+  function current (key) {
+    try { return sfs.hg.space(key).key } catch { return key }
+  }
+
+  // One run at a time: two at once would each see the other's half-written list.
+  function followMoves () {
+    following = following.then(followOnce, followOnce)
+    return following
+  }
+
+  async function followOnce () {
+    if (!sfs) return
+    const settings = await sfs.hg.settings()
+    for (const [name, list] of Object.entries(settings)) {
+      if (!name.startsWith(APP_PREFIX) || !name.endsWith('/instances') || !list) continue
+      const app = name.slice(APP_PREFIX.length, -'/instances'.length)
+      for (const key of Object.keys(list)) {
+        const now = current(key)
+        if (now === key) continue
+        await listInstance(app, now, true) // the new one first: a call meanwhile finds either
+        await listInstance(app, key, false)
+      }
+    }
   }
 
   // spec 018: a key the page names for copies(key): the handle's own space, one of its sub-spaces, or (on the site's

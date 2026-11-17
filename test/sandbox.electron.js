@@ -75,6 +75,8 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     'circles: joining without a click joins nothing',
     "copies: a page can't read another app's instance's copies",
     "rotateKey: a page can't change another app's instance's key",
+    "secure: a page can't renew another app's instance", // spec 023
+    "trimHistory: a page can't trim another app's instance",
     "circles: a click and the person's Not now join nothing"
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
 })
