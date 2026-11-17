@@ -34,7 +34,8 @@
     "release": "node scripts/release.js",
     "test:update": "node scripts/update-check.js",
     "perf": "node --expose-gc perf/notifications.mjs",
-    "perf:circles": "node --expose-gc perf/circles.mjs"
+    "perf:circles": "node --expose-gc perf/circles.mjs",
+    "perf:helper": "node --expose-gc perf/helper.mjs"
   },
   "dependencies": {
     "b4a": "^1.9.0",

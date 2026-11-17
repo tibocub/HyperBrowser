@@ -1,0 +1,21 @@
+# The HyperBrowser helper (docs/helper.md), installed by scripts/helper-install.sh.
+[Unit]
+Description=HyperBrowser helper: keeps circles and the official apps online
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=hyperbrowser
+WorkingDirectory=/opt/hyperbrowser/HyperBrowser
+ExecStart=/usr/bin/env node engine/cli.js helper
+Restart=on-failure
+RestartSec=10
+# SIGTERM closes the engine cleanly (its data written); a minute at most
+TimeoutStopSec=60
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hyperbrowser
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
