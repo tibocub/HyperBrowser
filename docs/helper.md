@@ -19,6 +19,11 @@ Then, from a copy of this repo's `scripts/helper-install.sh`:
 sudo bash helper-install.sh
 ```
 
+Or paste this line directly:
+```bash
+curl -L https://raw.githubusercontent.com/tibocub/HyperBrowser/refs/heads/main/scripts/helper-install.sh | sudo bash
+```
+
 It makes a `hyperbrowser` system user (no login, home `/var/lib/hyperbrowser`), clones HyperBrowser and the
 engine's own dependencies beside it into `/opt/hyperbrowser` (`swarmwire`, `hypergraph`, `SwarmFS`, `hyperDNS`: `file:`
 dependencies, as on a developer's machine; `HB_GITHUB=<url>` clones from elsewhere), runs `npm ci --omit=dev` in
