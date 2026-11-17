@@ -114,6 +114,7 @@ export function start (ipc) {
         notes.setChat(p.chat || null) // spec 016: chats stay online first
         return true
       case 'contacts.me': return people.call('me', [])
+      case 'contacts.setMe': return people.call('setMe', [{ name: p.name, findable: p.findable }]) // spec 020: the helper's name
       case 'contacts.get': return people.call('get', [p.identity])
       case 'contacts.request': return people.call('request', [p.identity, p.name])
       // spec 019: the circles window's Invite contacts… (pages keep site.call and its permission)
