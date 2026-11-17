@@ -666,6 +666,7 @@ async function checkChatLine ({ key, view }, out, tmp) {
 // and after, but the menu's own content). `menu`: an expression for the menu's element, `open`: a script opening it.
 async function moves (run, menu, open) {
   const places = `((m) => [...document.body.querySelectorAll('*')].filter((e) => !(m.contains(e) && !e.matches('summary, [aria-haspopup]'))).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join() }).join('|'))(${menu})`
+  await run('document.fonts.ready.then(() => 0)') // the theme's font loading late moved text (a false "moved")
   const before = await run(places)
   await run(open + '; 0')
   await wait(300)
