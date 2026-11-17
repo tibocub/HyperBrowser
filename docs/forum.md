@@ -60,6 +60,18 @@ offline" under 2 online. **Change key** (`rotateKey()`) shows on a private forum
 public and invite-only forums, not private (encrypted) ones, and its boards are records inside a forum, not spaces
 of their own: so "private boards" have no copies line of their own, and Change key shows on no forum it makes today.
 
+## Secure this place, Trim history (spec 023)
+
+In a forum's **…**, for its owner and admins: **Secure this place…** (a private forum: new keys now, and a new
+address members follow by themselves; a checkbox "Also delete history before now", off by default, with its
+warning) and **Trim history…** (any forum: keep the last N days, weeks, months or years; warned that copies others
+already took can't be recalled). A short line says "Securing…", then "Secured." (plus "Keep HyperBrowser open until
+another admin's device has joined." while that is so, also shown in the **…**); errors in plain words ("Already
+renewed by Ann."). After a ban, a notice suggests **Secure this place** once (dismissable). A page or bookmark on
+the old address opens the forum at its new one; someone left out (banned, removed) sees "You no longer have access
+to this forum". As for Change key, the Forum makes no private forum itself today, so Secure shows on private
+forums made elsewhere only; Trim shows on every forum.
+
 ## Notifications (spec 016)
 
 The forum's `site.json` watches `mention` records naming the person ("mentioned you"); a click opens `#/r/<record>`,

@@ -78,6 +78,18 @@ stop(); off()
 - `hyper.rotateKey()` (spec 018, hypergraph's `rotateKey`): a private space's (or instance's) new content key from
   now on, for a lost device or a suspected leak; by a member who may decide or moderate (`NOT_ALLOWED` otherwise,
   and on a public space). On your own space, sub-spaces and instances only.
+- `hyper.instance(k).secure({ forget? })` (spec 023, hypergraph 027's `secure`): "Secure this place": a new content
+  key now, then the place renewed: new keys and a new address its members follow by themselves; removed and banned
+  people can no longer see who joins, writes or when. `forget: true` also deletes everything written before now. →
+  `{ key }`, the new address. Owners and admins of a private instance (`NOT_ALLOWED` otherwise, and on a public
+  space or a sub-space); `ALREADY_RENEWED` if another admin renewed it first (its message names them). The app's
+  instance list and a page still on the old key follow by themselves (`info().key` is the new one).
+  `hyper.instance(k).trimHistory({ before })` (hypergraph 027): records written before `before` (ms since 1970) are
+  deleted on every member's device and every copy the circles keep; copies others already took can't be recalled.
+  Owners and admins, any instance. `info()` gains `moved`, `movedTo` (null for someone left behind: show "you no
+  longer have access") and `renewal` (`{ from, waiting }`); `status().warnings` has `RENEW_WAITING` while the
+  device that secured it must stay open (until another admin's device has joined). These are site calls on the
+  page's own app's instances only, behind hypergraph's owner/admin checks: no new power for a page.
 - `hyper.circles.join(link, name?)` (spec 018): offers a circle's invite to the person; only HyperBrowser joins, after
   a click on your page and their yes (its notice the first time) → `{ joined: true | false }`. `name` is shown as
   the invite's ("the name comes from the invite"). Known limit: `hyper.instances.join` with a circle's link is

@@ -5,7 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 const METHODS = ['put', 'get', 'edit', 'del', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
-  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info', 'copies', 'rotateKey'] // copies, rotateKey: spec 018
+  'redemptions', 'peers', 'status', 'isComplete', 'completeFrom', 'types', 'info', 'copies', 'rotateKey', 'secure', 'trimHistory'] // copies, rotateKey: spec 018; secure, trimHistory: 023
 const FILTERS = ['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice']
 
 const handlers = new Map() // subscription id -> fn

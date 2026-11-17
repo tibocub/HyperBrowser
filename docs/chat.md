@@ -67,6 +67,10 @@ would join a circle's link as a group and spend its one use.
 online" (`hyper.instance(k).copies()`, refreshed on its `copies` event) when your circles keep it, with "Few copies
 online: people may not get this while you're offline" under 2 online; its owner gets **Change key**
 (`rotateKey()`: a new key from now on, for a lost device or a suspected leak); it floats like the message menu.
+In a **group** (spec 023), its owner and admins also get **Secure this place…** (new keys and a new address, an
+optional "Also delete history before now") and **Trim history…** (keep the last N days/weeks/months/years); a
+removal or a ban suggests Secure once; a member left out sees "You no longer have access to this group". Not in a
+direct conversation: it belongs to the two people's contacts entry.
 Contacts' **…** per friend (spec 019: a button set apart from **Message**, its menu floating under it, moving
 nothing; Enter or Space opens it, Tab reaches its items, a choice, a click outside or Escape closes it, a refresh
 keeps it open) lists **Invite to "<circle>"** per circle (`contacts.circles()`: those you own or are admin of), or

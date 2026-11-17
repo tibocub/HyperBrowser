@@ -22,6 +22,26 @@ export function copiesLine ({ wanted, kept, online }) {
 }
 export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspected leak'
 
+// spec 023 (hypergraph 027): Secure this place, Trim history. The same texts in Chat.
+export const SECURE_TEXT = 'New keys now, and a new address its members follow by themselves: the people removed or banned can no longer see who joins, who posts or when. What they could read before, they keep.'
+export const FORGET_TEXT = "Also delete everything written before now, on every member's device. Copies others already took can't be recalled."
+export const TRIM_TEXT = "Older posts are deleted on every member's device and every copy your circles keep. Copies others already took can't be recalled."
+export const SUGGEST_SECURE = "They can no longer read what comes next. To also hide who joins and posts from now on: Secure this place."
+export const RENEW_WAITING = "Keep HyperBrowser open until another admin's device has joined."
+const DAY = 24 * 3600e3
+const UNITS = { days: DAY, weeks: 7 * DAY, months: 30 * DAY, years: 365 * DAY }
+// "keep the last n weeks": the time before which posts go
+export const trimBefore = (n, unit, now = Date.now()) => now - n * UNITS[unit]
+// An error of secure() or trimHistory(), in plain words (`nameOf`: a member's name from their key).
+export function renewError (err, nameOf = () => null) {
+  if (err.code === 'ALREADY_RENEWED') {
+    const key = (String(err.message).match(/[ybndrfg8ejkmcpqxot1uwisza345h769]{52}/) || [])[0]
+    return 'Already renewed by ' + ((key && nameOf(key)) || 'someone else') + '.'
+  }
+  if (err.code === 'NOT_ALLOWED') return 'Only owners and admins can do this.'
+  return err.message
+}
+
 export function forum (hyper) {
   // also: the author of what a reply answers (spec 017 R6: a reply notifies them), unless it is oneself
   async function writeMentions (on, text, also = null) {
@@ -97,6 +117,9 @@ export function forum (hyper) {
     unban: (identity) => hyper.moderateAction('unban', identity),
     setRole: (identity, role) => hyper.setRole(identity, role),
     invite: ({ role = 'member', uses = 1 } = {}) => hyper.createInvite({ role, uses }),
+    // spec 023: owners and admins of a private forum; resolves to { key } of the secured forum
+    secure: ({ forgetHistory = false } = {}) => hyper.secure({ forget: forgetHistory }),
+    trimHistory: (days) => hyper.trimHistory({ before: trimBefore(days, 'days') }),
 
     // --- the person's own (on their devices, never in the forum) ---
     mine: () => hyper.mine.all(),

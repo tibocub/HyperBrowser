@@ -537,7 +537,7 @@ async function checkOwnCounts (a, b, own, other, pass) {
   await bridge(a.webContents, { op: 'off', id: sub.id })
 }
 
-// spec 018: copies and rotateKey reach the page's own app's instances only (each check names B's site with B's
+// spec 018: copies and rotateKey (spec 023: secure and trimHistory) reach the page's own app's instances only (each check names B's site with B's
 // private instance, which the control run takes for the page's site); a circle is joined only through HyperBrowser.
 async function checkCircles ([a, b], out) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
@@ -545,6 +545,8 @@ async function checkCircles ([a, b], out) {
   const ask = (method) => bridge(a.webContents, { op: 'call', site: b.key, instance: theirs.key, method, args: [] }).then(() => 'done', (e) => e.code)
   pass("copies: a page can't read another app's instance's copies", (await ask('copies')) === 'NOT_ALLOWED')
   pass("rotateKey: a page can't change another app's instance's key", (await ask('rotateKey')) === 'NOT_ALLOWED')
+  pass("secure: a page can't renew another app's instance", (await ask('secure')) === 'NOT_ALLOWED') // spec 023
+  pass("trimHistory: a page can't trim another app's instance", (await ask('trimHistory')) === 'NOT_ALLOWED')
   const circle = await rpc.request('circles.create', { name: 'Self-test' })
   const { link } = await rpc.request('circles.invite', { key: circle.key })
   const asked = await bridge(a.webContents, { op: 'call', method: 'circles.join', args: [link] }).then(() => 'joined', (e) => e.code)
@@ -711,6 +713,15 @@ async function checkMenus (win, views, out, tmp, chat) {
   const fm = "document.querySelector('details.menu')"
   const shown = await waitFor(() => forum.run(`!!${fm}`), 30000)
   pass('forum: a forum\'s "…" opens without moving anything', shown && !(await moves(forum.run, fm, `${fm}.querySelector('summary').click()`)))
+  // spec 023: its owner's "…" on a private forum: Secure this place… (a box with the history checkbox off) and Trim history…
+  const button = (label) => `[...document.querySelectorAll('details.menu button')].find((b) => b.textContent === ${JSON.stringify(label)})`
+  const both = await waitFor(() => forum.run(`!!${button('Secure this place…')} && !!${button('Trim history…')}`), 20000)
+  pass('forum: its owner\'s "…" has Secure this place… and Trim history…', both)
+  await forum.run(`${button('Secure this place…')}.click(); 0`)
+  pass('forum: Secure this place… asks first, "Also delete history before now" off', await waitFor(() => forum.run("!!document.querySelector('.confirm-box input[type=checkbox]') && !document.querySelector('.confirm-box input[type=checkbox]').checked"), 5000))
+  await forum.run("[...document.querySelectorAll('.confirm-box button')].find((b) => b.textContent === 'Cancel').click(); 0")
+  await forum.run(`${button('Trim history…')}.click(); 0`)
+  pass('forum: Trim history… warns that copies taken can\'t be recalled', await waitFor(() => forum.run("!!document.querySelector('.confirm-box') && document.querySelector('.confirm-box').textContent.includes('be recalled')"), 5000))
 }
 
 // The frame check: the demo site in a frame of its own, then where everything is.

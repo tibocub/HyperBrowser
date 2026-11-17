@@ -1,7 +1,7 @@
 // Chat's page (spec 013): conversations on the left, the open one on the right, redrawn from live views. No
 // stylesheet: HyperBrowser's default theme, with a few inline layout rules. Data: lib/chat.js.
 // Spec 017: unread numbers in the list (HyperBrowser's counts), a "New messages" line, a "…" menu per message.
-import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY } from './lib/chat.js'
+import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/chat.js'
 import { keepScroll, newLine } from './lib/scroll.js'
 
 const hyper = window.hyper
@@ -56,8 +56,10 @@ function open (key) {
   history.replaceState(null, '', '?instance=' + key)
   hyper.notifications?.viewing(key).catch(() => {}) // spec 016: shown here, so not notified
   // unread: the count when it opened (read once shown); line: where "New messages" goes, once the messages are in
-  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null }
+  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null, gone: false, waiting: false, confirm: null, forget: false, trimN: 6, trimUnit: 'months' }
   const v = view
+  // spec 023: secured without this person (no new address), or secured here (waiting for another admin's device)
+  c.info(key).then((i) => { if (view === v) { v.gone = !!i.moved && !i.movedTo; v.waiting = !!i.renewal?.waiting; draw() } }, () => {})
   const copies = () => c.copies(key).then((x) => { if (view === v) { v.copies = x; draw() } }, () => {}) // spec 018
   const names = () => c.names(key).then((n) => { if (view === v) { v.names = n; draw() } }, () => {})
   const members = () => {
@@ -99,7 +101,7 @@ function draw () {
       convs.length ? null : h('p', { class: 'small' }, 'No conversations yet: become friends with someone in Contacts.'),
       h('form', { onsubmit: newGroup }, h('input', { name: 'name', placeholder: 'New group name', maxlength: 200 }), ' ', h('button', {}, 'Create'))),
     h('main', { style: 'flex:1; min-width:0' }, notice ? h('p', { role: 'alert' }, notice) : null,
-      view && conv ? conversation(conv) : h('p', {}, 'Pick a conversation.'))))
+      view && conv ? (view.gone ? h('p', {}, 'You no longer have access to this group: it was secured, and you were not taken along.') : conversation(conv)) : h('p', {}, 'Pick a conversation.'))))
   const list = root.querySelector('[data-key]')
   if (list) list.scrollTop = top ?? list.scrollHeight
   const line = list?.querySelector('.new-line')
@@ -151,13 +153,58 @@ const DROP = 'position:absolute; top:100%; left:0; z-index:10; display:flex; fle
 function info () {
   const line = view.copies && copiesLine(view.copies)
   const owner = view.role === 'owner'
-  if (!line && !owner) return null
+  const admin = !convs.find((x) => x.key === view.key)?.direct && (owner || view.role === 'admin') // spec 023: groups only
+  if (!line && !owner && !admin && !view.waiting) return null
   return h('details', { style: MENU + '; font-size:initial; font-weight:normal', open: view.menu === 'info' ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = 'info'; else if (view.menu === 'info') view.menu = null } },
     h('summary', { 'aria-label': 'About this conversation', style: 'display:inline; cursor:pointer; list-style:none' }, '…'),
     h('div', { style: DROP + '; width:280px; white-space:normal' },
       line ? h('p', { class: 'copies', style: 'margin:0' }, line.text) : null,
       line?.warn ? h('p', { class: 'copies-warn', role: 'note', style: 'margin:0' }, line.warn) : null,
-      owner ? h('p', { style: 'margin:0' }, h('button', { onclick: () => act(async () => { await c.changeKey(view.key); notice = 'Key changed.' }) }, 'Change key'), ' ', h('span', { class: 'small' }, CHANGE_KEY)) : null))
+      owner ? h('p', { style: 'margin:0' }, h('button', { onclick: () => act(async () => { await c.changeKey(view.key); notice = 'Key changed.' }) }, 'Change key'), ' ', h('span', { class: 'small' }, CHANGE_KEY)) : null,
+      admin ? h('button', { onclick: () => { view.confirm = 'secure'; view.forget = false; draw() } }, 'Secure this place…') : null,
+      admin ? h('button', { onclick: () => { view.confirm = 'trim'; draw() } }, 'Trim history…') : null,
+      view.waiting ? h('p', { role: 'note', style: 'margin:0' }, RENEW_WAITING) : null,
+      view.confirm === 'secure' ? h('div', { role: 'alert' }, h('p', { style: 'margin:0' }, SECURE_TEXT),
+        h('label', {}, h('input', { type: 'checkbox', checked: view.forget ? '' : null, onchange: (e) => { view.forget = e.target.checked; draw() } }), ' Also delete history before now'),
+        view.forget ? h('p', { role: 'note', style: 'margin:0' }, FORGET_TEXT) : null,
+        h('button', { onclick: secure }, 'Secure'), ' ', h('button', { onclick: () => { view.confirm = null; draw() } }, 'Cancel')) : null,
+      view.confirm === 'trim' ? h('div', { role: 'alert' }, h('p', { style: 'margin:0' }, 'Keep the last ',
+        h('input', { type: 'number', min: 1, max: 1000, value: view.trimN, 'aria-label': 'How many', style: 'width:4em', oninput: (e) => { view.trimN = Math.max(1, Number(e.target.value) || 1) } }), ' ',
+        h('select', { 'aria-label': 'Unit', onchange: (e) => { view.trimUnit = e.target.value } }, ...['days', 'weeks', 'months', 'years'].map((u) => h('option', { value: u, selected: view.trimUnit === u ? '' : null }, u)))),
+        h('p', { role: 'note', style: 'margin:0' }, TRIM_TEXT),
+        h('button', { onclick: trim }, 'Trim'), ' ', h('button', { onclick: () => { view.confirm = null; draw() } }, 'Cancel')) : null))
+}
+
+// spec 023: a short progress line, then the group at its new address (or the error in plain words)
+async function secure () {
+  const forget = view.forget
+  view.confirm = null
+  notice = 'Securing…'
+  draw()
+  try {
+    const r = await c.secure(view.key, { forgetHistory: forget })
+    const st = await c.status(r.key).catch(() => null)
+    convs = await c.conversations()
+    notice = 'Secured.' + (st?.warnings?.some((w) => w.code === 'RENEW_WAITING') ? ' ' + RENEW_WAITING : '')
+    open(r.key)
+  } catch (err) {
+    notice = renewError(err, (k) => view?.names.get(k) || null)
+    draw()
+  }
+}
+
+async function trim () {
+  const before = trimBefore(view.trimN, view.trimUnit)
+  view.confirm = null
+  notice = 'Trimming…'
+  draw()
+  try {
+    await c.trimHistory(view.key, before)
+    notice = 'Trimmed: messages from before ' + new Date(before).toLocaleDateString() + ' are deleted.'
+  } catch (err) {
+    notice = renewError(err)
+  }
+  draw()
 }
 
 // One discreet "…" per message: its Edit and Delete (a <details>: Enter or Space opens it). Kept open across redraws.
@@ -183,8 +230,8 @@ function group (conv) {
           Object.entries(ROLES).map(([r, label]) => h('option', { value: r, selected: r === m.role ? '' : null }, label)))
         : (ROLES[m.role] || m.role),
       mod && m.role !== 'owner' && m.identity !== me.identity
-        ? [' ', h('button', { class: 'small', onclick: () => act(() => c.removeMember(view.key, m.identity)) }, 'Remove'), ' ',
-            h('button', { class: 'small', onclick: () => act(() => c.ban(view.key, m.identity)) }, 'Ban')]
+        ? [' ', h('button', { class: 'small', onclick: () => act(async () => { await c.removeMember(view.key, m.identity); suggest() }) }, 'Remove'), ' ',
+            h('button', { class: 'small', onclick: () => act(async () => { await c.ban(view.key, m.identity); suggest() }) }, 'Ban')]
         : null))),
     INVITERS.has(view.role) && addable.length
       ? h('form', { onsubmit: (e) => { e.preventDefault(); const f = addable.find((x) => x.identity === e.target.who.value); act(() => c.add(view.key, conv.name, f)) } },
@@ -194,6 +241,14 @@ function group (conv) {
 }
 
 // --- actions ---
+
+// spec 023 FR-002: after a removal or a ban in a group, Secure this place is suggested once (its owner, admins)
+const suggested = new Set()
+function suggest () {
+  if (suggested.has(view.key) || !['owner', 'admin'].includes(view.role) || convs.find((x) => x.key === view.key)?.direct) return
+  suggested.add(view.key)
+  notice = SUGGEST_SECURE
+}
 
 async function act (fn) {
   notice = ''

@@ -1,7 +1,7 @@
 // The forum's page (spec 006): one page, hash routes, redrawn from live views. The data: lib/forum.js; what is
 // derived: lib/view.js; post text: lib/text.js; icons: lib/icon.js. The shell draws the frame; this, the content.
 // Spec 017: on the left, your forums (dots, numbers, join, leave), then this forum's boards (dots).
-import { forum, watch, people, LIMITS, MODERATORS, ADMINS, copiesLine, CHANGE_KEY } from './lib/forum.js'
+import { forum, watch, people, LIMITS, MODERATORS, ADMINS, copiesLine, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/forum.js'
 import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, ago, boardTree, SORTS, addNew, pruneUnread, without } from './lib/view.js'
 import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/text.js'
 import * as icon from './lib/icon.js'
@@ -22,7 +22,7 @@ let peers = 0
 let notice = ''
 let title = 'Forum' // the forum's name, once known
 const drafts = {} // form key → { text, title, picks }
-const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null, joining: null, leaveWarning: null }
+const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null, joining: null, leaveWarning: null, forget: false, trimN: 6, trimUnit: 'months', suggest: null, suggested: new Set() }
 const opened = {} // thread id → the ids of its replies new when it was opened ("new" marks)
 let news = { cursor: null, unread: {} } // spec 017 R5: what is new, found with since() (lib/forum.js catchUp)
 let forums = [] // the person's forums (this app's instances)
@@ -48,6 +48,11 @@ async function start () {
   if (!hyper) return startPage()
   f = forum(hyper)
   me = await f.me() // the identity question, once per site
+  if (me.moved && !me.movedTo) { // spec 023: secured without this person (removed or banned): no new address
+    app.replaceChildren(windowBox(me.name || 'Forum', h('p', { class: 'pad' }, 'You no longer have access to this forum: it was secured, and you were not taken along.')))
+    return
+  }
+  if (me.key !== at) history.replaceState(null, '', '?instance=' + me.key + location.hash) // secured: its new address
   title = (await hyper.info()).name || title
   document.title = title
   mine = await f.mine()
@@ -138,6 +143,8 @@ function forumsColumn () {
         collapsed ? null : h('details', { class: 'menu', open: ui.menu === i.key ? '' : null, ontoggle: (e) => { if (e.target.open) { if (ui.menu !== i.key) readAbout(i); ui.menu = i.key } else if (ui.menu === i.key) ui.menu = null } },
           h('summary', { 'aria-label': 'Menu of ' + label }, '…'),
           h('div', { class: 'drop' }, ...aboutLines(i), h('button', { class: 'link', onclick: () => askLeave(i) }, 'Leave')))),
+      ui.confirm === 'secure' + i.key ? secureBox(i) : null,
+      ui.confirm === 'trim' + i.key ? trimBox(i) : null,
       ui.confirm === 'leave' + i.key ? h('div', { class: 'confirm-box small', role: 'alert' },
         h('p', {}, ui.leaveWarning || 'Leave ' + label + '? Its posts stay with its members; your notifications, unread marks and follows here go.'),
         h('button', { class: 'link', onclick: () => leave(i) }, 'Leave'), h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'Cancel')) : null)
@@ -152,8 +159,8 @@ function forumsColumn () {
 // its owner has. Read when its "…" opens.
 async function readAbout (i) {
   const x = window.hyper.instance(i.key)
-  const [copies, info] = await Promise.all([x.copies().catch(() => null), x.info().catch(() => null)])
-  about[i.key] = { copies, private: !!info?.private }
+  const [copies, info, st] = await Promise.all([x.copies().catch(() => null), x.info().catch(() => null), x.status().catch(() => null)])
+  about[i.key] = { copies, private: !!info?.private, waiting: !!st?.warnings?.some((w) => w.code === 'RENEW_WAITING') } // waiting: spec 023
   schedule()
 }
 
@@ -165,8 +172,79 @@ function aboutLines (i) {
     line?.warn ? h('p', { class: 'small copies-warn', role: 'note' }, line.warn) : null,
     a?.private && i.role === 'owner'
       ? h('p', { class: 'small' }, h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.instance(i.key).rotateKey(); notice = 'Key changed.' }) }, 'Change key'), ' ', CHANGE_KEY)
-      : null
+      : null,
+    // spec 023: owners and admins; Secure on a private forum, Trim on any
+    a?.private && ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'secure' + i.key; ui.forget = false; schedule() } }, 'Secure this place…') : null,
+    ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'trim' + i.key; schedule() } }, 'Trim history…') : null,
+    a?.waiting ? h('p', { class: 'small', role: 'note' }, RENEW_WAITING) : null
   ]
+}
+
+// spec 023: "Secure this place" (new keys now, a new address members follow; optionally the history before now
+// deleted) and "Trim history" (keep the last N days/weeks/months/years), each confirmed with its warning.
+function secureBox (i) {
+  return h('div', { class: 'confirm-box small', role: 'alert' },
+    h('p', {}, SECURE_TEXT),
+    h('label', {}, h('input', { type: 'checkbox', checked: ui.forget ? '' : null, onchange: (e) => { ui.forget = e.target.checked; schedule() } }), ' Also delete history before now'),
+    ui.forget ? h('p', { role: 'note' }, FORGET_TEXT) : null,
+    h('button', { class: 'link', onclick: () => secure(i) }, 'Secure'), h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'Cancel'))
+}
+
+function trimBox (i) {
+  return h('div', { class: 'confirm-box small', role: 'alert' },
+    h('p', {}, 'Keep the last ',
+      h('input', { type: 'number', min: 1, max: 1000, value: ui.trimN, 'aria-label': 'How many', style: 'width:4em', oninput: (e) => { ui.trimN = Math.max(1, Number(e.target.value) || 1) } }), ' ',
+      h('select', { 'aria-label': 'Unit', onchange: (e) => { ui.trimUnit = e.target.value } }, ...['days', 'weeks', 'months', 'years'].map((u) => h('option', { value: u, selected: ui.trimUnit === u ? '' : null }, u)))),
+    h('p', { role: 'note' }, TRIM_TEXT),
+    h('button', { class: 'link', onclick: () => trim(i) }, 'Trim'), h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'Cancel'))
+}
+
+async function secure (i) {
+  ui.confirm = null
+  notice = 'Securing ' + (i.name || 'this forum') + '…'
+  schedule()
+  try {
+    const r = await window.hyper.instance(i.key).secure({ forget: ui.forget })
+    const st = await window.hyper.instance(r.key).status().catch(() => null)
+    const waiting = !!st?.warnings?.some((w) => w.code === 'RENEW_WAITING')
+    notice = 'Secured.' + (waiting ? ' ' + RENEW_WAITING : '')
+    if (i.key === at) location.search = '?instance=' + r.key
+    else await loadForums()
+  } catch (err) {
+    notice = renewError(err, (k) => names.get(k)?.name || null)
+  }
+  schedule()
+}
+
+async function trim (i) {
+  ui.confirm = null
+  const before = trimBefore(ui.trimN, ui.trimUnit)
+  notice = 'Trimming…'
+  schedule()
+  try {
+    await window.hyper.instance(i.key).trimHistory({ before })
+    notice = 'Trimmed: posts from before ' + new Date(before).toLocaleDateString() + ' are deleted.'
+  } catch (err) {
+    notice = renewError(err)
+  }
+  schedule()
+}
+
+// spec 023 FR-002: after a ban, Secure this place is suggested once (a private forum, its owner or an admin).
+async function suggestSecure () {
+  if (!ADMINS.has(me.role) || ui.suggested.has(at)) return
+  const info = await hyper.info().catch(() => null)
+  if (!info?.private) return
+  ui.suggested.add(at)
+  ui.suggest = at
+}
+
+function suggestion () {
+  if (ui.suggest !== at) return null
+  const i = forums.find((x) => x.key === at) || { key: at, name: title, role: me.role }
+  return h('p', { class: 'notice', role: 'note' }, SUGGEST_SECURE, ' ',
+    h('button', { class: 'link', onclick: () => { ui.suggest = null; ui.confirm = 'secure' + at; ui.menu = at; readAbout(i); schedule() } }, 'Secure this place…'), ' ',
+    h('button', { class: 'link', onclick: () => { ui.suggest = null; schedule() } }, 'Dismiss'))
 }
 
 // Q4: an owner may leave, warned: the forum lives on while members keep it; without an admin, nobody can make boards
@@ -335,7 +413,7 @@ function draw () {
   const r = route()
   const page = { b: frontPage, t: threadPage, new: newThreadPage, mentions: mentionsPage, you: youPage, members: membersPage, mod: moderationPage, board: boardPage }[r.page] || frontPage
   app.replaceChildren(h('div', { class: 'layout' }, forumsColumn(), boardsColumn(r),
-    h('div', { class: 'desk' }, bar(), notice ? h('p', { class: 'notice', role: 'alert' }, notice, ' ', h('button', { class: 'link', onclick: () => { notice = ''; schedule() } }, 'Dismiss')) : null, nameBanner(),
+    h('div', { class: 'desk' }, bar(), notice ? h('p', { class: 'notice', role: 'alert' }, notice, ' ', h('button', { class: 'link', onclick: () => { notice = ''; schedule() } }, 'Dismiss')) : null, suggestion(), nameBanner(),
       ui.joining ? joinBox() : null, page(r.id))))
   if (active) {
     const el = app.querySelector(`[data-k="${active}"]`)
@@ -759,7 +837,7 @@ function membersPage () {
         mod && !m.you && m.role !== 'owner'
           ? (m.banned
               ? h('button', { class: 'link', onclick: () => act(async () => { await f.unban(m.identity); await loadMembers() }) }, 'Unban')
-              : confirmButton('ban' + m.identity, 'Ban', () => act(async () => { await f.ban(m.identity, 'banned from the forum'); await loadMembers() })))
+              : confirmButton('ban' + m.identity, 'Ban', () => act(async () => { await f.ban(m.identity, 'banned from the forum'); await loadMembers(); await suggestSecure() })))
           : null)))),
     status(`${list.length} members`, online()))
 }

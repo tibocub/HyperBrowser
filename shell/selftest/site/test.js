@@ -13,8 +13,8 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // contacts (only with the permission), people: through HyperBrowser (spec 013); apps: the same (spec 014)
 const API = ['apps', 'circles', 'completeFrom', 'contacts', 'copies', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
   'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
-  'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'setRole',
-  'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'types', 'unrelate', 'untag'] // since: spec 017; circles, copies, rotateKey: 018
+  'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'secure', 'setRole',
+  'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'trimHistory', 'types', 'unrelate', 'untag'] // since: spec 017; circles, copies, rotateKey: 018; secure, trimHistory: 023
 
 const common = [
   ['no Node: require/process/module/Buffer undefined', async () =>
