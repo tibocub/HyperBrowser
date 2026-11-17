@@ -73,7 +73,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .menu { position: relative; }
 .menu summary { list-style: none; cursor: pointer; padding: 0 8px; }
 .menu summary::-webkit-details-marker { display: none; }
-.menu[open] > .link { position: absolute; right: 0; z-index: 1; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.menu > .drop { position: absolute; right: 0; top: 100%; z-index: 1; width: max-content; max-width: 260px; padding: 2px 8px; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); } /* spec 019: floats, moves nothing */
+.menu > .drop p { margin: 2px 0; }
 .confirm-box { margin: 4px 8px; padding: 4px 8px; border: 1px solid var(--ink); }
 .confirm-box p { margin: 0 0 4px; }
 .add { margin: 8px 8px 0; }

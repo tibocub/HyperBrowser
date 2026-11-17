@@ -43,12 +43,14 @@ Publishing again sends the edited pages to everyone; Chat's new record types rea
   `sites/chat/lib/scroll.js` `newLine`), in view; else it opens at the latest message. Every conversation, group or
   direct, reads oldest at the top.
 - **One "…" per message** (spec 017): your own messages' Edit and Delete (a moderator's Delete) behind it; a
-  `<details>`, opened with Enter or Space.
+  `<details>`, opened with Enter or Space. Its content floats under it and moves nothing (spec 019); a click outside
+  or Escape closes it.
 - No stylesheet in either app: HyperBrowser's default theme.
 
 ## Circle invites (spec 018)
 
-A friend is invited to a circle from Contacts (… → **Invite to circle ▸ <circle>**): the engine
+A friend is invited to a circle from Contacts (… → **Invite to "<circle>"**) or from HyperBrowser's circles window
+(… → **Invite contacts…**, spec 019): the engine
 (`contacts.inviteToCircle(identity, circle)`) writes a `message` in your direct conversation with them, with two
 fields added to Chat's `message` type (permanent once published, additions only):
 
@@ -56,7 +58,7 @@ fields added to Chat's `message` type (permanent once published, additions only)
 - `circleName` (string): the circle's name as you see it.
 
 Its `text` is `Join my circle "<name>": <link>`, so an older Chat shows the plain link. This Chat shows a
-**Join "<name>"** button instead, which calls `hyper.circles.join(link, name)`: HyperBrowser's own question, never a
+**Accept <sender>'s invitation to "<name>"** button instead (spec 019; the sender as Chat names them), which calls `hyper.circles.join(link, name)`: HyperBrowser's own question, never a
 join by the page. A conversation whose owner hasn't opened this Chat yet has the old `message` type and refuses the
 new fields: the engine then writes the text only. Chat's `invite` type (group invites) isn't reused: an older Chat
 would join a circle's link as a group and spend its one use.
@@ -64,8 +66,11 @@ would join a circle's link as a group and spend its one use.
 **Copies and Change key** (spec 018): a conversation's **…** (next to its name) says "Kept by N of 5 copies, M
 online" (`hyper.instance(k).copies()`, refreshed on its `copies` event) when your circles keep it, with "Few copies
 online: people may not get this while you're offline" under 2 online; its owner gets **Change key**
-(`rotateKey()`: a new key from now on, for a lost device or a suspected leak). Contacts' **…** per friend lists
-**Invite to circle ▸** your circles (`contacts.circles()`: those you own or are admin of).
+(`rotateKey()`: a new key from now on, for a lost device or a suspected leak); it floats like the message menu.
+Contacts' **…** per friend (spec 019: a button set apart from **Message**, its menu floating under it, moving
+nothing; Enter or Space opens it, Tab reaches its items, a choice, a click outside or Escape closes it, a refresh
+keeps it open) lists **Invite to "<circle>"** per circle (`contacts.circles()`: those you own or are admin of), or
+"No circle to invite to". Forum's "…" per forum floats the same way.
 
 ## Notifications (spec 016)
 

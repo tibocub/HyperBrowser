@@ -128,6 +128,8 @@ test('the contacts permission: declared, asked once, refused after a no; none fo
   t.is(await codeOf(e.rpc.request('site.on', { key, event: 'contacts' })), 'NEEDS_PERMISSION', 'the event too')
   await e.rpc.request('site.permit', { key, permission: 'contacts', allow: false })
   t.is(await codeOf(list()), 'NOT_ALLOWED', 'after a no')
+  // spec 019: the shell's own contacts.list and contacts.inviteToCircle change nothing for a page
+  t.is(await codeOf(e.rpc.request('site.call', { key, method: 'contacts.inviteToCircle', args: ['y'.repeat(52), 'y'.repeat(52)] })), 'NOT_ALLOWED', 'inviteToCircle too, after a no')
   await e.rpc.request('site.permit', { key, permission: 'contacts', allow: true })
   t.alike(await list(), [], 'after a yes')
 
@@ -144,6 +146,7 @@ test('the contacts permission: declared, asked once, refused after a no; none fo
   t.is(sent.state, 'outgoing')
   t.is((await e.rpc.request('contacts.get', { identity: other })).chat, sent.chat)
   t.is(await e.rpc.request('contacts.get', { identity: key }), null)
+  t.alike((await e.rpc.request('contacts.list')).map((x) => x.state), ['outgoing'], "the shell's contacts.list (spec 019)")
 })
 
 test('instances.create { private }: a private instance; not public and private at once', async (t) => {

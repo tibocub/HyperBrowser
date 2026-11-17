@@ -20,6 +20,9 @@ export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspect
 // spec 018: a circle's invite in a message (docs/chat.md: `circle`, `circleName`), or null
 export const circleOf = (m) => typeof m.circle === 'string' && m.circle.startsWith('hg:') ? { link: m.circle, name: m.circleName || 'a circle' } : null
 
+// spec 019: the invite's button, naming who invites (as Chat shows them) and to what
+export const acceptLabel = (who, circle) => `Accept ${who}'s invitation to "${circle}"`
+
 const need = (ok, message) => { if (!ok) throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }) }
 
 export function chat (hyper) {

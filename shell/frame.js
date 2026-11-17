@@ -7,7 +7,7 @@ import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeIma
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { parseAddress, shortKey, upsert, move, remove, checkShare, gb } from './model.js'
+import { parseAddress, shortKey, upsert, move, remove, checkShare, gb, joinError, inviteRows, invitedLine } from './model.js'
 import { startTray, hasTray } from './tray.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -20,7 +20,6 @@ const DEV = !app.isPackaged // devtools: F12, Ctrl+Shift+I
 const NOTICE = 'HyperBrowser keeps running in the tray to host your sites; turn this off in HyperBrowser ▾'
 // spec 018: the circles' calls the frame page may make (the engine's own, passed as they are)
 const CIRCLES = new Set(['circles.list', 'circles.members', 'circles.invite', 'circles.rename', 'circles.setRole', 'circles.remove', 'circles.leave', 'holding.get', 'holding.set'])
-const USED = new Set(['INVITE_EXPIRED', 'INVITE_USED_UP', 'INVITE_REVOKED'])
 
 // The frame's pixel icons (spec 008): one PNG a glyph in shell/icons/, dark pixels are the glyph (white or
 // transparent around). Sent to the frame as SVG paths, one 1×1 run a row, so they keep currentColor.
@@ -363,21 +362,37 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   }
 
   // A circle's invite from a page (Chat's Join button, main.js asked): the notice the first time, else the person's
-  // yes; then the join. The name comes from the page: said so. → { joined }
-  async function joinCircle (link, name) {
-    show()
+  // yes; then the join. The name comes from the page: said so. pasted (spec 019, the circles window's Join with a
+  // link…): pasting was the yes, only the notice; errors go back to the window. → { joined, name?, error? }
+  async function joinCircle (link, name, { pasted = false } = {}) {
+    if (!pasted) show()
     const named = name ? `"${name.slice(0, 64)}"` : 'this circle'
     const first = !data.settings.circleNoticed
-    if (first ? !(await circleNotice()) : (await dialog.showMessageBox(win, { type: 'question', buttons: ['Join', 'Cancel'], defaultId: 0, cancelId: 1, message: `Join ${named}?`, detail: 'Your computer will keep copies of its people\'s conversations and boards. The name comes from the invite: you see the real one once in.' })).response !== 0) return { joined: false }
+    if (first ? !(await circleNotice()) : !pasted && (await dialog.showMessageBox(win, { type: 'question', buttons: ['Join', 'Cancel'], defaultId: 0, cancelId: 1, message: `Join ${named}?`, detail: 'Your computer will keep copies of its people\'s conversations and boards. The name comes from the invite: you see the real one once in.' })).response !== 0) return { joined: false }
     try {
       const c = await rpc.request('circles.join', { link })
-      if (!fwc.isDestroyed()) fwc.send('frame-circles', { open: true, note: `You joined "${c.name}".` })
-      return { joined: true }
+      if (!pasted && !fwc.isDestroyed()) fwc.send('frame-circles', { open: true, note: `You joined "${c.name}".` })
+      return { joined: true, name: c.name }
     } catch (err) {
-      const said = USED.has(err.code) ? 'This invite was already used or has expired' : err.code === 'CIRCLE_FULL' ? 'This circle is full (50)' : err.message
-      await dialog.showMessageBox(win, { type: 'warning', message: 'Could not join', detail: said })
+      if (pasted) return { joined: false, error: joinError(err) }
+      await dialog.showMessageBox(win, { type: 'warning', message: 'Could not join', detail: joinError(err) })
       return { joined: false }
     }
+  }
+
+  // spec 019: Invite contacts…: the person's friends, those already in the circle marked
+  async function invitees (key) {
+    const [friends, members] = await Promise.all([rpc.request('contacts.list'), rpc.request('circles.members', { key })])
+    return inviteRows(friends, members)
+  }
+  // Each ticked friend their own one-use invite in Chat, one at a time (each makes an invite in the circle) → the line
+  async function inviteContacts (key, friends) {
+    const results = []
+    for (const f of Array.isArray(friends) ? friends : []) {
+      const error = await rpc.request('contacts.inviteToCircle', { identity: f.identity, circle: key }).then(() => undefined, (err) => err.message)
+      results.push({ name: String(f.name), error })
+    }
+    return invitedLine(results)
   }
 
   async function createCircle (name) {
@@ -449,6 +464,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       case 'cover': cover = !!a.full; layout(); return { result: true }
       // spec 018: Configuration's Circles and the circles window
       case 'circles.create': return createCircle(a.name)
+      case 'circles.invitees': return invitees(a.key).then((result) => ({ result }), (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
+      case 'circles.inviteContacts': return inviteContacts(a.key, a.friends).then((result) => ({ result }))
+      case 'circles.join': return joinCircle(typeof a.link === 'string' ? a.link.trim() : '', null, { pasted: true }).then((result) => ({ result }))
       case 'share.check': return rpc.request('holding.get').then((h) => { const r = checkShare(a.text, h); return r.error ? { error: { code: 'INVALID_PARAMS', message: r.error } } : { result: r } }, (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
       // spec 016: the list's rows and the Configuration page
       case 'notify.open': {

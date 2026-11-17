@@ -509,7 +509,7 @@ async function drawCircles () {
       const decides = DECIDERS.includes(c.role)
       li.append(el('span', 'grow', c.name || short(c.key)), el('span', 'dim', c.members + (c.members === 1 ? ' member, ' : ' members, ') + c.holders + ' holding'),
         more('More for ' + (c.name || 'this circle'), [
-          ...(decides ? [['Copy invite link', () => invite(c)]] : []),
+          ...(decides ? [['Copy invite link', () => invite(c)], ['Invite contacts…', () => inviteContacts(c)]] : []),
           ['Members', () => members(c)],
           ...(decides ? [['Rename', () => rename(c)]] : []),
           ['Leave', () => askLeave(c)]
@@ -528,6 +528,51 @@ $('cl-create').onclick = async () => {
   $('cl-name').value = ''
   clShow(line('"' + name + '" made.' + (r.result.holding.on ? '' : ' Your computer keeps no copies yet: turn it on in Configuration.')))
   drawCircles()
+}
+
+// spec 019: the pasted link joins without a "Join?" (pasting is the yes); only Q8's notice the first time
+$('cl-join').onclick = () => {
+  const box = el('input')
+  box.setAttribute('aria-label', 'Invite link')
+  box.placeholder = 'hg:…'
+  const go = async () => {
+    if (!box.value.trim()) return clShow(line('Paste the link first.'), box, join)
+    const r = await frame.send('circles.join', { link: box.value })
+    if (r?.error) return clShow(line(r.error.message), box, join)
+    if (!r.result.joined) return clShow(...(r.result.error ? [line(r.result.error), box, join] : []))
+    clShow(line('You joined "' + r.result.name + '"'))
+    drawCircles()
+  }
+  const join = push('Join', go)
+  box.onkeydown = (e) => { if (e.key === 'Enter') go() }
+  clShow(line('Paste the invite link someone sent you:'), box, join)
+  box.focus()
+}
+
+// spec 019: the person's friends, a box each; those already in greyed. Each ticked one gets their own invite in Chat.
+async function inviteContacts (c) {
+  const r = await frame.send('circles.invitees', { key: c.key })
+  if (r?.error) return clShow(line(r.error.message))
+  const rows = r.result
+  if (!rows.length) return clShow(line('No friends yet: add some in Contacts'))
+  const ul = el('ul', 'members')
+  const boxes = rows.map((x) => {
+    const box = el('input')
+    box.type = 'checkbox'
+    box.disabled = x.in
+    const label = el('label', 'grow' + (x.in ? ' dim' : ''))
+    label.append(box, ' ' + x.name + (x.in ? ' (already in)' : ''))
+    const li = el('li')
+    li.append(label)
+    ul.append(li)
+    return box
+  })
+  clShow(line('Invite to "' + (c.name || 'this circle') + '": each gets their own link in Chat, for 7 days.'), ul, push('Send', async () => {
+    const picked = rows.filter((x, i) => boxes[i].checked)
+    if (!picked.length) return clOut.lastChild?.textContent === 'Tick a friend first.' || clOut.append(line('Tick a friend first.'))
+    const sent = await frame.send('circles.inviteContacts', { key: c.key, friends: picked })
+    clShow(line(sent?.error ? sent.error.message : sent.result))
+  }), push('Cancel', () => clShow()))
 }
 
 async function invite (c) {

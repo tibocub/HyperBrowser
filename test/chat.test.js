@@ -4,7 +4,7 @@ import test from 'brittle'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, sleep } from './helpers.js'
-import { chat, copiesLine, circleOf } from '../sites/chat/lib/chat.js'
+import { chat, copiesLine, circleOf, acceptLabel } from '../sites/chat/lib/chat.js'
 import { keepScroll, newLine } from '../sites/chat/lib/scroll.js'
 
 const FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'chat')
@@ -119,6 +119,7 @@ test('copies: "Kept by N of 5 copies, M online", a warning under 2 online, nothi
   t.alike(circleOf({ text: 'hi' }), null, 'a plain message')
   t.alike(circleOf({ text: 'x', circle: 'hg:abc', circleName: 'Family' }), { link: 'hg:abc', name: 'Family' })
   t.alike(circleOf({ text: 'x', circle: 'https://evil' }), null, 'only an hg: link')
+  t.is(acceptLabel('Ann', 'Family'), 'Accept Ann\'s invitation to "Family"', 'spec 019: the button names who invites and to what')
 })
 
 test("a circle's invite from Contacts: a message in the friends' conversation, with its link in the text too; joined by HyperBrowser", async (t) => {
@@ -143,4 +144,34 @@ test("a circle's invite from Contacts: a message in the friends' conversation, w
   t.alike(await b.hyper.contacts.circles(), [], "Bob's circles: none he may invite to")
   await b.e.rpc.request('circles.join', { link: m.circle }) // what HyperBrowser's flow does after Bob's yes
   t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).length === 2, 30000), 'Bob is in')
+})
+
+// spec 019 FR-001, FR-002: the circles window's Invite contacts… (the shell's own contacts.list and
+// contacts.inviteToCircle: no page reaches them) and Join with a link… (circles.join with the pasted link)
+test("the shell invites two friends to a circle: each finds it in Chat; a pasted link joins", async (t) => {
+  t.timeout(300000)
+  const tibo = await engine(t)
+  const { key } = await tibo.rpc.request('site.publish', { folder: FOLDER })
+  const a = await person(t, key, 'Ann')
+  const b = await person(t, key, 'Bob')
+  const c = await person(t, key, 'Cid')
+  const fromB = await befriend(a, b)
+  const fromC = await befriend(a, c)
+  const ring = await a.e.rpc.request('circles.create', { name: 'Family' })
+  const friends = (await a.e.rpc.request('contacts.list')).filter((x) => x.state === 'friend').map((x) => x.identity).sort()
+  t.alike(friends, [b.id, c.id].sort(), "the shell's contacts.list: Ann's friends")
+  t.is(await codeOf(a.e.rpc.request('contacts.inviteToCircle', { identity: 'y'.repeat(52), circle: ring.key })), 'NOT_FOUND', 'not a friend: refused')
+  for (const id of friends) t.is(await a.e.rpc.request('contacts.inviteToCircle', { identity: id, circle: ring.key }), true)
+  const got = async (p, chat) => {
+    let m = null
+    await eventually(async () => (m = (await p.hyper.instance(chat).query('message').latest(5)).items.find((x) => x.circle)), 30000)
+    return m
+  }
+  const mb = await got(b, fromB.chat)
+  const mc = await got(c, fromC.chat)
+  t.ok(mb && mc, 'each finds the invite in their conversation with Ann')
+  t.not(mb.circle, mc.circle, 'one link per friend')
+  await b.e.rpc.request('circles.join', { link: mb.circle }) // Join with a link…: the pasted link
+  t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).some((m) => m.identity === b.id), 30000), 'Bob is in')
+  t.is(await codeOf(c.e.rpc.request('circles.join', { link: mb.circle })), 'INVITE_USED_UP', "Bob's link is spent: Cid can't use it")
 })
