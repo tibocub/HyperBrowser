@@ -2,6 +2,16 @@
 
 What HyperBrowser needs from SwarmFS and doesn't work around (constitution IV). Newest first.
 
+## F8. `Drive.link` on a space that is still closed leaves a dead link (2026-11-17, spec 024)
+
+- **Seen**: a project (private files space) made on the PC, joined by the laptop (a second device): hypergraph keeps
+  the space closed until used (its spec 015). `drive.link(top, folder)` writes the personal `added` record, then
+  `_start` → `_listen` → `space.status()` throws "This space is closed until it is used". The link stays in
+  `_live` with `live: false`: nothing is ever fetched, and `links()` lists it, so a caller can't tell.
+- **Ask**: `link` (and `_start`) open the space first (`await space.ready()`); and a `_start` that fails leaves no
+  half-made link (or `link` undoes its `added` record).
+- **Here meanwhile**: `engine/projects.js` `attach` calls `hg.space(key).ready()` before `link`. Drop it once fixed.
+
 ## F7. A site that runs another site's code: an app's instance (2026-11-08, spec 009) — fixed on a branch, not merged
 
 - **Done** on SwarmFS branch `007-app-instances` (worktree `.claude/worktrees/app-instances`), test

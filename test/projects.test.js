@@ -78,6 +78,56 @@ test('files: create, write, read, list, rename, remove; .git and node_modules ig
   t.is(await codeOf(p('read', 'y'.repeat(52), 'index.html')), 'NOT_FOUND', 'not one of the projects')
 })
 
+test('what the project never syncs is out of reach: .git, node_modules, ignored paths, .hyperbrowser.json', async (t) => {
+  const { p } = await ide(t)
+  const { key, folder } = await p('create', 'Guarded')
+  fs.mkdirSync(path.join(folder, '.git', 'hooks'), { recursive: true })
+  fs.writeFileSync(path.join(folder, '.git', 'config'), '[core]')
+  fs.appendFileSync(path.join(folder, '.swarmfsignore'), 'secrets/\n')
+  fs.mkdirSync(path.join(folder, 'secrets'))
+  fs.writeFileSync(path.join(folder, 'secrets', 'k.txt'), 'k')
+  await p('write', key, 'a.txt', 'a')
+  for (const bad of ['.git/hooks/pre-commit', '.GIT/config', '.Git/hooks/post-checkout', 'node_modules/x/i.js', 'src/node_modules/y.js', 'secrets/k.txt', 'secrets/new.txt']) {
+    t.is(await codeOf(p('write', key, bad, 'x')), 'NOT_ALLOWED', 'write refused: ' + bad)
+    t.is(await codeOf(p('read', key, bad)), 'NOT_ALLOWED', 'read refused: ' + bad)
+    t.is(await codeOf(p('remove', key, bad)), 'NOT_ALLOWED', 'remove refused: ' + bad)
+    t.is(await codeOf(p('rename', key, 'a.txt', bad)), 'NOT_ALLOWED', 'rename into it refused: ' + bad)
+  }
+  t.is(await codeOf(p('rename', key, '.git/config', 'b.txt')), 'NOT_ALLOWED', 'rename out of .git refused')
+  t.is(await codeOf(p('rename', key, 'secrets/k.txt', 'b.txt')), 'NOT_ALLOWED', 'rename out of an ignored folder refused')
+  t.absent(fs.existsSync(path.join(folder, '.git', 'hooks', 'pre-commit')), 'no hook written')
+  t.is(fs.readFileSync(path.join(folder, 'secrets', 'k.txt'), 'utf-8'), 'k', 'the ignored file untouched')
+  fs.writeFileSync(path.join(folder, '.hyperbrowser.json'), '{}')
+  t.is(await codeOf(p('write', key, '.hyperbrowser.json', '{"site":"x"}')), 'NOT_ALLOWED', '.hyperbrowser.json: no write')
+  t.is(await codeOf(p('write', key, '.HyperBrowser.json', '{}')), 'NOT_ALLOWED', 'whatever the case')
+  t.is(await codeOf(p('remove', key, '.hyperbrowser.json')), 'NOT_ALLOWED', 'no remove')
+  t.is(await codeOf(p('rename', key, '.hyperbrowser.json', 'c.txt')), 'NOT_ALLOWED', 'no rename from it')
+  t.is(await codeOf(p('rename', key, 'a.txt', '.hyperbrowser.json')), 'NOT_ALLOWED', 'no rename onto it')
+  t.is(await read(p, key, '.hyperbrowser.json'), '{}', 'read is fine')
+  await p('write', key, '.swarmfsignore', 'dist/\n')
+  const rules = fs.readFileSync(path.join(folder, '.swarmfsignore'), 'utf-8')
+  t.ok(rules.includes('.git/') && rules.includes('node_modules/') && rules.includes('dist/'), 'the ignore file keeps .git/ and node_modules/: ' + JSON.stringify(rules))
+})
+
+test('removing a folder: links in it are unlinked, their targets survive; a nested .git stays', async (t) => {
+  const { p } = await ide(t)
+  const { key, folder } = await p('create', 'Links')
+  const outside = tmpDir(t, 'target')
+  fs.writeFileSync(path.join(outside, 'keep.txt'), 'keep')
+  await p('write', key, 'dir/a.txt', 'a')
+  fs.mkdirSync(path.join(folder, 'dir', 'sub', '.git'), { recursive: true })
+  fs.writeFileSync(path.join(folder, 'dir', 'sub', '.git', 'HEAD'), 'ref')
+  let linked = true
+  try { fs.symlinkSync(outside, path.join(folder, 'dir', 'link'), 'junction') } catch { linked = false }
+  await p('remove', key, 'dir')
+  t.absent(fs.existsSync(path.join(folder, 'dir', 'a.txt')), 'its files removed')
+  t.ok(fs.existsSync(path.join(folder, 'dir', 'sub', '.git', 'HEAD')), 'a nested .git stays (never synced, never reached)')
+  if (linked) {
+    t.absent(fs.existsSync(path.join(folder, 'dir', 'link')), 'the junction unlinked')
+    t.is(fs.readFileSync(path.join(outside, 'keep.txt'), 'utf-8'), 'keep', 'its target survives')
+  } else t.comment('no junction on this runtime: not checked here')
+})
+
 test('publish: refused with a broken site.json; versions; visitors get each; roll back', async (t) => {
   t.timeout(180000)
   const { p } = await ide(t)

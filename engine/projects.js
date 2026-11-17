@@ -206,9 +206,11 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
     await walk(site.pages.top, '')
     const bytes = []
-    for (const p of pages) if (sitePath(p) && p !== PROJECT) bytes.push([p, await site.read(p)])
+    for (const p of pages) if (sitePath(p)) bytes.push([p, await site.read(p)])
     const made = await one(() => create(`${title} (copy)`.slice(0, NAME_MAX)))
-    for (const [p, b] of bytes) await writeFile(made.folder, p, b)
+    for (const [p, b] of bytes) { // a page the project would never sync (.git/hooks/...): left out
+      await writeFile(made.folder, p, b).catch((err) => { if (err.code !== 'NOT_ALLOWED') throw err })
+    }
     return made
   }
 
@@ -238,11 +240,18 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   // --- files: every path checked ---
 
-  // `p` inside `folder`: a clean relative path (no '..', no absolute path, nothing Windows reads otherwise), and
-  // no link on the way out of the folder.
-  async function inside (folder, p) {
+  // `p` inside `folder`: a clean relative path (no '..', no absolute path, nothing Windows reads otherwise), one the
+  // project syncs (never .git: git runs its hooks outside the sandbox; nor node_modules or what the ignore file
+  // lists), and no link on the way out of the folder. `write`: not .hyperbrowser.json either (the engine's).
+  async function inside (folder, p, write = false) {
     const clean = typeof p === 'string' && !p.startsWith('/') ? sitePath(p) : null
     if (!clean || clean.split('/').some((s) => s === '.' || s.includes(':') || RESERVED.test(s) || /[. ]$/.test(s))) throw error('INVALID_PATH', 'not a path inside the project: ' + JSON.stringify(p))
+    const lower = clean.toLowerCase() // Windows and macOS: .GIT is .git
+    const rules = await rulesOf(folder)
+    if (lower.split('/').some((s) => s === '.git' || s === 'node_modules') || [clean, lower].some((x) => ignored(rules, x, false) || ignored(rules, x, true))) {
+      throw error('NOT_ALLOWED', 'the project does not sync ' + clean + ': a page may not reach it')
+    }
+    if (write && lower === PROJECT) throw error('NOT_ALLOWED', PROJECT + ' is written by HyperBrowser only')
     const real = await fs.promises.realpath(folder)
     const full = path.join(real, ...clean.split('/'))
     for (let probe = full; ; probe = path.dirname(probe)) {
@@ -253,8 +262,17 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
+  async function rulesOf (folder) {
+    return compile(await fs.promises.readFile(path.join(folder, IGNORE), 'utf-8').catch(() => ''))
+  }
+
+  // The ignore file changed by a page: .git/ and node_modules/ stay in it.
+  async function kept (folder, ...paths) {
+    if (paths.some((p) => p.toLowerCase() === IGNORE)) await ensureIgnore(folder)
+  }
+
   async function files (folder) {
-    const rules = compile(await fs.promises.readFile(path.join(folder, IGNORE), 'utf-8').catch(() => ''))
+    const rules = await rulesOf(folder)
     const out = []
     const walk = async (d) => {
       for (const e of await fs.promises.readdir(d, { withFileTypes: true })) {
@@ -281,29 +299,45 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   async function writeFile (folder, p, data) {
     if (typeof data !== 'string' && !(data instanceof Uint8Array)) throw error('INVALID_PARAMS', 'write takes text or bytes')
     if (data.length > WRITE_MAX) throw error('TOO_BIG', `at most ${WRITE_MAX} bytes a write`)
-    const full = await inside(folder, p)
+    const full = await inside(folder, p, true)
     await fs.promises.mkdir(path.dirname(full), { recursive: true })
     await fs.promises.writeFile(full, data)
+    await kept(folder, p)
     return true
   }
 
   async function rename (folder, from, to) {
-    const a = await inside(folder, from)
-    const b = await inside(folder, to)
+    const a = await inside(folder, from, true)
+    const b = await inside(folder, to, true)
     if (!(await fs.promises.stat(a).catch(() => null))) throw error('NOT_FOUND', 'no file ' + from)
     if (await fs.promises.stat(b).catch(() => null)) throw error('EXISTS', to + ' is there already')
     await fs.promises.mkdir(path.dirname(b), { recursive: true })
     await fs.promises.rename(a, b)
+    await kept(folder, from, to)
     return true
   }
 
-  // A file, or a folder with all in it. A link is removed, never what it points to.
+  // A file, or a folder with what the project syncs in it (what it ignores stays, e.g. a nested .git). A link is
+  // unlinked, never followed.
   async function remove (folder, p) {
-    const full = await inside(folder, p)
-    const st = await fs.promises.lstat(full).catch(() => null)
-    if (!st) throw error('NOT_FOUND', 'no file ' + p)
-    if (st.isSymbolicLink()) await fs.promises.rmdir(full).catch(() => fs.promises.unlink(full))
-    else await fs.promises.rm(full, { recursive: true })
+    const full = await inside(folder, p, true)
+    if (!(await fs.promises.lstat(full).catch(() => null))) throw error('NOT_FOUND', 'no file ' + p)
+    const rules = await rulesOf(folder)
+    const rm = async (at) => {
+      const st = await fs.promises.lstat(at)
+      if (st.isSymbolicLink()) return fs.promises.rmdir(at).catch(() => fs.promises.unlink(at)) // a junction is a folder link
+      if (!st.isDirectory()) return fs.promises.unlink(at)
+      for (const e of await fs.promises.readdir(at)) {
+        const child = path.join(at, e)
+        const rel = path.relative(folder, child).split(path.sep).join('/')
+        const lower = rel.toLowerCase()
+        if (lower.split('/').some((s) => s === '.git' || s === 'node_modules') || ignored(rules, rel, true) || ignored(rules, rel, false)) continue
+        await rm(child)
+      }
+      if (!(await fs.promises.readdir(at)).length) await fs.promises.rmdir(at)
+    }
+    await rm(full)
+    await kept(folder, p)
     return true
   }
 

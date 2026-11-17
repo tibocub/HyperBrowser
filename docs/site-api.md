@@ -248,7 +248,10 @@ between the person's devices and co-authors while online; saving never publishes
 - Files, by paths inside the project (`css/site.css`; no `..`, no absolute path, nothing leading out through a link:
   `INVALID_PATH`, `NOT_ALLOWED`): `files(key)` → `[{ path, size, mtime }]`, `read(key, path)` → `Uint8Array`,
   `write(key, path, textOrBytes)` (folders made as needed; 32 MB a write), `rename(key, from, to)`,
-  `remove(key, path)` (a folder with all in it).
+  `remove(key, path)` (a folder with what the project syncs in it; links in it unlinked, never followed).
+- Only what the project syncs: `.git`, `node_modules` (any case, at any depth) and what `.swarmfsignore` lists are
+  `NOT_ALLOWED` for every call (git runs `.git/hooks` outside the sandbox); `.hyperbrowser.json` is read-only (only
+  HyperBrowser writes it); `.swarmfsignore` always keeps `.git/` and `node_modules/`. Open a copy leaves out such pages.
 - Never synced: `.git/`, `node_modules/` and what the project's `.swarmfsignore` lists (each device keeps its own
   git). Two devices or people saving one file at once: both versions are kept, the other as `name (<who>'s copy).ext`.
 - `publish(key)` → `{ site, created, version }`: the project's files (not `.swarmfsignore`, not `.hyperbrowser.json`)
@@ -266,3 +269,5 @@ between the person's devices and co-authors while online; saving never publishes
   that friend), `members(key)` → `[{ identity, name, role, you, removed, banned, online }]`,
   `removeMember(key, identity)` (the owner: they can no longer publish, nor read new edits). Not yet: read-only
   viewers (hypergraph H6).
+  A co-author's files reach your folder like your own (`package.json` scripts, editor settings): invite only
+  people whose code you would run.
