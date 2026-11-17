@@ -1,6 +1,6 @@
 // The frame's pure logic (spec 002 FR-005, FR-007; data-model.md): the address and the desktop's cells.
 import test from 'brittle'
-import { parseAddress, shortKey, place, upsert, move, remove, COLUMNS, checkShare, gb, inviteRows, invitedLine, joinError } from '../shell/model.js'
+import { parseAddress, shortKey, place, upsert, move, remove, COLUMNS, checkShare, gb, inviteRows, invitedLine, joinError, storageText, totalText } from '../shell/model.js'
 
 const KEY = 'yb'.repeat(26) // 52 z32 letters
 
@@ -94,4 +94,16 @@ test('joining errors: used or expired, full, not a circle invite', (t) => {
   t.is(joinError({ code: 'CIRCLE_FULL' }), 'This circle is full (50)')
   for (const code of ['NOT_ALLOWED', 'INVALID_PARAMS', 'INVITE_INVALID']) t.is(joinError({ code }), 'This is not a circle invite', code)
   t.is(joinError({ code: 'ERROR', message: 'timed out' }), 'timed out', 'anything else: as it is')
+})
+
+test('spec 021: a holder\'s numbers in Members: held/share, one decimal, under 0.1 GB "<0.1"; the TOTAL line', (t) => {
+  t.is(storageText({ share: 3e9, used: 0.8e9 }), '0.8/3 GB')
+  t.is(storageText({ share: 2.5e9, used: 1.26e9 }), '1.3/2.5 GB', 'one decimal')
+  t.is(storageText({ share: 1e9, used: 0.05e9 }), '<0.1/1 GB')
+  t.is(storageText({ share: 1e9, used: 0 }), '<0.1/1 GB')
+  t.is(storageText({ share: null, used: null }), '', 'not holding or not reported: nothing')
+  t.is(storageText({}), '', 'an engine before 021: nothing')
+  t.is(totalText(4.2e9), 'TOTAL ≈ 4.2 GB')
+  t.is(totalText(null), '', 'no share known: no line')
+  t.is(totalText(undefined), '')
 })

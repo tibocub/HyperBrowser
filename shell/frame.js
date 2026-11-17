@@ -7,7 +7,7 @@ import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeIma
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { parseAddress, shortKey, upsert, move, remove, checkShare, gb, joinError, inviteRows, invitedLine } from './model.js'
+import { parseAddress, shortKey, upsert, move, remove, checkShare, gb, joinError, inviteRows, invitedLine, storageText, totalText } from './model.js'
 import { startTray, hasTray } from './tray.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -353,7 +353,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const h = await rpc.request('holding.get').catch(() => ({ bytes: 1e9 }))
     const r = await dialog.showMessageBox(win, {
       type: 'info', buttons: ['OK', 'Not now'], defaultId: 0, cancelId: 1, message: 'Keep copies for your circle?',
-      detail: `Your computer will keep copies of your circle's conversations and boards (up to ${gb(h.bytes)}), so they stay reachable while their people are offline. It can't read private ones. Holders see how many spaces each member has, their sizes, when they change, and your IP address.`
+      detail: `Your computer will keep copies of your circle's conversations and boards (up to ${gb(h.bytes)}), so they stay reachable while their people are offline. It can't read private ones. Holders see how many spaces each member has, their sizes, when they change, and your IP address. Members see each computer's share and how much it holds.`
     })
     if (r.response !== 0) return false
     data.settings.circleNoticed = true
@@ -487,6 +487,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         if (Number.isFinite(a.height) && a.height > 0 && a.height < 400) bars = Math.ceil(a.height)
         layout()
         return { result: true }
+      // spec 021: Members' numbers, as the window shows them
+      case 'circles.members': return engine(op, a).then((r) => (r.result ? { result: r.result.map((m) => ({ ...m, held: storageText(m) })) } : r))
+      case 'circles.list': return engine(op, a).then((r) => (r.result ? { result: r.result.map((c) => ({ ...c, totalLine: totalText(c.total) })) } : r))
       default: return CIRCLES.has(op) ? engine(op, a) : { error: { code: 'UNKNOWN_METHOD', message: 'unknown op ' + op } }
     }
   }

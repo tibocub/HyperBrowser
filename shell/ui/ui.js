@@ -615,14 +615,17 @@ async function askLeave (c) {
 }
 
 async function members (c) {
-  const r = await frame.send('circles.members', { key: c.key })
+  const [r, l] = await Promise.all([frame.send('circles.members', { key: c.key }), frame.send('circles.list')])
   if (r?.error) return clShow(line(r.error.message))
   const decides = DECIDERS.includes(c.role)
   const ul = el('ul', 'members')
   for (const m of r.result) {
     const who = m.name || short(m.identity)
     const li = el('li')
-    li.append(el('span', 'grow', who + (m.you ? ' (you)' : '')), el('span', 'dim', m.role + (m.holds ? ' · holds' : '')))
+    const held = m.held // spec 021: e.g. '0.8/3 GB' (frame.js)
+    const nums = el('span', 'dim', m.role + (m.holds ? ' · holds' : '') + (held ? ' · ' + held : ''))
+    if (held) nums.title = 'What they hold out of their share, across all their circles'
+    li.append(el('span', 'grow', who + (m.you ? ' (you)' : '')), nums)
     if (decides && !m.you && m.role !== 'owner') {
       li.append(more('More for ' + who, [
         m.role === 'admin' ? ['Make member', () => setRole(c, m, 'member')] : ['Make admin', () => setRole(c, m, 'admin')],
@@ -635,7 +638,10 @@ async function members (c) {
     }
     ul.append(li)
   }
-  clShow(line('Members of "' + (c.name || 'this circle') + '" (' + r.result.length + ' of 50):'), ul)
+  const total = l?.result?.find((x) => x.key === c.key)?.totalLine // spec 021: e.g. 'TOTAL ≈ 4.2 GB' (frame.js), now
+  const room = total && line(total, 'dim')
+  if (room) room.title = "Everyone's shares ÷ 5 copies; approximate: shares also serve other circles"
+  clShow(line('Members of "' + (c.name || 'this circle') + '" (' + r.result.length + ' of 50):'), ul, ...(room ? [room] : []))
 }
 async function setRole (c, m, role) {
   const x = await frame.send('circles.setRole', { key: c.key, identity: m.identity, role })
