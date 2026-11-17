@@ -1,0 +1,7 @@
+{
+  "title": "IDE",
+  "description": "Make sites and apps: pages for everyone, code for developers. Publish, preview, invite co-authors.",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "permissions": ["space", "projects", "contacts"]
+}

@@ -684,6 +684,13 @@ export function start (ipc) {
       subs.set(id, { key, contacts: true, stop: () => sfs.hg.off('settings', fn) })
       return { id }
     }
+    if (event === 'projects') { // spec 025: { project }: a project's files changed (saved, or a co-author's edit arrived)
+      await permitted(key, 'projects')
+      const id = nextSub++
+      const stop = works.onChange((data) => { if (subs.has(id)) rpc.emit('event', { id, data }) })
+      subs.set(id, { key, stop })
+      return { id }
+    }
     if (event === 'copies') { // spec 018: this handle's copies, told when they change (hypergraph's 'copies' on hg)
       const t = await target({ key, sub, instance })
       const id = nextSub++

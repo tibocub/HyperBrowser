@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import b4a from 'b4a'
 import { compile, ignored } from 'swarmfs/lib/ignore.js'
+import { rootOf, BIN } from 'swarmfs/lib/types.js'
 import { parseManifest, readManifest, sitePath } from './manifest.js'
 
 const LIST = 'hyperbrowser/projects' // setting: { [space key]: { name } }, on every device of the person
@@ -14,8 +15,9 @@ const IGNORE = '.swarmfsignore' // SwarmFS's ignore file, also what Publish skip
 const ALWAYS = ['.git/', 'node_modules/'] // D4: each device keeps its own
 const NAME_MAX = 64
 const WRITE_MAX = 32 * 1024 * 1024 // one write crossing from a page
-const CATCH_UP = 60000 // a device publishing for the first time waits this long for the pages already there
+const CATCH_UP = 60000 // a publish waits this long for the pages already there to be held here
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
+const GIT_MAX = 500 // changed files listed
 const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i // Windows device names
 
 const error = (code, message) => Object.assign(new Error(message), { code })
@@ -64,8 +66,12 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   // Every project of the person held here: linked to a folder of this device, and its members followed.
   function follow () {
     following = following.then(async () => {
-      for (const [key, { name }] of Object.entries(await all())) {
+      for (const [key, { name, left }] of Object.entries(await all())) {
         if (closed || !held(key)) continue
+        if (left) { // left on another device of the person (spec 025): left here too, its folder kept
+          await one(() => sfs.leave(key)).catch(() => {})
+          continue
+        }
         if (!(await folderOf(key))) await one(() => attach(key, name)).catch(() => {}) // again at the next 'spaces' or 'settings'
         if (!watched.has(key)) {
           watched.add(key)
@@ -138,6 +144,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       case 'invite': return invite(a)
       case 'inviteContact': return tell(b, `Edit "${(await all())[a]?.name}" with me in HyperBrowser: ${(await invite(a)).link}`)
       case 'members': await project(a); return sfs.space(a).members()
+      case 'status': return status(a)
+      case 'leave': return one(() => leave(a, b))
       case 'removeMember':
         await project(a)
         await sfs.space(a).removeMember(b)
@@ -149,8 +157,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   async function list () {
     const out = []
-    for (const [key, { name }] of Object.entries(await all())) {
-      if (!held(key)) continue
+    for (const [key, { name, left }] of Object.entries(await all())) {
+      if (left || !held(key)) continue
       const folder = await folderOf(key)
       out.push({ key, name, folder, site: folder ? await siteKeyOf(folder) : null, role: await hg.space(key).getRole(me).catch(() => null) })
     }
@@ -163,7 +171,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   // A project of the person's, on this device: its folder.
   async function project (key) {
-    if (typeof key !== 'string' || !KEY.test(key) || !(key in await all())) throw error('NOT_FOUND', 'not one of your projects')
+    const known = typeof key === 'string' && KEY.test(key) ? (await all())[key] : null
+    if (!known || known.left) throw error('NOT_FOUND', 'not one of your projects')
     const folder = await folderOf(key)
     if (!folder) throw error('NOT_FOUND', 'this project is not on this device yet')
     return folder
@@ -332,6 +341,13 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   async function remove (folder, p) {
     const full = await inside(folder, p, true)
     if (!(await fs.promises.lstat(full).catch(() => null))) throw error('NOT_FOUND', 'no file ' + p)
+    await rmSynced(folder, full)
+    await kept(folder, p)
+    return true
+  }
+
+  // `at` and what the project syncs under it; what it ignores stays (and so its folders). Links unlinked, not followed.
+  async function rmSynced (folder, at) {
     const rules = await rulesOf(folder)
     const rm = async (at) => {
       const st = await fs.promises.lstat(at)
@@ -346,9 +362,64 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       }
       if (!(await fs.promises.readdir(at)).length) await fs.promises.rmdir(at)
     }
-    await rm(full)
-    await kept(folder, p)
+    await rm(at)
+  }
+
+  // --- leaving (spec 025): off the person's list on every device, the space left; `deleteFiles`: this device's synced
+  // files deleted too (what it ignores, .git included, stays). Its site and versions stay.
+
+  async function leave (key, opts) {
+    const folder = await project(key)
+    const deleteFiles = opts?.deleteFiles === true
+    const list = await all()
+    await hg.setSetting(LIST, { ...list, [key]: { ...list[key], left: true } })
+    if (drafts[key]) {
+      folders.delete(drafts[key])
+      await forget(drafts[key])
+      await sfs.leave(drafts[key]).catch(() => {})
+      const rest = { ...drafts }
+      delete rest[key]
+      drafts = rest
+      await fs.promises.writeFile(DRAFTS, JSON.stringify(drafts))
+    }
+    await sfs.leave(key)
+    if (deleteFiles) await rmSynced(folder, folder)
     return true
+  }
+
+  // --- status (spec 025): who is online, and the folder's git state (read only: branch, changed files) ---
+
+  async function status (key) {
+    const folder = await project(key)
+    const peers = hg.space(key).peers()
+    return {
+      devices: new Set(peers.filter((x) => x.identity === me).map((x) => x.device)).size,
+      coauthors: new Set(peers.filter((x) => x.identity && x.identity !== me).map((x) => x.identity)).size,
+      git: await gitState(folder)
+    }
+  }
+
+  // { branch, changed: [{ path, state: 'modified' | 'new' | 'deleted' }] } from .git/HEAD and .git/index (v2, v3), the
+  // way git first checks (size and mtime: a file touched but the same reads as modified); null without a .git folder.
+  // shortcut: an index v4 (path-compressed) or a worktree's .git file gives changed: null; read them if anyone uses them.
+  async function gitState (folder) {
+    const git = path.join(folder, '.git')
+    let head
+    try { head = (await fs.promises.readFile(path.join(git, 'HEAD'), 'utf-8')).trim() } catch { return null }
+    const branch = head.startsWith('ref: refs/heads/') ? head.slice(16) : head.slice(0, 7) + ' (detached)'
+    let bytes = null
+    try { bytes = await fs.promises.readFile(path.join(git, 'index')) } catch {}
+    const tracked = bytes ? readIndex(bytes) : new Map()
+    if (!tracked) return { branch, changed: null }
+    const changed = []
+    for (const [p, { size, mtime }] of tracked) {
+      const st = await fs.promises.stat(path.join(folder, ...p.split('/'))).catch(() => null)
+      if (!st) changed.push({ path: p, state: 'deleted' })
+      else if (st.size !== size || Math.floor(st.mtimeMs / 1000) !== mtime) changed.push({ path: p, state: 'modified' })
+    }
+    const gitignore = compile(await fs.promises.readFile(path.join(folder, '.gitignore'), 'utf-8').catch(() => ''))
+    for (const f of await files(folder)) if (!tracked.has(f.path) && !ignored(gitignore, f.path, false)) changed.push({ path: f.path, state: 'new' })
+    return { branch, changed: changed.sort((a, b) => (a.path < b.path ? -1 : 1)).slice(0, GIT_MAX) }
   }
 
   // --- publish and versions ---
@@ -464,10 +535,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       await mirror(version, live)
       return site.publish(live)
     }
-    if (!linked) {
-      await site.publish(live)
-      await caughtUp(site, live)
-    }
+    if (!linked) await site.publish(live)
+    await caughtUp(site) // a first publish here, or a co-author's publish still arriving
     await mirror(version, live)
   }
 
@@ -493,20 +562,16 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
-  async function caughtUp (site, live) {
-    const pages = []
-    const walk = async (id, prefix) => {
-      const { items } = await site.pages.list(id, { limit: Infinity, timeout: 10000 })
-      for (const e of items) {
-        if (e.kind === 'folder') await walk(e.id, prefix + e.name + path.sep)
-        else pages.push([prefix + e.name, e.size])
-      }
-    }
-    await walk(site.pages.top, '')
+  // Every page the site lists is here in its current version (a co-author's publish fully arrived), so the files
+  // written next replace them (never conflict copies). BUSY after CATCH_UP. One query of the pages' file records, one
+  // of this device's `held` records (a listing with holders costs seconds for 1000 pages).
+  // shortcut: reads SwarmFS's own records (requests-to-swarmfs F9: a linked folder's "in step" wanted).
+  async function caughtUp (site) {
     for (const until = Date.now() + CATCH_UP; ; await sleep(250)) {
-      let here = true
-      for (const [p, size] of pages) if ((await fs.promises.stat(path.join(live, p)).catch(() => null))?.size !== size) { here = false; break }
-      if (here) return
+      const pages = await site.pages.space.query('file').latest(100000)
+      const { items } = await hg.personal.query('held').fromDevice(hg.device.publicKey).latest(100000) // no index on space
+      const here = new Map(items.filter((h) => h.space === site.pages.key).map((h) => [h.entry, h.root]))
+      if (pages.complete && pages.items.every((r) => r.parent === BIN || here.get(r.id) === rootOf(r.content))) return
       if (Date.now() > until) throw error('BUSY', "the site's pages are still arriving on this device: publish again in a moment")
     }
   }
@@ -595,7 +660,39 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     hg.off('spaces', onChange)
   }
 
-  return { start, call, draft, readDraft: readFile, close }
+  // fn({ project }): a project's files changed here (a save, a co-author's edit or another device's arriving).
+  function watchFiles (fn) {
+    const each = async (e) => {
+      const p = e.space && (await all())[e.space]
+      if (p && !p.left) fn({ project: e.space })
+    }
+    const listener = (e) => { each(e).catch(() => {}) }
+    sfs.on('sync', listener)
+    return () => sfs.off('sync', listener)
+  }
+
+  return { start, call, draft, readDraft: readFile, onChange: watchFiles, close }
+}
+
+// A git index (v2, v3) → Map(path → { size, mtime (s) }); null for another version.
+function readIndex (bytes) {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  if (bytes.byteLength < 12 || v.getUint32(0) !== 0x44495243) return null // 'DIRC'
+  const version = v.getUint32(4)
+  if (version !== 2 && version !== 3) return null
+  const out = new Map()
+  let at = 12
+  for (let n = v.getUint32(8); n > 0; n--) {
+    const mtime = v.getUint32(at + 8)
+    const size = v.getUint32(at + 36)
+    const flags = v.getUint16(at + 60)
+    const start = at + 62 + (version === 3 && (flags & 0x4000) ? 2 : 0)
+    let end = start
+    while (bytes[end] !== 0) end++
+    out.set(b4a.toString(bytes.subarray(start, end)), { size, mtime })
+    at += Math.ceil((end - at + 1) / 8) * 8 // padded to 8 bytes, at least one NUL
+  }
+  return out
 }
 
 function safe (name) {
