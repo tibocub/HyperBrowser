@@ -718,7 +718,7 @@ async function framecheck (dir) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-framecheck-'))
   fs.cpSync(path.join(HERE, '..', 'sites', 'demo'), path.join(tmp, 'site'), { recursive: true })
   const { key } = await rpc.request('site.publish', { folder: path.join(tmp, 'site') })
-  const { fake, calls } = scripted()
+  const { fake, calls } = scripted(key)
   fs.writeFileSync(path.join(tmp, 'shell.json'), JSON.stringify({ settings: { circleNoticed: true } })) // spec 018: Q8's notice seen (a dialog would wait)
   const { win, inspect, notify } = startFrame({ rpc: fake, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
   const timeout = setTimeout(() => { console.log('FRAMECHECK TIMEOUT'); app.exit(2) }, 90000)
@@ -742,6 +742,7 @@ async function framecheck (dir) {
   if (process.env.HB_SHOT) fs.writeFileSync(process.env.HB_SHOT, (await i.fwc.capturePage()).toPNG())
   const circles = await checkCirclesWindow(i.fwc)
   const notes = await checkNotes(i.fwc, inspect, notify, calls)
+  const names = await checkNames(i.fwc, key)
   clearTimeout(timeout)
   const b = win.getBounds()
   const c = win.getContentBounds()
@@ -757,7 +758,8 @@ async function framecheck (dir) {
     ['Devices: this computer listed (spec 012)', listed],
     ['Devices: Add a device shows a code', coded],
     ...circles,
-    ...notes
+    ...notes,
+    ...names
   ]
   for (const [name, pass] of out) console.log((pass ? 'PASS ' : 'FAIL ') + 'frame  ' + name)
   const ok = out.every(([, pass]) => pass)
@@ -806,10 +808,30 @@ async function checkCirclesWindow (fwc) {
   ]
 }
 
+// spec 022's frame check: name@authority in the address bar opens the site it names (the engine's names.resolve,
+// scripted) and keeps showing the name; an unknown name says so in plain words.
+async function checkNames (fwc, key) {
+  const js = (s) => fwc.executeJavaScript(s)
+  const type = (text) => js(`(() => { const a = document.getElementById('address'); a.focus(); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })) })()`)
+  await type('hyper://demo@frame')
+  const lookingUp = await until(() => js("document.getElementById('panel-text').textContent === 'Looking up demo@frame …'"))
+  const shown = await until(() => js("document.activeElement !== document.getElementById('address') && document.getElementById('address').value === 'demo@frame' && document.getElementById('panel').hidden"))
+  const keyed = await js(`[...document.querySelectorAll('#tabs .tab')].some((b) => b.title.includes('demo@frame · ' + ${JSON.stringify(key)}))`)
+  await type('nope@frame')
+  const refused = await until(() => js("document.getElementById('panel-text').textContent.startsWith('No such name in this authority.')"))
+  await js("document.getElementById('panel-close').click()")
+  return [
+    ['names: name@authority shows "Looking up…" (spec 022)', lookingUp],
+    ['names: it opens the site and the address bar keeps the name', shown],
+    ["names: the site's key stays in its tab's info", keyed],
+    ['names: an unknown name says so in plain words', refused]
+  ]
+}
+
 // spec 016's frame check: the engine's notify.* answered with scripted notifications (3 unread: 2 in a Chat
 // conversation, 1 in a forum), the rest passed to the real engine. calls: what the frame asked.
 const SCRIPT = { chat: PRESET.find((p) => p.id === 'preset:chat').key, forum: PRESET.find((p) => p.id === 'preset:forum').key, a: 'y'.repeat(52), b: 'b'.repeat(52) }
-function scripted () {
+function scripted (site) {
   const calls = []
   const read = new Set()
   const item = (n, app, place, text) => ({ app, place, id: 'r' + n, type: 'message', author: 'o'.repeat(52), name: 'Ann', text, open: null, stamp: n, at: n })
@@ -831,6 +853,11 @@ function scripted () {
   }
   const fake = {
     request (method, params = {}) {
+      if (method === 'names.resolve') { // spec 022: one name of a scripted authority (the engine's own call has its test)
+        calls.push([method, params])
+        if (params.address === 'demo@frame') return new Promise((resolve) => setTimeout(() => resolve({ key: site, authority: 'f'.repeat(52) }), 1000))
+        return Promise.reject(Object.assign(new Error('no such name'), { code: 'UNKNOWN_NAME' }))
+      }
       if (!method.startsWith('notify.')) return rpc.request(method, params)
       calls.push([method, params])
       if (method === 'notify.read') read.add(params.place)

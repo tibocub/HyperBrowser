@@ -7,7 +7,7 @@ import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeIma
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { parseAddress, shortKey, upsert, move, remove, checkShare, gb, joinError, inviteRows, invitedLine, storageText, totalText } from './model.js'
+import { parseAddress, nameError, shortKey, upsert, move, remove, checkShare, gb, joinError, inviteRows, invitedLine, storageText, totalText } from './model.js'
 import { startTray, hasTray } from './tray.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -108,7 +108,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     return {
       current,
       tabs: tabs.map((t) => ({
-        id: t.id, key: t.key, short: t.key ? shortKey(t.key) : '', title: t.title, icon: t.icon || null, status: t.status,
+        id: t.id, key: t.key, name: t.name || null, short: t.key ? shortKey(t.key) : '', title: t.title, icon: t.icon || null, status: t.status,
         error: t.error || null, canBack: !!t.canBack, canForward: !!t.canForward, loading: !!t.loading, state: t.state || null, held: t.held || null,
         kind: t.key ? iconOf(t.key)?.kind || null : null
       })),
@@ -218,6 +218,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   function openKey (input, query = '') {
     const a = parseAddress(input)
     if (a.error) return { error: { code: 'INVALID_KEY', message: a.error } }
+    if (a.name) return openName(a.name, query)
     const have = tabs.find((t) => t.key === a.key)
     if (have) {
       const at = have.key !== have.site ? '?instance=' + have.key + (query.startsWith('#') ? query : '') : query // an instance's tab keeps its ?instance=
@@ -230,7 +231,47 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     tabs.push(tab)
     select(tab.id)
     show()
-    openSite(a.key, query).then((v) => {
+    loadTab(tab, a.key, query)
+    return { result: tab.id }
+  }
+
+  // spec 022: name@authority, looked up by the engine (HyperDNS), then opened as its key; the tab keeps the name.
+  function openName (name, query) {
+    const have = tabs.find((t) => t.name === name)
+    if (have) {
+      select(have.id)
+      show()
+      return { result: have.id }
+    }
+    const tab = { id: nextId++, key: null, name, title: name, status: 'opening' }
+    tabs.push(tab)
+    select(tab.id)
+    show()
+    rpc.request('names.resolve', { address: name }).then(({ key }) => {
+      if (!tabs.includes(tab)) return
+      const open = tabs.find((t) => t !== tab && t.key === key)
+      if (open) { // already open: that tab takes the name, as a typed key selects its tab
+        open.name = name
+        closeTab(tab.id)
+        select(open.id)
+        show()
+        return
+      }
+      tab.key = key
+      tab.icon = iconOf(key)?.icon
+      push()
+      loadTab(tab, key, query)
+    }, (err) => {
+      if (!tabs.includes(tab)) return
+      tab.status = 'error'
+      tab.error = nameError(err)
+      push()
+    })
+    return { result: tab.id }
+  }
+
+  function loadTab (tab, key, query) {
+    openSite(key, query).then((v) => {
       if (!tabs.includes(tab)) return v.close() // closed while opening
       // key: the address (an app's instance shows its own key, spec 009); site: the site whose pages run
       Object.assign(tab, { key: v.instance || v.key, site: v.key, title: v.manifest.title, status: 'ready', view: v.view, wc: v.webContents, close: v.close })
@@ -262,7 +303,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       tab.error = (err.code === 'NOT_FOUND' || err.code === 'NO_MANIFEST' ? 'This key is not a site, or it has no site.json.' : 'Could not reach this site: nobody serving it was found.') + ' (' + (err.code || 'ERROR') + ')'
       push()
     })
-    return { result: tab.id }
   }
 
   function go (offset) {

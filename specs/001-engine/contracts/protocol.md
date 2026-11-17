@@ -33,6 +33,7 @@ Errors from hypergraph and SwarmFS keep their `code` (`NOT_FOUND`, `NOT_ALLOWED`
 | `site.off` | `{ id }` | `true` |
 | `site.close` | `{ key }` | `true`. The last open's close: its live views and listeners stop, its handle released, and, unless it is installed or the person's own, the site is left after `grace` (spec 004) |
 | `site.permit` | `{ key, permission: 'contacts', allow }` (spec 013) | `true`: the person's answer to "see and manage your contacts?" (`NOT_ALLOWED` if the site's `site.json` doesn't ask for it) |
+| `names.resolve` | `{ address, timeout? }` (spec 022; the shell's only) | `{ key, authority }`: the site `name@authority` points to, through HyperDNS; `UNKNOWN_AUTHORITY`, `AMBIGUOUS_AUTHORITY`, `UNKNOWN_NAME`, `UNAVAILABLE`, `NOT_A_SITE` |
 | `apps.set` | `{ chat }` (spec 013) | `true`: the app whose instances friends' conversations are (the shell's preset) |
 | `contacts.me` / `contacts.get` / `contacts.request` | `{}` / `{ identity }` / `{ identity, name? }` (spec 013) | the shell's own calls: `{ identity, name, findable }` / the contact or `null` / the new contact (after the person's yes). Sites call `contacts.*` through `site.call` (`specs/013-contacts-chat/contracts/site-api.md`) |
 | `hosting` | `{}` (spec 010) | `{ sites }`: how many sites (top-level spaces) this device holds joined, so serves: installed, own, joined instances, and those open or in their grace period |

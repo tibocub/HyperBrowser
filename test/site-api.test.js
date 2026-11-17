@@ -59,6 +59,7 @@ test('after yes: calls, query chains, info; the answer is remembered after a res
 
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'addProtocol', args: ['x', {}] })), 'UNKNOWN_METHOD')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'memberConnections' })), 'UNKNOWN_METHOD')
+  t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'names.resolve', args: ['blog@bobsDNS'] })), 'UNKNOWN_METHOD', 'spec 022: names are for the shell only')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'query', args: ['profile'], chain: [['latest', [1]], ['latest', [1]]] })), 'INVALID_PARAMS')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'query', args: ['profile'], chain: [['constructor', []], ['latest', [1]]] })), 'INVALID_PARAMS')
 

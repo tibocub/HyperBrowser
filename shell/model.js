@@ -4,13 +4,28 @@
 export const COLUMNS = 8 // new icons fill this many columns, row by row
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes, as the engine checks it
 
-// What the person typed → { key } (a full key or an hg: link, for site.open) or { error }.
+// name@authority, optionally hyper:// or hyperdns:// first and one / last (spec 022). No path: a site opens at its start.
+const NAME = /^(?:hyper(?:dns)?:\/\/)?([^\s@/]+@[^\s@/]+)\/?$/i
+
+// What the person typed → { key } (a full key or an hg: link, for site.open), { name } (for names.resolve) or { error }.
 export function parseAddress (input) {
   const s = String(input).trim()
   if (KEY.test(s)) return { key: s }
   if (/^hg:\S+$/.test(s)) return { key: s }
-  return { error: 'Not a site key: paste the whole key (52 letters and digits).' }
+  const name = NAME.exec(s)
+  if (name) return { name: name[1] }
+  return { error: 'Not a site key or a name: paste the whole key (52 letters and digits), or type name@authority.' }
 }
+
+// Why a name didn't open (names.resolve's error), in plain words (spec 022 FR-002).
+const NAME_ERRORS = {
+  UNKNOWN_AUTHORITY: 'No such authority here. Open it once by its link (name@hg:…), given by its owner.',
+  AMBIGUOUS_AUTHORITY: 'Two authorities you have share this name: type its link instead (name@hg:…).',
+  UNKNOWN_NAME: 'No such name in this authority.',
+  UNAVAILABLE: 'Nobody who has it is online: try again later.',
+  NOT_A_SITE: 'This name does not point to a site.'
+}
+export const nameError = ({ code, message }) => (NAME_ERRORS[code] || 'Could not look up this name: ' + message) + ' (' + (code || 'ERROR') + ')'
 
 export const shortKey = (key) => KEY.test(key) ? key.slice(0, 6) + '…' + key.slice(-3) : key
 

@@ -10,7 +10,8 @@ A peer-to-peer browser: sites live with their owner and their visitors, not on a
 
 Status: early work. Spec 001: the engine and serving sites; spec 002: the shell's interface; spec 003: install;
 spec 004: installing decides which sites this device serves; spec 005: the official site (`sites/home`); spec 006:
-the official forum (`sites/forum`).
+the official forum (`sites/forum`); spec 022: names (`blog@bobsDNS`) in the address bar, through
+[HyperDNS](../hyperDNS) (a sibling checkout, `file:../hyperDNS`).
 Using the shell: [docs/shell.md](docs/shell.md); the engine and the command line: [docs/engine.md](docs/engine.md);
 writing a site: [docs/site-api.md](docs/site-api.md); the official site: [docs/home-site.md](docs/home-site.md);
 the forum: [docs/forum.md](docs/forum.md); contacts and chat (spec 013): [docs/chat.md](docs/chat.md); building, releasing and updates (spec 011):
@@ -23,7 +24,7 @@ npm i
 npm start
 ```
 
-`npm start` opens HyperBrowser on its desktop; paste a site key in the address field. To have a site to open,
+`npm start` opens HyperBrowser on its desktop; paste a site key in the address field, or type a name (`name@authority`, see [docs/shell.md](docs/shell.md)). To have a site to open,
 publish the demo site in another terminal (it prints its key and stays online):
 
 ```bash

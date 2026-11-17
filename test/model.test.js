@@ -1,6 +1,6 @@
 // The frame's pure logic (spec 002 FR-005, FR-007; data-model.md): the address and the desktop's cells.
 import test from 'brittle'
-import { parseAddress, shortKey, place, upsert, move, remove, COLUMNS, checkShare, gb, inviteRows, invitedLine, joinError, storageText, totalText } from '../shell/model.js'
+import { parseAddress, shortKey, place, upsert, move, remove, COLUMNS, checkShare, gb, inviteRows, invitedLine, joinError, storageText, totalText, nameError } from '../shell/model.js'
 
 const KEY = 'yb'.repeat(26) // 52 z32 letters
 
@@ -11,6 +11,26 @@ test('the address: a full key or an hg: link opens, anything else is refused', (
   for (const bad of ['', 'hello', KEY.slice(1), KEY + 'y', KEY.toUpperCase(), KEY.slice(0, 51) + 'l', 'hg:']) {
     t.ok(parseAddress(bad).error, JSON.stringify(bad))
   }
+})
+
+test('spec 022: a name (name@authority, hyper:// or hyperdns:// allowed) goes to HyperDNS', (t) => {
+  t.alike(parseAddress('blog@bobsDNS'), { name: 'blog@bobsDNS' })
+  t.alike(parseAddress(' hyper://blog@bobsDNS '), { name: 'blog@bobsDNS' })
+  t.alike(parseAddress('hyperdns://blog@bobsDNS/'), { name: 'blog@bobsDNS' })
+  t.alike(parseAddress('blog@hg:' + KEY), { name: 'blog@hg:' + KEY }, 'an authority by its link')
+  for (const bad of ['blog@', '@bobsDNS', 'a@b@c', 'bl og@x', 'blog@bobs DNS', 'blog@bobsDNS/posts']) {
+    t.ok(parseAddress(bad).error, JSON.stringify(bad))
+  }
+})
+
+test('spec 022: a name that does not open says why, in plain words', (t) => {
+  t.ok(nameError({ code: 'UNKNOWN_AUTHORITY' }).startsWith('No such authority'))
+  t.ok(nameError({ code: 'UNKNOWN_NAME' }).startsWith('No such name'))
+  t.ok(nameError({ code: 'UNAVAILABLE' }).startsWith('Nobody who has it is online'))
+  t.ok(nameError({ code: 'NOT_A_SITE' }).startsWith('This name does not point to a site'))
+  t.ok(nameError({ code: 'AMBIGUOUS_AUTHORITY' }).includes('link'))
+  t.ok(nameError({ code: 'ERROR', message: 'boom' }).includes('boom'), 'anything else: its message')
+  t.ok(nameError({ code: 'UNKNOWN_NAME' }).endsWith('(UNKNOWN_NAME)'))
 })
 
 test('the short key: 6 first, 3 last', (t) => {
