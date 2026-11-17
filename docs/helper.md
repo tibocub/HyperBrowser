@@ -55,7 +55,7 @@ except `dir`, at the next start.
 |---|---|---|
 | `dir` | `~/.local/share/hyperbrowser-helper` | its engine folder: identity and data |
 | `name` | `Helper (<hostname>)` | its name, as Contacts sets a person's (shown in its conversations; a circle's Members list still shows its short key, as for anyone not your contact) |
-| `share` | half the free disk at first start, at most 100 | GB for its circles; at most the free space + what it holds − 2 GB: above that, the most allowed, logged |
+| `share` | half the free disk at first start, at most 100 | GB for its circles; at most the free space + what it holds − 2 GB: above that, the most allowed, logged (a change under 0.1 GB is ignored: free space drifts) |
 | `apps` | `official` | `official`: every app in `shell/preset.json` (a `git pull` follows the list); `none` |
 | `seed` | | another site's key to keep online (repeatable) |
 | `join` | | a circle invite, `hg:…` (repeatable) |

@@ -67,7 +67,9 @@ test('helper: joins from a link once, remembers it, a used link is refused once;
   t.is((await h.rpc.request('contacts.me')).name, 'Helper (box)')
   const h2 = await engine(t)
   const l2 = lines()
-  const hp2 = helper({ rpc: h2.rpc, dir: h2.dir, preset: '', log: l2.log, tick: 3600000 })
+  let drift = 0 // the disk's free space moving a little (logs, other programs) between passes
+  const rpc2 = { request: async (m, a) => { const r = await h2.rpc.request(m, a); if (m === 'holding.get') r.free -= drift; return r } }
+  const hp2 = helper({ rpc: rpc2, dir: h2.dir, preset: '', log: l2.log, tick: 3600000 })
   t.teardown(() => hp2.close())
   await hp2.apply(config({ join: [link, 'hg:nonsense'] }))
   t.is(l2.out.filter((x) => x.startsWith('refused:')).length, 2, l2.out.join(' | '))
@@ -78,6 +80,10 @@ test('helper: joins from a link once, remembers it, a used link is refused once;
   await hp2.apply(config({ share: 1e6 }))
   t.ok(l2.has(/^share: [\d.]+ GB \(capped: 1000000 GB asked/), 'above the disk: the most allowed, logged')
   t.ok((await h2.rpc.request('holding.get')).on, 'holding on')
+  const shares = l2.out.filter((x) => x.startsWith('share:')).length
+  drift = 5 * 1024 * 1024
+  await hp2.apply(config({ share: 1e6 }))
+  t.is(l2.out.filter((x) => x.startsWith('share:')).length, shares, 'capped: a few MB less free sets and logs nothing again')
 })
 
 test('helper: B writes to A while A is offline; A reads it with only the helper online (SC-1)', async (t) => {

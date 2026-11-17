@@ -60,7 +60,7 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
     const room = Math.floor(h.free + h.used - SPARE)
     const bytes = Math.min(want, room)
     if (bytes < MIN) return once('room', `share: no room on this disk (${gb(h.free)} GB free); holding stays ${h.on ? 'on' : 'off'}`)
-    if (h.on && h.bytes === bytes) return
+    if (h.on && Math.abs(h.bytes - bytes) < MIN) return // when capped, free space drifts a few MB between passes
     await rpc.request('holding.set', { on: true, bytes })
     log(bytes < want ? `share: ${gb(bytes)} GB (capped: ${gb(want)} GB asked, the disk keeps 2 GB free)` : `share: ${gb(bytes)} GB`)
   }
