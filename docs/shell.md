@@ -23,6 +23,13 @@ Paste a site's whole key (52 letters and digits) in the address and press Enter.
 `Title · abcdef…xyz`; click it to see the whole key. A key already open selects its tab. If nobody serving the
 site is online, the tab says so: "Try again" or "Close tab".
 
+**By name** (spec 022): type `name@authority` (e.g. `blog@bobsDNS`; `hyper://` in front is fine) and press Enter.
+HyperDNS looks it up in the engine ("Looking up…"), then the site opens and the address keeps showing the name; its
+key is in the tab's tooltip. The authority is one you have (created or reached before), or any authority by its
+link: `blog@hg:…` (its owner gives it; the first time joins it, read-only). No authority is built in. When it doesn't
+open, the tab says why: no such authority here, no such name, nobody who has it is online (try later), or the name
+doesn't point to a site. A path after the name (`blog@bobsDNS/x`) isn't supported: the site opens at its start.
+
 ## The desktop
 
 Each site's icon (from its `site.json`), its title under it.

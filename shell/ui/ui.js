@@ -85,7 +85,7 @@ function render () {
   $('tabs').replaceChildren(...S.tabs.map((t) => {
     const b = el('button', 'tab' + (t.status === 'opening' || t.loading ? ' busy' : ''))
     if (t.id === S.current) b.setAttribute('aria-current', 'page')
-    b.title = t.id === 0 ? 'Desktop' : t.title + ' · ' + t.key
+    b.title = t.id === 0 ? 'Desktop' : t.title + ' · ' + (t.name && t.key ? t.name + ' · ' + t.key : t.key || t.name) // spec 022: a named site's key stays reachable here
     b.append(t.id === 0 ? picture(null, 'desktop') : picture(t.icon, 'site'), el('span', 'name', t.title))
     b.onclick = () => send('select', { id: t.id })
     if (t.id !== 0) {
@@ -108,7 +108,7 @@ function render () {
   $('forward').disabled = !tab.canForward
   $('reload').disabled = !site || tab.status !== 'ready'
   const addr = $('address')
-  if (document.activeElement !== addr) addr.value = site ? tab.title + ' · ' + tab.short : ''
+  if (document.activeElement !== addr) addr.value = !site ? '' : tab.name || tab.title + ' · ' + tab.short // spec 022: a site opened by name shows its name
   const star = $('star')
   star.disabled = !site || tab.status !== 'ready' || tab.kind === 'installed'
   star.setAttribute('aria-pressed', String(!!tab.kind))
@@ -118,7 +118,7 @@ function render () {
   st.classList.toggle('bad', !!note || tab.status === 'error')
   if (note) st.textContent = note
   else if (!site) st.textContent = 'online · ' + S.open + (S.open === 1 ? ' site open' : ' sites open')
-  else if (tab.status === 'opening') st.textContent = 'opening…'
+  else if (tab.status === 'opening') st.textContent = tab.key ? 'opening…' : 'looking up…'
   else if (tab.status === 'error') st.textContent = 'unreachable'
   else if (!tab.state) st.textContent = 'loading'
   else {
@@ -132,7 +132,7 @@ function render () {
   $('panel').hidden = !site || tab.status === 'ready'
   if (site && tab.status !== 'ready') {
     $('panel-title').textContent = tab.status === 'error' ? 'Could not open the site' : 'Opening ' + tab.title
-    $('panel-text').textContent = tab.status === 'error' ? tab.error : 'Looking for peers who have ' + tab.key + ' …'
+    $('panel-text').textContent = tab.status === 'error' ? tab.error : tab.key ? 'Looking for peers who have ' + tab.key + ' …' : 'Looking up ' + tab.name + ' …'
     $('panel-retry').hidden = tab.status !== 'error'
   }
   if (!site) drawDesktop()
@@ -657,13 +657,13 @@ $('reload').onclick = () => send('reload')
 $('star').onclick = () => send('bookmark')
 $('plus').onclick = () => { send('select', { id: 0 }); toAddress() }
 $('panel-close').onclick = () => send('close', { id: S.current })
-$('panel-retry').onclick = async () => { const t = currentTab(); await send('close', { id: t.id }); send('open', { input: t.key }) }
+$('panel-retry').onclick = async () => { const t = currentTab(); await send('close', { id: t.id }); send('open', { input: t.name || t.key }) }
 
 const addr = $('address')
 function toAddress () { addr.focus(); addr.select() }
 addr.onfocus = () => {
   const t = currentTab()
-  addr.value = t.id === 0 ? '' : t.key // the full key while editing
+  addr.value = t.id === 0 ? '' : t.name || t.key // the full key (or the name) while editing
   addr.select()
 }
 addr.onblur = () => render()

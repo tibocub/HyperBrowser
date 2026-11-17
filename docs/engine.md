@@ -89,6 +89,17 @@ npm start -- --open <key>              # the site in a tab of the shell
 
 The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` from this repo).
 
+## Names (spec 022)
+
+The shell's `names.resolve { address, timeout? }` → `{ key, authority }`: `name@authority` resolved through
+HyperDNS (`file:../hyperDNS`, its library on the engine's own hypergraph), the first of its records that is a site
+key, `hyper://<key>` or an `hg:` link. The authority: one this engine holds (by its name), or any by its link
+(`name@hg:…`, joined read-only the first time). Errors: `UNKNOWN_AUTHORITY`, `AMBIGUOUS_AUTHORITY`, `UNKNOWN_NAME`,
+`UNAVAILABLE` (nobody holding it online; waits up to `timeout`, 10 s by default), `NOT_A_SITE`, `INVALID_PARAMS`.
+Pages can't call it (not one of a site's calls). Cost: `npm run perf:names` (the first lookup by link, which joins,
+then lookups by name). Creating authorities and publishing names: HyperDNS's own shell
+(`npm run shell` there) for now.
+
 ## The helper (spec 020)
 
 `node engine/cli.js helper [--config <file>] [--dir <folder>] [--join hg:…]`: an always-on engine with its own
@@ -208,7 +219,7 @@ reads (`circles.list` + each `circles.members`) and the engine's idle CPU while 
 ## Tests
 
 ```bash
-npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications, circles (spec 018)
+npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications, circles (spec 018), names (spec 022)
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
 npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %, the tray (spec 010)
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS

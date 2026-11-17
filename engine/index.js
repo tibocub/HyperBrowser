@@ -10,6 +10,7 @@ import { parseManifest, isDynamic, sitePath } from './manifest.js'
 import { contacts } from './contacts.js'
 import { notifications } from './notifications.js'
 import { circles } from './circles.js'
+import hyperdns from 'hyperdns'
 
 const ANSWERS = 'hyperbrowser/identity' // setting: { [site key]: true | false }, on every device of the person
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
@@ -121,6 +122,7 @@ export function start (ipc) {
       case 'contacts.list': return people.call('list', [])
       case 'contacts.inviteToCircle': return people.call('inviteToCircle', [p.identity, p.circle])
       // the tray's status line (spec 010); handles: the instances' handles kept (spec 017 R1)
+      case 'names.resolve': return resolveName(p) // spec 022: the shell's, never a page's (not in CALLS)
       case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length, handles: [...sites.values()].reduce((n, s) => n + s.instances.size, 0) }
       case 'site.installed': return installed()
       case 'devices.list': return devices()
@@ -713,6 +715,27 @@ export function start (ipc) {
       if (site && !(await hosted(site).catch(() => true))) await sfs.leave(key).catch(() => {})
       else if (site && !((INSTALLED + key) in settings) && await site.kept().catch(() => false)) await sfs.hg.setSetting(INSTALLED + key, name ?? '')
     }
+  }
+
+  // --- names (spec 022) ---
+
+  // name@authority → { key, authority }: the site its records point to (a key, hyper://<key> or an hg: link), first
+  // by HyperDNS's order (type, then value). Joins the authority read-only the first time it is reached by its link.
+  // Errors: HyperDNS's codes (UNKNOWN_AUTHORITY, AMBIGUOUS_AUTHORITY, UNKNOWN_NAME, UNAVAILABLE), NOT_A_SITE.
+  async function resolveName ({ address, timeout }) {
+    if (typeof address !== 'string' || !address.includes('@')) throw error('INVALID_PARAMS', 'names.resolve needs { address: name@authority }')
+    let found
+    try {
+      found = await hyperdns.resolveAddress(address, { hg: sfs.hg, timeout })
+    } catch (err) {
+      if (err.message === 'Invalid address format') throw error('INVALID_PARAMS', 'not name@authority: ' + address)
+      throw err
+    }
+    for (const { value } of found.records) {
+      const key = value.replace(/^hyper:\/\//i, '')
+      if (KEY.test(key) || /^hg:\S+$/.test(key)) return { key, authority: found.authority }
+    }
+    throw error('NOT_A_SITE', address + ' points to no site (no key among its records)')
   }
 
   // --- bundled apps (spec 015) ---
