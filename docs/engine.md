@@ -89,6 +89,13 @@ npm start -- --open <key>              # the site in a tab of the shell
 
 The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` from this repo).
 
+## The helper (spec 020)
+
+`node engine/cli.js helper [--config <file>] [--dir <folder>] [--join hg:…]`: an always-on engine with its own
+identity that joins circles from its config file, holds always on, and keeps the official apps (and other keys)
+whole and up to date. Install, config and logs: [docs/helper.md](helper.md). It is `engine/helper.js`, driven
+through the engine's own calls as the shell is; `engine/helper-config.js` reads the file.
+
 ## Which sites this device serves (spec 004)
 
 - **Installed** (`site.keep(true)`) and **your own** sites: joined and served from engine start, tab or not.
@@ -184,7 +191,8 @@ few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [ru
 - **The shell's contacts calls** (spec 019, besides `contacts.me`, `contacts.get { identity }` and
   `contacts.request { identity, name }`): `contacts.list` → the list as `hyper.contacts.list()` gives it, and
   `contacts.inviteToCircle { identity, circle }` → `true` (a friend only, else `NOT_FOUND`; owner and admins), for the
-  circles window's Invite contacts…. Top-level messages: no page reaches them; a page still goes through `site.call`
+  circles window's Invite contacts…; and (spec 020, the helper's name) `contacts.setMe { name?, findable? }` →
+  `true`, as `hyper.contacts.setMe`. Top-level messages: no page reaches them; a page still goes through `site.call`
   and the `contacts` permission (`NOT_ALLOWED` without it).
 - **Site calls**: `copies` (on the page's handle, or a key: its own space, a sub-space, an app instance) and
   `rotateKey` (on the handle, through `hg.space(key)`: the site handle has none); `site.on { event: 'copies' }`
