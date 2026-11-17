@@ -82,6 +82,13 @@ function api (sub, instance = null) {
       o.contacts[m] = (...args) => invoke({ op: 'call', ...at, method: 'contacts.' + m, args })
     }
     o.contacts.on = (fn) => subscribe({ op: 'on', ...at, event: 'contacts' }, () => fn())
+    // the person's projects (spec 024): only for a site whose site.json asks for "projects", once allowed.
+    // openFolder() takes no path: HyperBrowser asks the person to pick the folder.
+    o.projects = {}
+    for (const m of ['list', 'create', 'openFolder', 'openCopy', 'join', 'files', 'read', 'write', 'rename', 'remove', 'publish', 'versions',
+      'rollBack', 'preview', 'resetPreview', 'invite', 'inviteContact', 'members', 'removeMember']) {
+      o.projects[m] = (...args) => invoke({ op: 'call', ...at, method: 'projects.' + m, args })
+    }
     // any site, through HyperBrowser (spec 013): opening needs a click on the page; a request, the person's yes
     o.people = {
       chat: (identity) => people('chat', identity),

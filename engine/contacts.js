@@ -156,6 +156,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       // spec 018: the circles the person may invite to ({ key, name }), and an invite to one in a friend's conversation
       case 'circles': return (await circles('circles.list')).filter((x) => x.role === 'owner' || x.role === 'admin').map((x) => ({ key: x.key, name: x.name }))
       case 'inviteToCircle': return inviteToCircle(a, b)
+      case 'tell': return tell(a, b) // spec 024: the engine's own (a project's invite), never a page's
       default: throw error('UNKNOWN_METHOD', 'no contacts.' + method)
     }
   }
@@ -208,6 +209,14 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       if (err.code === 'NOT_ALLOWED') throw err
       await space.put('message', { text }) // a conversation whose types predate the fields: the text only
     }
+    return true
+  }
+
+  // A message from the person into their chat with a friend.
+  async function tell (identity, text) {
+    const c = (await all())[identity]
+    if (c?.state !== 'friend' || !c.chat) throw error('NOT_FOUND', 'not a friend')
+    await sfs.hg.space(c.chat).put('message', { text })
     return true
   }
 

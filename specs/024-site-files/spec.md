@@ -53,4 +53,5 @@ Publish.
 
 ## Not covered
 
-The IDE's interface (025). Running git from the IDE. Reading a site's data for debugging (with the debugger, later).
+The IDE's interface (025). Running git from the IDE. A viewer role (reads the project, never writes): needs
+hypergraph H6 (a role without `post` gets no key in a private space); co-authors only until then (lead, 2026-11-17). Reading a site's data for debugging (with the debugger, later).
