@@ -240,7 +240,8 @@ reads (`circles.list` + each `circles.members`) and the engine's idle CPU while 
   `site.open` and `site.read` on it read the project folder, its calls need no consent. Reset: left, a new one.
 - `openFolder` takes a path: the shell fills it from the person's folder picker, never from the page.
 - Paths: a page reaches only what the project syncs (`inside()`: never `.git`, `node_modules` or ignored paths, any
-  case; `.hyperbrowser.json` read-only). `remove` walks a folder itself: ignored paths stay, links are unlinked.
+  case; `.hyperbrowser.json` read-only). Short names (`GIT~1`) are refused, and the checks run again on the path as
+  the disk resolves it (native realpath: links and short names), so a link inside the project to `.git` is refused too. `remove` walks a folder itself: ignored paths stay, links are unlinked.
 
 `npm run perf:projects [-- --files 1000]`: two devices, 1000 files of 1 KB written into a project: on the other
 device in ~100 s (SwarmFS's pace); Publish: the first ~10 s, one file changed ~3.4 s (a visitor reads it ~6 s

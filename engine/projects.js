@@ -240,26 +240,36 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   // --- files: every path checked ---
 
-  // `p` inside `folder`: a clean relative path (no '..', no absolute path, nothing Windows reads otherwise), one the
-  // project syncs (never .git: git runs its hooks outside the sandbox; nor node_modules or what the ignore file
-  // lists), and no link on the way out of the folder. `write`: not .hyperbrowser.json either (the engine's).
+  // `p` inside `folder`: a clean relative path (no '..', no absolute path, no Windows short name like GIT~1, nothing
+  // Windows reads otherwise), one the project syncs (never .git: git runs its hooks outside the sandbox; nor
+  // node_modules or what the ignore file lists), and no link on the way out of the folder. Checked again on the path
+  // as the disk resolves it (a link inside the project to its .git). `write`: not .hyperbrowser.json either.
   async function inside (folder, p, write = false) {
     const clean = typeof p === 'string' && !p.startsWith('/') ? sitePath(p) : null
-    if (!clean || clean.split('/').some((s) => s === '.' || s.includes(':') || RESERVED.test(s) || /[. ]$/.test(s))) throw error('INVALID_PATH', 'not a path inside the project: ' + JSON.stringify(p))
-    const lower = clean.toLowerCase() // Windows and macOS: .GIT is .git
+    if (!clean || clean.split('/').some((s) => s === '.' || s.includes(':') || RESERVED.test(s) || /[. ]$/.test(s) || /~\d/.test(s))) throw error('INVALID_PATH', 'not a path inside the project: ' + JSON.stringify(p))
+    await syncs(folder, clean, write)
+    const real = await realpath(folder)
+    const full = path.join(real, ...clean.split('/'))
+    let probe = full
+    let r
+    for (;;) {
+      try { r = await realpath(probe); break } catch {} // not there yet: its parent
+      probe = path.dirname(probe)
+    }
+    if (r !== real && !r.startsWith(real + path.sep)) throw error('NOT_ALLOWED', 'that path leads out of the project')
+    const resolved = path.relative(real, path.join(r, path.relative(probe, full))).split(path.sep).join('/')
+    if (resolved !== clean) await syncs(folder, resolved, write)
+    return full
+  }
+
+  // NOT_ALLOWED unless the project syncs `rel` (and, `write`, it isn't .hyperbrowser.json).
+  async function syncs (folder, rel, write) {
+    const lower = rel.toLowerCase() // Windows and macOS: .GIT is .git
     const rules = await rulesOf(folder)
-    if (lower.split('/').some((s) => s === '.git' || s === 'node_modules') || [clean, lower].some((x) => ignored(rules, x, false) || ignored(rules, x, true))) {
-      throw error('NOT_ALLOWED', 'the project does not sync ' + clean + ': a page may not reach it')
+    if (lower.split('/').some((s) => s === '.git' || s === 'node_modules') || [rel, lower].some((x) => ignored(rules, x, false) || ignored(rules, x, true))) {
+      throw error('NOT_ALLOWED', 'the project does not sync ' + rel + ': a page may not reach it')
     }
     if (write && lower === PROJECT) throw error('NOT_ALLOWED', PROJECT + ' is written by HyperBrowser only')
-    const real = await fs.promises.realpath(folder)
-    const full = path.join(real, ...clean.split('/'))
-    for (let probe = full; ; probe = path.dirname(probe)) {
-      let r
-      try { r = await fs.promises.realpath(probe) } catch { continue } // not there yet: its parent
-      if (r !== real && !r.startsWith(real + path.sep)) throw error('NOT_ALLOWED', 'that path leads out of the project')
-      return full
-    }
   }
 
   async function rulesOf (folder) {
@@ -594,3 +604,6 @@ function safe (name) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+// The path as the disk names it: links resolved, and on Windows short names (GIT~1) made long (Node's native
+// realpath; Bare's realpath is the native one).
+const realpath = (p) => new Promise((resolve, reject) => (fs.realpath.native || fs.realpath)(p, (err, r) => err ? reject(err) : resolve(r)))

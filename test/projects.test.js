@@ -4,6 +4,8 @@ import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
 import b4a from 'b4a'
+import process from 'process'
+import { spawnSync } from 'child_process'
 import { engine, siteFolder, tmpDir, eventually, codeOf, bootstrap, text } from './helpers.js'
 import { linkOrCopy } from '../engine/projects.js'
 
@@ -107,6 +109,33 @@ test('what the project never syncs is out of reach: .git, node_modules, ignored 
   await p('write', key, '.swarmfsignore', 'dist/\n')
   const rules = fs.readFileSync(path.join(folder, '.swarmfsignore'), 'utf-8')
   t.ok(rules.includes('.git/') && rules.includes('node_modules/') && rules.includes('dist/'), 'the ignore file keeps .git/ and node_modules/: ' + JSON.stringify(rules))
+})
+
+test('short names (GIT~1) and links inside the project to its .git are refused too', async (t) => {
+  const { p } = await ide(t)
+  const { key, folder } = await p('create', 'Short')
+  fs.mkdirSync(path.join(folder, '.git', 'hooks'), { recursive: true })
+  fs.mkdirSync(path.join(folder, 'node_modules'))
+  for (const bad of ['GIT~1/hooks/pre-commit', 'NODE_M~1/x.js', 'a/GI3F2~1/b']) {
+    t.is(await codeOf(p('write', key, bad, 'x')), 'INVALID_PATH', 'a short name: ' + bad)
+  }
+  let short = null
+  if (process.platform === 'win32') {
+    try {
+      const r = spawnSync('cmd', ['/c', 'for %I in (.git) do @echo %~sI'], { cwd: folder })
+      short = String(r.stdout || '').trim().split(/[\\/]/).pop() || null // the last segment of the short path
+    } catch {}
+  }
+  if (short && short !== '.git') t.is(await codeOf(p('write', key, short + '/hooks/pre-commit', 'x')), 'INVALID_PATH', "the disk's own short name for .git: " + short)
+  else t.comment('no short name for .git here: not checked')
+  let linked = true
+  try { fs.symlinkSync(path.join(folder, '.git'), path.join(folder, 'docs'), 'junction') } catch { linked = false }
+  if (linked) {
+    t.is(await codeOf(p('write', key, 'docs/hooks/pre-commit', 'x')), 'NOT_ALLOWED', 'a link inside the project to its .git')
+    t.is(await codeOf(p('read', key, 'docs/hooks')), 'NOT_ALLOWED', 'read through it too')
+    fs.rmdirSync(path.join(folder, 'docs'))
+  } else t.comment('no junction on this runtime: not checked here')
+  t.absent(fs.existsSync(path.join(folder, '.git', 'hooks', 'pre-commit')), 'no hook written')
 })
 
 test('removing a folder: links in it are unlinked, their targets survive; a nested .git stays', async (t) => {

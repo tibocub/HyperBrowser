@@ -245,7 +245,8 @@ between the person's devices and co-authors while online; saving never publishes
   folder, e.g. a cloned GitHub repo: the page never names a path; `CANCELLED` if they don't), `openCopy(siteKey)` (a
   site's published files as a new project: no posts or messages; publishing it makes a new site), `join(link)` (a
   co-author's invite) → the project.
-- Files, by paths inside the project (`css/site.css`; no `..`, no absolute path, nothing leading out through a link:
+- Files, by paths inside the project (`css/site.css`; no `..`, no absolute path, no Windows short name such as `GIT~1`,
+  nothing leading out through a link:
   `INVALID_PATH`, `NOT_ALLOWED`): `files(key)` → `[{ path, size, mtime }]`, `read(key, path)` → `Uint8Array`,
   `write(key, path, textOrBytes)` (folders made as needed; 32 MB a write), `rename(key, from, to)`,
   `remove(key, path)` (a folder with what the project syncs in it; links in it unlinked, never followed).
