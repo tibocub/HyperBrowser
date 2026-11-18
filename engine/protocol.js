@@ -40,7 +40,8 @@ export function connect (stream, { handle = null, onEvent = null, onmessage = nu
     } else if (waiting.has(m.id)) {
       const w = waiting.get(m.id)
       waiting.delete(m.id)
-      if (m.error) w.reject(error(m.error.code, m.error.message))
+      // the method too: an engine's error alone ("not a site: …") doesn't say which call failed
+      if (m.error) w.reject(Object.assign(error(m.error.code, m.error.message), { method: w.method }))
       else w.resolve(fromWire(m.result))
     }
   })
@@ -61,7 +62,7 @@ export function connect (stream, { handle = null, onEvent = null, onmessage = nu
       if (framed.destroyed) return Promise.reject(error('CLOSED', 'engine stream closed'))
       const id = next++
       return new Promise((resolve, reject) => {
-        waiting.set(id, { resolve, reject })
+        waiting.set(id, { resolve, reject, method })
         send({ id, method, params })
       })
     },

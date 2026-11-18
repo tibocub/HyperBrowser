@@ -651,5 +651,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     setIcons(upsert(data.desktop.icons, { id: icon?.id || key, key, title: icon?.title || title, kind: 'installed' }))
     keepSite(key, true)
   }
-  return { win, inspect, show, devices, circles: circlesChanged, joinCircle, joined: joinedNow, open: openKey, installed, install, notify: (d) => notify(d).catch(() => {}), looked: () => looked().catch(() => {}), dock, undock: (wc) => undock(tabs.find((t) => t.wc === wc)) }
+  return { win, inspect, show, devices, circles: circlesChanged, joinCircle, joined: joinedNow, open: openKey, installed, install, notify: (d) => notify(d).catch(() => {}),
+    notice: (text) => { if (tray) tray.notice(text); else if (Notification.isSupported()) new Notification({ title: 'HyperBrowser', body: text }).show() }, looked: () => looked().catch(() => {}), dock, undock: (wc) => undock(tabs.find((t) => t.wc === wc)) }
 }

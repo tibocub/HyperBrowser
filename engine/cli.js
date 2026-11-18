@@ -9,7 +9,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { start } from './index.js'
+import { start, guard } from './index.js'
 import { connect, pair } from './protocol.js'
 import { publish } from './publish.js'
 import { helper } from './helper.js'
@@ -104,6 +104,7 @@ async function runHelper () {
   let config = read()
   const [a, b] = pair()
   const engine = start(a)
+  guard(engine, process, { stack: false }) // one line in the journal; a restart would re-join everything
   const rpc = connect(b)
   await rpc.request('init', { dir: config.dir, bootstrap: opts.bootstrap })
   console.log(`helper ${(await rpc.request('contacts.me')).identity} in ${config.dir}`)

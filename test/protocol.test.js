@@ -24,6 +24,7 @@ test('request, reply, error codes, events', async (t) => {
   t.is(await client.request('add', { x: 2, y: 3 }), 5)
   t.is(await client.request('nothing'), null)
   t.is(await codeOf(client.request('other')), 'NOT_ALLOWED')
+  t.is((await client.request('other').catch((err) => err)).method, 'other', 'an error names the request it answers')
   server.emit('live', { id: 1 })
   await within(new Promise((resolve) => setTimeout(resolve, 50)), 100)
   t.alike(events, [{ event: 'live', data: { id: 1 } }])

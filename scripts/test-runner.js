@@ -84,7 +84,15 @@ try { fs.writeFileSync(TIMES, JSON.stringify(times, null, 2)) } catch {}
 const failed = results.filter(r => !r.ok)
 for (const r of failed) {
   process.stdout.write(`\n──── ${r.file} ────\n`)
-  process.stdout.write(r.out.split('\n').filter(l => /not ok|Error|error|# tests|# asserts/.test(l)).slice(0, 40).join('\n') + '\n')
+  // A test body that throws is an uncaught error (brittle re-throws it). Bare aborts on one: exit 3221226505
+  // (0xC0000409), which reads like a native crash. Its whole block (stack, code, method) says where it was.
+  if (opts.bare && r.code === 3221226505 && /^Uncaught/m.test(r.out)) process.stdout.write('(uncaught error: Bare aborts on one, not a native crash)\n')
+  let uncaught = false
+  process.stdout.write(r.out.split('\n').filter(l => {
+    if (/^(Uncaught|\w*Error: )/.test(l)) uncaught = true // Bare's form, Node's
+    else if (uncaught && !l.trim()) uncaught = false
+    return uncaught || /not ok|Error|error|# tests|# asserts/.test(l)
+  }).slice(0, 40).join('\n') + '\n')
 }
 const tests = results.reduce((n, r) => n + r.total, 0)
 const passed = results.reduce((n, r) => n + r.passed, 0)
