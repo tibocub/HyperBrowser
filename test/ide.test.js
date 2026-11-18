@@ -1,10 +1,12 @@
 // The IDE (spec 025) through its own code (sites/ide/lib/site.js) on window.hyper as the page gets it: a beginner's
 // HyperMD site (FR-001), a developer's copy of Chat (FR-002), two co-authors (FR-003).
 import test from 'brittle'
+import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, tmpDir, eventually, text } from './helpers.js'
 import * as ide from '../sites/ide/lib/site.js'
+import { nest } from '../sites/ide/lib/tree.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -116,4 +118,33 @@ test('FR-003: two people co-author one project: both edit, either publishes', as
   await ide.save(alice.projects, p.key, 'by-bob.hmd', '::page{order=2}\n\n# By Bob\n\nAnd Alice.\n')
   t.ok((await ide.publish(alice.projects, p.key)).version > 1, 'alice publishes too')
   t.ok(await eventually(async () => (await page(visitor, site, 'by-bob.html')).includes('And Alice'), 30000), 'her version for visitors')
+})
+
+test('spec 026 B1: sites/home (HyperMD, entry index.html) previews and publishes as a project', async (t) => {
+  t.timeout(120000)
+  const { e, projects } = await withIde(t)
+  const folder = path.join(tmpDir(t, 'home'), 'home')
+  fs.cpSync(path.join(ROOT, 'sites', 'home'), folder, { recursive: true })
+  const p = await projects.openFolder(folder)
+  t.is(await projects.preview(p.key).catch((err) => err.code), 'INVALID_MANIFEST', 'without the build: index.html is not there yet')
+  const { key: draft } = await ide.preview(projects, p.key)
+  const opened = await e.rpc.request('site.open', { key: draft })
+  t.is(opened.manifest.entry, 'index.html')
+  const home = await page(e, draft, '')
+  t.ok(home.includes('<html') && home.includes('hmd-'), 'the preview shows the home page, built')
+  t.ok((await page(e, draft, 'start.html')).includes('hmd-'), 'and every other page, not only the open one')
+  const { site } = await ide.publish(projects, p.key)
+  const visitor = await engine(t)
+  await visitor.rpc.request('site.open', { key: site, timeout: 30000 })
+  t.ok((await page(visitor, site, 'news.html')).includes('hmd-'), 'published, every page')
+})
+
+test('spec 026: the file tree nests paths: folders first, then by name; implied and empty folders', async (t) => {
+  const tree = nest([{ path: 'b.txt' }, { path: 'src/z.js' }, { path: 'src/lib/a.js' }, { path: 'empty', folder: true }, { path: 'a.txt' }])
+  const names = (list) => list.map((n) => n.name + (n.folder ? '/' : ''))
+  t.alike(names(tree), ['empty/', 'src/', 'a.txt', 'b.txt'])
+  const src = tree.find((n) => n.name === 'src')
+  t.alike(names(src.children), ['lib/', 'z.js'])
+  t.is(src.children[0].children[0].path, 'src/lib/a.js', 'paths kept whole')
+  t.alike(tree.find((n) => n.name === 'empty').children, [], 'an empty folder')
 })

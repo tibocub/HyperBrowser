@@ -131,7 +131,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       case 'openFolder': return one(() => openFolder(a))
       case 'openCopy': return openCopy(a)
       case 'join': return join(a)
-      case 'files': return files(await project(a))
+      case 'files': return files(await project(a), b?.folders === true)
+      case 'mkdir': return mkdir(await project(a), b)
       case 'read': return readFile(await project(a), b)
       case 'write': return writeFile(await project(a), b, c)
       case 'rename': return rename(await project(a), b, c)
@@ -290,7 +291,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     if (paths.some((p) => p.toLowerCase() === IGNORE)) await ensureIgnore(folder)
   }
 
-  async function files (folder) {
+  // [{ path, size, mtime }]; `folders` (spec 026, a file tree): the folders too, as { path, folder: true }.
+  async function files (folder, folders = false) {
     const rules = await rulesOf(folder)
     const out = []
     const walk = async (d) => {
@@ -298,6 +300,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
         const full = path.join(d, e.name)
         const rel = path.relative(folder, full).split(path.sep).join('/')
         if (ignored(rules, rel, e.isDirectory())) continue
+        if (e.isDirectory() && folders) out.push({ path: rel, folder: true })
         if (e.isDirectory()) await walk(full)
         else if (e.isFile()) {
           const st = await fs.promises.stat(full)
@@ -322,6 +325,14 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     await fs.promises.mkdir(path.dirname(full), { recursive: true })
     await fs.promises.writeFile(full, data)
     await kept(folder, p)
+    return true
+  }
+
+  // A new empty folder (spec 026); its parents too. EXISTS if something is there.
+  async function mkdir (folder, p) {
+    const full = await inside(folder, p, true)
+    if (await fs.promises.lstat(full).catch(() => null)) throw error('EXISTS', p + ' is there already')
+    await fs.promises.mkdir(full, { recursive: true })
     return true
   }
 

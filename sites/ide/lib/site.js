@@ -169,6 +169,13 @@ export async function upload (projects, key, name, bytes, folder = '') {
   return path
 }
 
+// The preview (spec 026 B1): every HyperMD page built first, so site.json's entry (index.html) is there. `reset`: a new
+// throwaway space.
+export async function preview (projects, key, reset = false) {
+  await build(projects, key)
+  return reset ? projects.resetPreview(key) : projects.preview(key)
+}
+
 // Publish: the pages built first, so what is published is what the project says.
 export async function publish (projects, key) {
   await build(projects, key)

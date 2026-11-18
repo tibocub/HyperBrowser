@@ -89,18 +89,19 @@ function draw () {
   const typing = document.activeElement?.name === 'text' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null
   const top = keepScroll(root.querySelector('[data-key]'), view?.key, view?.toEnd)
   if (view) view.toEnd = false
-  root.replaceChildren(h('div', { style: 'display:flex; gap:16px; align-items:flex-start; padding:8px' },
-    h('nav', { style: 'width:220px; flex:none' },
+  // spec 026: Chat fits the window (body.hb-app); the conversations and the messages scroll, never the page
+  root.replaceChildren(h('div', { style: 'display:flex; gap:16px; flex:1; min-height:0; padding:4px' },
+    h('nav', { style: 'width:220px; flex:none; display:flex; flex-direction:column; min-height:0' },
       h('h2', {}, 'Chat'),
       h('p', { class: 'small' }, 'You are ', h('b', {}, me.name || '(no name yet)'), ' · ',
         h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(me.identity)) } }, 'Contacts')),
-      h('ul', { style: 'list-style:none; padding:0' }, convs.map((x) => h('li', {},
+      h('ul', { style: 'list-style:none; padding:0; margin:0 0 8px; flex:1; min-height:0; overflow:auto' }, convs.map((x) => h('li', {},
         h('a', { href: '#', 'aria-current': x.key === current ? 'page' : null, onclick: (e) => { e.preventDefault(); open(x.key) } },
           x.direct ? '@ ' : '# ', titleOf(x)),
         counts[x.key]?.count ? h('b', { 'aria-label': counts[x.key].count + ' unread' }, ' (' + counts[x.key].count + ')') : null))),
       convs.length ? null : h('p', { class: 'small' }, 'No conversations yet: become friends with someone in Contacts.'),
       h('form', { onsubmit: newGroup }, h('input', { name: 'name', placeholder: 'New group name', maxlength: 200 }), ' ', h('button', {}, 'Create'))),
-    h('main', { style: 'flex:1; min-width:0' }, notice ? h('p', { role: 'alert' }, notice) : null,
+    h('main', { style: 'flex:1; min-width:0; display:flex; flex-direction:column; min-height:0' }, notice ? h('p', { role: 'alert' }, notice) : null,
       view && conv ? (view.gone ? h('p', {}, 'You no longer have access to this group: it was secured, and you were not taken along.') : conversation(conv)) : h('p', {}, 'Pick a conversation.'))))
   const list = root.querySelector('[data-key]')
   if (list) list.scrollTop = top ?? list.scrollHeight
@@ -123,7 +124,7 @@ function conversation (conv) {
     if (inv.author === me.identity || joined['invite:' + inv.id]) continue
     out.push(h('p', {}, nameOf(inv.author), ' invites you to the group ', h('b', {}, inv.name), ' ', h('button', { onclick: () => join(inv) }, 'Join')))
   }
-  out.push(h('div', { 'data-key': view.key, style: 'max-height:60vh; overflow:auto; position:relative' }, view.messages.map((m, i) => [
+  out.push(h('div', { 'data-key': view.key, style: 'flex:1; min-height:3em; overflow:auto; position:relative' }, view.messages.map((m, i) => [
     i === view.line ? h('p', { class: 'new-line', role: 'separator', 'aria-label': 'New messages', style: 'text-align:center; color:var(--accent, #1f4fd1); border-top:1px solid; margin:8px 0 0' }, 'New messages') : null,
     h('p', {},
       h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(m.author)) } }, h('b', {}, nameOf(m.author))),
@@ -133,7 +134,7 @@ function conversation (conv) {
   out.push(h('form', { onsubmit: send },
     h('textarea', { name: 'text', rows: 3, style: 'width:100%', placeholder: view.editing ? 'Edit your message' : 'Write a message (Enter sends, Shift+Enter: new line)', onkeydown: enter, oninput: (e) => { view.draft = e.target.value }, value: view.draft ?? view.editing?.text ?? '' }),
     h('button', {}, view.editing ? 'Save' : 'Send'), view.editing ? h('button', { type: 'button', onclick: () => { view.editing = view.draft = null; draw() } }, 'Cancel') : null))
-  if (!conv.direct) out.push(group(conv))
+  if (!conv.direct) out.push(h('div', { style: 'flex:none; max-height:35%; overflow:auto' }, group(conv))) // a group's members: scroll on their own
   return out
 }
 

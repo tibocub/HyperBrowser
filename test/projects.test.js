@@ -400,3 +400,15 @@ test('leave a project (its folder kept) or delete it (its synced files gone, .gi
   t.absent(fs.existsSync(path.join(gone.folder, 'src')), 'its files deleted')
   t.ok(fs.existsSync(path.join(gone.folder, '.git', 'HEAD')), '.git never touched')
 })
+
+test('spec 026: folders listed on request (a file tree), mkdir, refused where a page may not reach', async (t) => {
+  const { p } = await ide(t)
+  const { key } = await p('create', 'Tree')
+  await p('mkdir', key, 'empty/inside')
+  await p('write', key, 'src/a.js', 'a')
+  t.alike((await p('files', key)).map((f) => f.path).sort(), ['.swarmfsignore', 'src/a.js'], 'files only, as before')
+  t.alike((await p('files', key, { folders: true })).filter((f) => f.folder).map((f) => f.path).sort(), ['empty', 'empty/inside', 'src'], 'and the folders, empty ones too')
+  t.is(await codeOf(p('mkdir', key, 'src')), 'EXISTS')
+  t.is(await codeOf(p('mkdir', key, '.git/hooks')), 'NOT_ALLOWED', 'never into .git')
+  t.is(await codeOf(p('mkdir', key, '../out')), 'INVALID_PATH')
+})

@@ -448,7 +448,7 @@ async function selftest (dir) {
   const chat = await checkChat(win, views, out, tmp)
   await checkChatLine(chat, out, tmp)
   await checkMenus(win, views, out, tmp, chat)
-  await checkIde(win, views, out, tmp)
+  await checkIde(win, views, out, tmp, chat)
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
@@ -747,7 +747,7 @@ async function checkMenus (win, views, out, tmp, chat) {
 // spec 025: the IDE in a real page. A beginner makes a site of two pages without a file name or JSON in sight, typing
 // builds the page; a developer's file opens CodeMirror (loaded then), the default theme stays. Its costs are printed
 // as PERF lines (perf/ide.mjs records them): start, the editor's load, memory before and after, a preview's reload.
-async function checkIde (win, views, out, tmp) {
+async function checkIde (win, views, out, tmp, chat) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const folder = path.join(tmp, 'ide')
   fs.cpSync(path.join(HERE, '..', 'sites', 'ide'), folder, { recursive: true })
@@ -779,13 +779,82 @@ async function checkIde (win, views, out, tmp) {
   const before = memory()
   const t1 = performance.now()
   await run(`${button('Show the files')}.click(); 0`)
-  await waitFor(() => run(`!!${button('index.html')}`), 5000)
-  await run(`${button('index.html')}.click(); 0`)
+  const item = (p) => `document.querySelector('[role=treeitem][data-path=${JSON.stringify(p)}]')`
+  await waitFor(() => run(`!!${item('index.html')}`), 5000)
+  await run(`${item('index.html')}.click(); 0`)
   const cm = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-editor')"), 15000)
   const editorLoad = performance.now() - t1
   pass('ide: a file in the files view opens in CodeMirror, loaded then', cm)
   pass('ide: the default theme stays with the editor loaded', await run("getComputedStyle(document.body).fontFamily.includes('HB ')"))
   const after = memory()
+  // spec 026 I1: the tree: a right-click menu, Shift+F10 on the focused row, Escape, rename in place, a new folder
+  const menuItems = "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent).join('|')"
+  await run(`${item('index.html')}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 120 })); 0`)
+  const rightClick = await run(menuItems)
+  pass('ide: right-click on a file: Open, Rename, Delete, Cut, Copy, New file, New folder', ['Open', 'Rename', 'Delete…', 'Cut', 'Copy', 'New file…', 'New folder…'].every((x) => rightClick.split('|').includes(x)))
+  await run("document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); 0")
+  const closed = await run("!document.querySelector('[role=menu]') && document.activeElement?.getAttribute('role') === 'treeitem'")
+  await run(`${item('_layout.hmd')}.focus(); ${item('_layout.hmd')}.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true })); 0`)
+  const keyboard = await run(menuItems)
+  pass('ide: the tree\'s menu by keyboard (Shift+F10), Escape closes it with the focus back', closed && keyboard.includes('Rename') && await run("document.activeElement?.getAttribute('role') === 'menuitem'"))
+  await run("[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => b.textContent === 'Copy').click(); 0")
+  await run(`${item('about.hmd')}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 140 })); 0`)
+  await run("[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => b.textContent === 'Rename').click(); 0")
+  const field = await waitFor(() => run(`!!${item('about.hmd')}?.querySelector('input')`), 3000)
+  await run(`(() => { const f = ${item('about.hmd')}.querySelector('input'); f.value = 'me.hmd'; f.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 0 })()`)
+  const renamed = await waitFor(() => run(`!!${item('me.hmd')}`), 10000)
+  pass('ide: rename in place (the row becomes a field; Enter renames)', field && renamed)
+  await run(`${item('me.hmd')}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 140 })); 0`)
+  const pasteItem = await run(menuItems)
+  await run("[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => b.textContent.startsWith('Paste')).click(); 0")
+  const pasted = await waitFor(() => run(`!!${item('_layout copy.hmd')}`), 10000)
+  pass('ide: copy, then paste: a copy under a free name', pasteItem.includes('Paste _layout.hmd') && pasted)
+  // spec 026 I2, I3: the list hidden (remembered), the editor's settings
+  await run(`${button('Hide the list')}.click(); 0`)
+  const hidden = await waitFor(() => run("!document.querySelector('nav[aria-label=Files]') && !!document.querySelector('#editor')"), 5000)
+  const remembered = await waitFor(() => run('window.hyper.mine.all().then((m) => m.tree === false)'), 5000) // saved in the background
+  pass('ide: Hide the list gives the editor the room, and is remembered', hidden && remembered)
+  await run(`${button('Show the list')}.click(); 0`)
+  await run(`${menu}.querySelector('button').click(); 0`)
+  await run(`${button('Editor settings')}.click(); 0`)
+  await waitFor(() => run("!!document.querySelector('main input[type=checkbox]')"), 5000)
+  await run("(() => { const c = document.querySelector('main input[type=checkbox]'); c.checked = true; c.dispatchEvent(new Event('change')); return 0 })()")
+  const saved = await waitFor(() => run('window.hyper.mine.all().then((m) => m.editor?.wrap === true)'), 5000)
+  await run(`${button('← Back to the editor')}.click(); 0`)
+  const wrapping = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-lineWrapping')"), 10000)
+  pass('ide: Editor settings: line wrapping on, saved per person (hyper.mine)', saved && wrapping)
+  // spec 026 L5: a button keeps its shadow's room, so a pressed one never covers the next
+  pass('ide: buttons keep their shadow\'s room (2px right and below)', await run("(() => { const c = getComputedStyle(document.querySelector('button')); return c.marginRight === '2px' && c.marginBottom === '2px' })()"))
+  // spec 026 L3: apps fit the window at every size; only their parts scroll
+  const sizes = [[1400, 800], [1000, 700], [700, 500], [480, 360]]
+  const fitsAll = async (v) => {
+    for (const [width, height] of sizes) {
+      v.view.setBounds({ x: 0, y: 0, width, height })
+      await wait(400)
+      const ok = await v.webContents.executeJavaScript('(() => { const e = document.scrollingElement; return e.scrollHeight <= innerHeight + 1 && e.scrollWidth <= innerWidth + 1 })()')
+      if (!ok) return `${width}×${height}`
+    }
+    return null
+  }
+  const ideStuck = await fitsAll(v)
+  pass('ide: no page scrollbar at 1400×800, 1000×700, 700×500, 480×360' + (ideStuck ? ' (scrolls at ' + ideStuck + ')' : ''), !ideStuck)
+  const c = chat.view
+  win.contentView.addChildView(c.view)
+  const chatStuck = await fitsAll(c)
+  pass('chat: no page scrollbar at those sizes' + (chatStuck ? ' (scrolls at ' + chatStuck + ')' : ''), !chatStuck)
+  const ffolder = path.join(tmp, 'forum-fit')
+  fs.cpSync(path.join(HERE, '..', 'sites', 'forum'), ffolder, { recursive: true })
+  const { key: fkey } = await rpc.request('site.publish', { folder: ffolder })
+  const f = await openSite(fkey)
+  views.push(f)
+  win.contentView.addChildView(f.view)
+  const frun = (s) => f.webContents.executeJavaScript(s)
+  await waitFor(() => frun("!!document.querySelector('.desk')"), 30000)
+  const fit = await frun("window.hyper.instances.create('Fit', { private: true }).then((i) => i.key, (e) => 'error ' + e.code)")
+  await frun(`location.search = '?instance=${fit}'; 0`)
+  await waitFor(() => frun("!!document.querySelector('.layout')"), 30000)
+  const forumStuck = await fitsAll(f)
+  pass('forum: no page scrollbar at those sizes (its columns and its desk scroll)' + (forumStuck ? ' (scrolls at ' + forumStuck + ')' : ''), !forumStuck)
   const { key: draft } = await run('window.hyper.projects.list().then(([p]) => window.hyper.projects.preview(p.key))')
   const pv = await openSite(draft)
   views.push(pv)

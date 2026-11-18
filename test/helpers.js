@@ -86,7 +86,7 @@ export function siteApi (e, key, instance = null) {
     api.notifications.on = (fn) => subscribe('site.on', { event: 'notifications' }, fn)
     // spec 024, 025: the person's projects, as the preload gives them (preview's docking is the shell's)
     api.projects = {}
-    for (const m of ['list', 'create', 'openFolder', 'openCopy', 'join', 'leave', 'files', 'read', 'write', 'rename', 'remove', 'publish',
+    for (const m of ['list', 'create', 'openFolder', 'openCopy', 'join', 'leave', 'files', 'mkdir', 'read', 'write', 'rename', 'remove', 'publish',
       'versions', 'rollBack', 'preview', 'resetPreview', 'invite', 'inviteContact', 'members', 'removeMember', 'status']) api.projects[m] = (...args) => call('projects.' + m, args)
     api.projects.on = (fn) => subscribe('site.on', { event: 'projects' }, fn)
   }

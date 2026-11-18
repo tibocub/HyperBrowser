@@ -40,10 +40,17 @@ It syncs with your other computers while they are online.
 
 ## For developers
 
-- **…** → **Show the files**: the project's files.
-  - **New file**, **Upload**; each file's **…** has **Rename** and **Delete**.
+- **…** → **Show the files**: the project's files, as a tree.
+  - Click a folder to open or close it; click a file to edit it.
+  - **Right-click** a row (or the Menu key, or Shift+F10) for its actions: Open, Rename (in place: Enter renames,
+    Escape cancels), Delete, Cut, Copy, Paste, New file, New folder.
+  - Right-click the empty space below for New file, New folder and Paste. Keyboard: arrows, Home, End, Enter, F2.
+  - **New file**, **New folder** and **Upload** are above the tree.
   - Files changed since your last git commit are marked •.
   - The line under the title shows the git branch and how many files changed. The IDE reads git; it never runs it.
+- **Hide the list** (top right) gives the editor the whole width; **Show the list** brings it back. Remembered.
+- **…** → **Editor settings**: wrap long lines, line numbers, tab size (2, 4, 8), text size (12 to 20 px). Saved for
+  you, on all your devices.
 - Code opens in an editor with search (Ctrl+F), undo and redo. It knows JS, HTML, CSS, JSON and Markdown/HyperMD.
   **Ctrl+S** saves. The preview reloads on each save.
 - **New project** offers templates:
@@ -75,7 +82,19 @@ compiler.
 
 ## How it is made
 
-- `sites/ide/app.js` is the page.
+- `sites/ide/app.js` is the page. It fits the window (`<body class="hb-app">`): the tree and the editor scroll,
+  never the page.
+- `sites/ide/lib/tree.js` is the file tree, a component with nothing of the IDE's. HyperBrowser's file manager will
+  reuse it: a site loads only its own files, so that app takes a copy.
+  - `fileTree(element, { label, open(path), rename(from, to), menu(path, kind) → [[label, fn] | null], mark(path) })`
+    returns `{ set(items), select(path), rename(path), selected, expanded }`.
+  - `items` are `[{ path, folder? }]`; a file's folders are implied, and empty folders are listed as folders.
+  - `nest(items)` is the pure part (tested).
+  - The menu floats at the click and moves nothing. It also opens with the Menu key and Shift+F10; Escape closes it
+    and the focus goes back to the row.
+  - Roles: `tree`, `treeitem`, `aria-expanded`, `aria-selected`.
+  - The rows aren't buttons, so a click never shifts them.
+- Previews and Publish build every HyperMD page first (spec 026: `sites/home` previews with `entry: index.html`).
 - `sites/ide/lib/site.js` does the work: templates, HyperMD built in the page, pages by title, `site.json` changes,
   Publish. `test/ide.test.js` runs it on Node and Bare.
 - `sites/ide/vendor/editor.js` (CodeMirror 6: JS, HTML, CSS, JSON, Markdown, search, undo) is loaded the first time
