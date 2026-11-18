@@ -54,6 +54,7 @@ function log (line) {
 const FIRST = SELFTEST || FRAMECHECK || !!arg('--dir') || app.requestSingleInstanceLock()
 if (!FIRST) app.quit()
 let ui = null // startFrame's { win, inspect, show }
+let engineErred = false // engine.error: the notice once a session
 app.on('second-instance', () => ui?.show())
 
 // Windows shows a popup (spec 016) only for an app id its Start menu shortcut names: the installer's (scripts/build.js).
@@ -95,6 +96,12 @@ function onEvent (event, data) {
   if (event === 'devices') return ui?.devices()
   if (event === 'circles') return ui?.circles()
   if (event === 'notify') return ui?.notify(data)
+  if (event === 'engine.error') { // an error escaped in the engine, which kept running: logged; said once a session
+    log(`engine error${data.code ? ' ' + data.code : ''}${data.method ? ' in ' + data.method : ''}: ${data.message}`)
+    if (!engineErred) ui?.notice('Something went wrong in HyperBrowser\'s engine. It kept running.')
+    engineErred = true
+    return
+  }
   if (event === 'closing') {
     if (!quitting && data.reason !== 'close') { console.error('engine stopped:', data.reason); app.exit(1) } // 'close': asked (a join)
     return

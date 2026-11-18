@@ -915,7 +915,25 @@ export function start (ipc) {
     return closing
   }
 
-  return { closed: done }
+  // An error that escaped everything (guard below): told to the shell, without its stack (that stays in the log).
+  function escaped (err) {
+    const e = { message: String(err?.message ?? err), code: err?.code ?? null, method: err?.method ?? null }
+    rpc.emit('engine.error', e)
+    return e
+  }
+
+  return { closed: done, escaped }
+}
+
+// The worker's and the helper's process (Bare, Node): an escaped error is logged and told to the shell, and the
+// engine keeps running (Tibo, 2026-11-18; without it Bare aborts the process). Never in tests: failures stay loud.
+export function guard (engine, target, { stack = true } = {}) {
+  const on = (err) => {
+    const { message, code, method } = engine.escaped(err)
+    console.error(`escaped error${code ? ' ' + code : ''}${method ? ' in ' + method : ''}: ${stack && err?.stack ? err.stack : message}`)
+  }
+  target.on('uncaughtException', on)
+  target.on('unhandledRejection', on)
 }
 
 // What crosses the boundary: plain data. A Space (createSubspace's result) becomes { key, name };

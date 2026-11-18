@@ -88,6 +88,9 @@ One line per change: `joined "Family"`, `refused: <why>`, `keeping Chat (<key>)`
 lines ignored. Every hour, and at start, a summary: circles, members, GB held of the share, the apps kept and their
 sizes.
 
+An error nobody caught (a bug) is one line, `escaped error <code> in <method>: <message>` (code and method when
+it has them), and the helper keeps running: no restart, nothing re-joined.
+
 ## Not in v1
 
 A helper built into HyperBrowser (pairing code), answering invites, a status command, Docker, Windows or ARM

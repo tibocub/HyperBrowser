@@ -36,8 +36,10 @@ test('body rejects', async (t) => { await new Promise((r) => setTimeout(r, 10));
 The engine runs as a Bare worker; an error escaping anywhere in it aborts the worker the same way, and the shell
 then quits ("engine stopped without a word", `shell/main.js`). Bare offers `Bare.on('uncaughtException', err)` and
 `Bare.on('unhandledRejection', reason, promise)` (bare-process maps them to `process.on`); with a listener, Bare
-doesn't abort. `engine/worker.js` has none today. Not added here: logging and carrying on would hide real bugs;
-a decision for Tibo.
+doesn't abort. Tibo's call (2026-11-18): log and keep running. `engine/index.js` `guard()` installs both, in
+`engine/worker.js` (Bare) and the helper (`process`, Node), never in tests: the error is logged (stack in the
+worker, one line in the helper), sent to the shell as `engine.error` { message, code, method }, and the shell
+logs it and shows a notice once a session (docs/engine.md).
 
 ## Rates
 

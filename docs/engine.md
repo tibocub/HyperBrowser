@@ -287,6 +287,12 @@ sudo chown root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 nod
 
 - The engine stops by itself if the shell stops sending heartbeats for 6 s (a crashed or killed shell on
   Windows gives the engine no other sign).
+- An error nobody caught in the engine (a bug) doesn't stop it: the engine logs it with its stack (the shell's
+  console, as `engine: escaped error …`), tells the shell (`engine.error` { message, code, method }), and keeps
+  running. The shell writes it to its log (`hyperbrowser.log` when installed) and shows "Something went wrong in
+  HyperBrowser's engine. It kept running." once a session. Without this, Bare would abort the engine and the app
+  would quit. The tests don't do this: there an escaped error fails the test (on Bare its exit code is
+  3221226505, which is not a native crash).
 - The first time the engine goes online on Windows, Windows Firewall may ask about `bare.exe`: allow it on
   private networks, or other devices on your network can't reach it directly.
 - The sandbox: one view per site with its own storage, only `hyper://<its key>/` loads, no Node, no files, no
