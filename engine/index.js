@@ -918,7 +918,7 @@ export function start (ipc) {
   // An error that escaped everything (guard below): told to the shell, without its stack (that stays in the log).
   function escaped (err) {
     const e = { message: String(err?.message ?? err), code: err?.code ?? null, method: err?.method ?? null }
-    rpc.emit('engine.error', e)
+    try { rpc.emit('engine.error', e) } catch {} // the channel may be closing: telling must never throw back into guard
     return e
   }
 
