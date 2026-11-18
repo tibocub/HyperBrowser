@@ -134,7 +134,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const { width, height } = win.getContentBounds()
     const tab = tabOf(current)
     for (const t of tabs) if (t.view) t.view.setVisible(t === tab)
-    if (tab.view) tab.view.setBounds({ x: 0, y: bars, width, height: Math.max(0, height - bars) })
+    for (const t of tabs) if (t.side) t.side.view.setVisible(t === tab)
+    const h = Math.max(0, height - bars)
+    const main = tab.side ? Math.round(width * 0.55) : width // spec 025: a project's preview docked beside the IDE
+    if (tab.view) tab.view.setBounds({ x: 0, y: bars, width: main, height: h })
+    if (tab.side) tab.side.view.setBounds({ x: main, y: bars, width: width - main, height: h })
     frame.setBounds({ x: 0, y: 0, width, height: cover || !tab.view ? height : bars })
   }
 
@@ -205,6 +209,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const i = tabs.findIndex((t) => t.id === id)
     if (i <= 0) return
     const [tab] = tabs.splice(i, 1)
+    undock(tab)
     if (tab.view) {
       win.contentView.removeChildView(tab.view)
       tab.close()
@@ -212,6 +217,40 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     if (current === id) current = tabs[i - 1].id
     layout()
     push()
+  }
+
+  // spec 025: the IDE's preview, a site (a project's draft) shown beside the IDE's view in its tab; the same key
+  // again reloads it (a save). The tab's own view keeps the keyboard; the preview is a site view like any.
+  function dock (wc, key) {
+    const tab = tabs.find((t) => t.wc === wc)
+    if (!tab) return false
+    if (tab.side?.key === key) {
+      tab.side.wc.reload()
+      return true
+    }
+    undock(tab)
+    const side = { key, pending: true }
+    tab.side = side
+    openSite(key).then((v) => {
+      if (tab.side !== side || !tabs.includes(tab)) return v.close()
+      Object.assign(side, { view: v.view, wc: v.webContents, close: v.close, pending: false })
+      win.contentView.addChildView(v.view)
+      win.contentView.addChildView(frame) // on top of every site
+      layout()
+    }, () => { if (tab.side === side) tab.side = null })
+    return true
+  }
+
+  function undock (tab) {
+    const side = tab?.side
+    if (!side) return false
+    tab.side = null
+    if (side.view) {
+      win.contentView.removeChildView(side.view)
+      side.close()
+    }
+    layout()
+    return true
   }
 
   // `query`: for the shell's own calls (spec 013: Contacts on one person, '?person=<key>')
@@ -612,5 +651,5 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     setIcons(upsert(data.desktop.icons, { id: icon?.id || key, key, title: icon?.title || title, kind: 'installed' }))
     keepSite(key, true)
   }
-  return { win, inspect, show, devices, circles: circlesChanged, joinCircle, joined: joinedNow, open: openKey, installed, install, notify: (d) => notify(d).catch(() => {}), looked: () => looked().catch(() => {}) }
+  return { win, inspect, show, devices, circles: circlesChanged, joinCircle, joined: joinedNow, open: openKey, installed, install, notify: (d) => notify(d).catch(() => {}), looked: () => looked().catch(() => {}), dock, undock: (wc) => undock(tabs.find((t) => t.wc === wc)) }
 }

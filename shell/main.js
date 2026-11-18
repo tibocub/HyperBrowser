@@ -202,8 +202,9 @@ async function bridge (wc, msg) {
   if (!method) throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
   // only the fields of that call; the key is the view's
   const params = { key, sub, instance, method: msg.method, args: msg.args, chain: msg.chain, opts: msg.opts, event: msg.event }
-  const permission = typeof msg.method === 'string' && msg.method.startsWith('projects.') ? 'projects' : 'contacts'
+  const permission = (typeof msg.method === 'string' && msg.method.startsWith('projects.')) || msg.event === 'projects' ? 'projects' : 'contacts'
   if (msg.op === 'call' && msg.method === 'projects.openFolder') params.args = [await pickFolder()] // spec 024: never a page's path
+  if (msg.op === 'call' && msg.method === 'projects.closePreview') return !!ui?.undock(wc) // spec 025: the shell's alone
   let result
   try {
     result = await rpc.request(method, params)
@@ -216,6 +217,7 @@ async function bridge (wc, msg) {
       return rpc.request(method, params)
     })
   }
+  if (msg.op === 'call' && (msg.method === 'projects.preview' || msg.method === 'projects.resetPreview') && result?.key) ui?.dock(wc, result.key) // spec 025
   if (msg.op === 'live' || msg.op === 'on') {
     if (wc.isDestroyed() || pages.get(wc) !== page) { // its page left while the engine answered: nobody else would stop it
       unsubscribe(result.id)
@@ -446,6 +448,7 @@ async function selftest (dir) {
   const chat = await checkChat(win, views, out, tmp)
   await checkChatLine(chat, out, tmp)
   await checkMenus(win, views, out, tmp, chat)
+  await checkIde(win, views, out, tmp)
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
@@ -739,6 +742,66 @@ async function checkMenus (win, views, out, tmp, chat) {
   await forum.run("[...document.querySelectorAll('.confirm-box button')].find((b) => b.textContent === 'Cancel').click(); 0")
   await forum.run(`${button('Trim history…')}.click(); 0`)
   pass('forum: Trim history… warns that copies taken can\'t be recalled', await waitFor(() => forum.run("!!document.querySelector('.confirm-box') && document.querySelector('.confirm-box').textContent.includes('be recalled')"), 5000))
+}
+
+// spec 025: the IDE in a real page. A beginner makes a site of two pages without a file name or JSON in sight, typing
+// builds the page; a developer's file opens CodeMirror (loaded then), the default theme stays. Its costs are printed
+// as PERF lines (perf/ide.mjs records them): start, the editor's load, memory before and after, a preview's reload.
+async function checkIde (win, views, out, tmp) {
+  const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
+  const folder = path.join(tmp, 'ide')
+  fs.cpSync(path.join(HERE, '..', 'sites', 'ide'), folder, { recursive: true })
+  const { key } = await rpc.request('site.publish', { folder })
+  const t0 = performance.now()
+  const v = await openSite(key)
+  views.push(v)
+  win.contentView.addChildView(v.view)
+  v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
+  const run = (s) => v.webContents.executeJavaScript(s, true)
+  const started = await waitFor(() => run("document.querySelector('h1')?.textContent === 'IDE' && !!document.querySelector('form')"), 30000)
+  const start = performance.now() - t0
+  pass('ide: it opens (its projects asked for once)', started)
+  const memory = () => (app.getAppMetrics().find((m) => m.pid === v.webContents.getOSProcessId())?.memory.workingSetSize || 0) / 1024 // MB
+  const button = (label) => `[...document.querySelectorAll('button')].find((b) => b.textContent === ${JSON.stringify(label)})`
+  await run("(() => { const f = document.querySelector('form'); f.name.value = 'Self-test site'; f.kind.value = 'hypermd'; f.requestSubmit(); return 0 })()")
+  const made = await waitFor(() => run("document.querySelector('nav[aria-label=Pages]')?.textContent.includes('Self-test site')"), 30000)
+  await run(`${button('New page')}.click(); 0`)
+  await waitFor(() => run("!!document.querySelector('dialog[open] input')"), 5000)
+  await run("(() => { const d = document.querySelector('dialog[open]'); d.querySelector('input').value = 'About'; d.querySelector('button').click(); return 0 })()")
+  const two = await waitFor(() => run("document.querySelectorAll('nav[aria-label=Pages] li').length === 2 && document.querySelector('nav').textContent.includes('About')"), 15000)
+  const bare = await run("!/\\.(hmd|html|json)\\b|\\{/.test(document.body.innerText)")
+  pass('ide: a beginner makes a site of two pages, by their titles, with no file name or JSON shown (FR-001)', made && two && bare)
+  await run("(() => { const a = document.querySelector('textarea'); a.value += 'Hello **you**'; a.dispatchEvent(new Event('input')); return 0 })()")
+  const built = await waitFor(() => run("window.hyper.projects.list().then(async ([p]) => new TextDecoder().decode(await window.hyper.projects.read(p.key, 'about.html')).includes('<strong'))"), 10000)
+  pass('ide: typing a page builds it (HyperMD in the page)', built)
+  const menu = "document.querySelector('header [data-menu]')"
+  pass('ide: the project\'s "…" opens without moving anything', !(await moves(run, menu, `${menu}.querySelector('button').click()`)))
+  const before = memory()
+  const t1 = performance.now()
+  await run(`${button('Show the files')}.click(); 0`)
+  await waitFor(() => run(`!!${button('index.html')}`), 5000)
+  await run(`${button('index.html')}.click(); 0`)
+  const cm = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-editor')"), 15000)
+  const editorLoad = performance.now() - t1
+  pass('ide: a file in the files view opens in CodeMirror, loaded then', cm)
+  pass('ide: the default theme stays with the editor loaded', await run("getComputedStyle(document.body).fontFamily.includes('HB ')"))
+  const after = memory()
+  const { key: draft } = await run('window.hyper.projects.list().then(([p]) => window.hyper.projects.preview(p.key))')
+  const pv = await openSite(draft)
+  views.push(pv)
+  await waitFor(() => pv.webContents.executeJavaScript("document.readyState === 'complete'"), 15000)
+  const t2 = performance.now()
+  const loaded = new Promise((resolve) => pv.webContents.once('did-finish-load', resolve))
+  pv.webContents.reload()
+  await loaded
+  const reload = performance.now() - t2
+  pass('ide: the preview shows the project', await pv.webContents.executeJavaScript("document.body.innerText.includes('Self-test site')"))
+  const ms = (x) => Math.round(x)
+  console.log(`PERF ide.start ${ms(start)} ms`)
+  console.log(`PERF ide.editor ${ms(editorLoad)} ms`)
+  console.log(`PERF ide.memory.start ${ms(before)} MB`)
+  console.log(`PERF ide.memory.editor ${ms(after)} MB`)
+  console.log(`PERF ide.preview.reload ${ms(reload)} ms`)
 }
 
 // The frame check: the demo site in a frame of its own, then where everything is.
@@ -1049,7 +1112,7 @@ async function startEngine (dir, more = {}) {
   const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
   // spec 015: the apps a build packed (scripts/build.js --apps-from) next to shell/; none when run from the repo
-  const projects = path.join(app.getPath('documents'), 'HyperBrowser') // spec 024: new projects, where the person finds them
+  const projects = SELFTEST || FRAMECHECK ? path.join(dir, 'projects') : path.join(app.getPath('documents'), 'HyperBrowser') // spec 024: where the person finds them
   const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), projects, ...more })
   if (APPS.chat) await rpc.request('apps.set', { chat: APPS.chat }) // spec 013: friends' conversations are Chat's (also after a join)
   return up

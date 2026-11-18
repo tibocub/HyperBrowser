@@ -6,7 +6,7 @@ import path from 'path'
 import b4a from 'b4a'
 import process from 'process'
 import { spawnSync } from 'child_process'
-import { engine, siteFolder, tmpDir, eventually, codeOf, bootstrap, text } from './helpers.js'
+import { engine, siteApi, siteFolder, tmpDir, eventually, codeOf, bootstrap, text } from './helpers.js'
 import { linkOrCopy } from '../engine/projects.js'
 
 const IDE = { title: 'IDE', permissions: ['space', 'projects'] }
@@ -326,4 +326,77 @@ test('co-authors: invite, join, edit, publish; removed: no publish, no new edits
   await alice.p('write', project, 'secret.txt', 'after bob left')
   await new Promise((resolve) => setTimeout(resolve, 8000))
   t.absent(fs.existsSync(path.join(bobFolder, 'secret.txt')), "alice's new edits never reach him")
+})
+
+// A git index (version 2) naming `entries` ([{ path, size, mtime (s) }]), as git writes it (sorted, NUL-padded to 8).
+function gitIndex (entries) {
+  const parts = [b4a.from('DIRC'), u32(2), u32(entries.length)]
+  for (const e of [...entries].sort((a, b) => (a.path < b.path ? -1 : 1))) {
+    const name = b4a.from(e.path)
+    const fixed = b4a.alloc(62)
+    const v = new DataView(fixed.buffer, fixed.byteOffset, 62)
+    v.setUint32(8, e.mtime)
+    v.setUint32(24, 0o100644)
+    v.setUint32(36, e.size)
+    v.setUint16(60, Math.min(name.length, 0xfff))
+    const len = Math.ceil((62 + name.length + 1) / 8) * 8
+    parts.push(fixed, name, b4a.alloc(len - 62 - name.length))
+  }
+  return b4a.concat(parts)
+}
+function u32 (n) {
+  const b = b4a.alloc(4)
+  new DataView(b.buffer, b.byteOffset, 4).setUint32(0, n)
+  return b
+}
+
+test('status: the git branch and changed files (read only), devices and co-authors online', async (t) => {
+  const { p } = await ide(t)
+  const { key, folder } = await p('create', 'Git')
+  t.is((await p('status', key)).git, null, 'no .git: null')
+  await p('write', key, 'a.txt', 'one')
+  await p('write', key, 'b.txt', 'two')
+  fs.mkdirSync(path.join(folder, '.git'))
+  fs.writeFileSync(path.join(folder, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+  fs.writeFileSync(path.join(folder, '.gitignore'), 'tmp/\n')
+  const st = (f) => { const s = fs.statSync(path.join(folder, f)); return { path: f, size: s.size, mtime: Math.floor(s.mtimeMs / 1000) } }
+  fs.writeFileSync(path.join(folder, '.git', 'index'), gitIndex([st('a.txt'), st('b.txt'), st('.swarmfsignore'), st('.gitignore')]))
+  await p('write', key, 'tmp/scratch.txt', 'x')
+  let s = await p('status', key)
+  t.is(s.git.branch, 'main')
+  t.alike(s.git.changed, [], 'nothing changed; .gitignore\'d files not listed')
+  await p('write', key, 'a.txt', 'one, longer')
+  await p('remove', key, 'b.txt')
+  await p('write', key, 'c.txt', 'new')
+  s = await p('status', key)
+  t.alike(s.git.changed, [{ path: 'a.txt', state: 'modified' }, { path: 'b.txt', state: 'deleted' }, { path: 'c.txt', state: 'new' }])
+  t.is(s.devices, 0, 'no other device online')
+  t.is(s.coauthors, 0, 'no co-author online')
+  fs.writeFileSync(path.join(folder, '.git', 'HEAD'), '0123456789abcdef\n')
+  t.is((await p('status', key)).git.branch, '0123456 (detached)')
+})
+
+test('leave a project (its folder kept) or delete it (its synced files gone, .git kept); a files event', async (t) => {
+  t.timeout(60000)
+  const e = await ide(t)
+  const { p } = e
+  const kept = await p('create', 'Kept')
+  await p('write', kept.key, 'a.txt', 'a')
+  const changes = []
+  const stop = siteApi(e, e.ide).projects.on((d) => changes.push(d))
+  await p('write', kept.key, 'b.txt', 'b')
+  t.ok(await eventually(() => changes.some((c) => c.project === kept.key), 15000), 'an event names the project whose files changed')
+  stop()
+  await p('leave', kept.key)
+  t.alike((await p('list')).map((x) => x.key), [], 'off the list')
+  t.is(fs.readFileSync(path.join(kept.folder, 'a.txt'), 'utf-8'), 'a', 'its folder kept')
+  t.is(await codeOf(p('files', kept.key)), 'NOT_FOUND', 'no longer reachable')
+
+  const gone = await p('create', 'Gone')
+  await p('write', gone.key, 'src/a.js', 'a')
+  fs.mkdirSync(path.join(gone.folder, '.git'))
+  fs.writeFileSync(path.join(gone.folder, '.git', 'HEAD'), 'ref')
+  await p('leave', gone.key, { deleteFiles: true })
+  t.absent(fs.existsSync(path.join(gone.folder, 'src')), 'its files deleted')
+  t.ok(fs.existsSync(path.join(gone.folder, '.git', 'HEAD')), '.git never touched')
 })

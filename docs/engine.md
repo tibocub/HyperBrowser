@@ -239,6 +239,13 @@ reads (`circles.list` + each `circles.members`) and the engine's idle CPU while 
 - **Preview**: a private site never made public, its key in `<engine dir>/drafts.json` (`{ [project]: key }`);
   `site.open` and `site.read` on it read the project folder, its calls need no consent. Reset: left, a new one.
 - `openFolder` takes a path: the shell fills it from the person's folder picker, never from the page.
+- Spec 025:
+  - `status` reads `.git/HEAD` and `.git/index` (v2, v3; size and mtime, as git's first check).
+  - `leave` writes `{ left: true }` into the list, so the person's other devices leave the project too.
+  - `site.on { event: 'projects' }` tells `{ project }` on SwarmFS's sync events.
+  - **Every** Publish waits until this device holds every page at its current version (a co-author's publish still
+    arriving would otherwise turn the new files into conflict copies). It reads SwarmFS's `held` records:
+    requests-to-swarmfs F9.
 - Paths: a page reaches only what the project syncs (`inside()`: never `.git`, `node_modules` or ignored paths, any
   case; `.hyperbrowser.json` read-only). Short names (`GIT~1`) are refused, and the checks run again on the path as
   the disk resolves it (native realpath: links and short names), so a link inside the project to `.git` is refused too. `remove` walks a folder itself: ignored paths stay, links are unlinked.

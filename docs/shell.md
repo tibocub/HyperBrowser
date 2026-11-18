@@ -234,3 +234,10 @@ release channel, `package.json` `"upgrade"`:
 - From source (`npm start`) there are never updates.
 
 Building, releasing, installing: [packaging.md](packaging.md).
+
+## The IDE's preview (spec 025)
+
+`hyper.projects.preview(key)` and `resetPreview(key)` answer with a draft site's key. The shell then docks that site's
+view beside the page's view in its tab (`frame.js` `dock`): 55 % / 45 %, the same key again reloads it (a save).
+`hyper.projects.closePreview()` (the shell's alone) removes it; closing the tab does too. A site can't show
+another site in itself, so this is the shell's: the only shell feature the IDE needs.

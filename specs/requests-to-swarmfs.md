@@ -2,6 +2,16 @@
 
 What HyperBrowser needs from SwarmFS and doesn't work around (constitution IV). Newest first.
 
+## F9. Is a linked folder in step with its space? (2026-11-17, spec 025)
+
+- **Need**: a project's Publish writes its files over the site's linked pages folder. If a co-author's publish is
+  still arriving there, the files written over it become conflict copies and the old version stays published.
+- **Today**: `Drive.list()`'s `holders` names this device for an entry even when it holds an older version of it.
+- **Ask**: a way to know a linked folder is in step (every entry held here at its current version, nothing due),
+  e.g. `sfs.inStep(localPath)` or the held root in `holders`.
+- **Here meanwhile**: `engine/projects.js` `caughtUp` reads this device's `held` records (their `entry` and `root`)
+  and compares them with each page's hash. Drop it once SwarmFS says so itself.
+
 ## F8. `Drive.link` on a space that is still closed leaves a dead link (2026-11-17, spec 024)
 
 - **Seen**: a project (private files space) made on the PC, joined by the laptop (a second device): hypergraph keeps

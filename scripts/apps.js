@@ -14,7 +14,8 @@ export const APPS = [
   { id: 'preset:forum', folder: 'sites/forum', instance: 'HyperBrowser' },
   { id: 'preset:apps', folder: 'sites/apps', store: true },
   { id: 'preset:chat', folder: 'sites/chat' },
-  { id: 'preset:contacts', folder: 'sites/contacts' }
+  { id: 'preset:contacts', folder: 'sites/contacts' },
+  { id: 'preset:ide', folder: 'sites/ide' } // spec 025
 ]
 const ICON_MAX = 16 * 1024
 const MIME = { svg: 'image/svg+xml', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }

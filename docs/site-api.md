@@ -262,13 +262,20 @@ between the person's devices and co-authors while online; saving never publishes
 - `versions(key)` → `[{ version, at }]`, newest first; `rollBack(key, version)` publishes that version again, as a
   new version (the project's files stay as they are). **Versions are kept per device**: each device lists the
   versions it published, and rolls back only to those.
-- `preview(key)` → `{ key }`: a draft site of the project's current files, on this device only (open it like any
-  site: edits show at once). A dynamic app's draft gets its own throwaway space (no identity question): nothing
+- `preview(key)` → `{ key }`: a draft site of the project's current files, on this device only. HyperBrowser shows it
+  beside the page, in the same tab (spec 025); calling it again (after a save) reloads it; `closePreview()` hides it. A dynamic app's draft gets its own throwaway space (no identity question): nothing
   reaches the real site or its data. `resetPreview(key)` → `{ key }`: a new, empty space.
 - **Co-authors** edit the files and publish the site (they become its admins while they are in the project):
   `invite(key)` → `{ link }` (one use; the owner only), `inviteContact(key, identity)` (the link sent in the chat with
   that friend), `members(key)` → `[{ identity, name, role, you, removed, banned, online }]`,
   `removeMember(key, identity)` (the owner: they can no longer publish, nor read new edits). Not yet: read-only
   viewers (hypergraph H6).
+- Spec 025: `status(key)` → `{ devices, coauthors, git }`. `devices` and `coauthors` are those online now. `git` is
+  `{ branch, changed: [{ path, state: 'modified' | 'new' | 'deleted' }] }`, read from `.git` without running git, or
+  null without one. `leave(key, { deleteFiles })`: off the person's list on every device, the folder kept unless
+  `deleteFiles` (what the project syncs is deleted; `.git` stays). `hyper.projects.on(fn)` → stop:
+  `fn({ project })` when a project's files changed here (a save, a co-author's edit, another device's).
+- Invite-only sites (`public: false`) and co-authors: a co-author can't reach the site by its key, so can't publish it
+  (it would need an invite of its own). Not covered yet.
   A co-author's files reach your folder like your own (`package.json` scripts, editor settings): invite only
   people whose code you would run.

@@ -37,7 +37,8 @@
     "perf:circles": "node --expose-gc perf/circles.mjs",
     "perf:helper": "node --expose-gc perf/helper.mjs",
     "perf:names": "node perf/names.mjs",
-    "perf:projects": "node perf/projects.mjs"
+    "perf:projects": "node perf/projects.mjs",
+    "perf:ide": "node perf/ide.mjs"
   },
   "dependencies": {
     "b4a": "^1.9.0",

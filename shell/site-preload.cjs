@@ -85,10 +85,12 @@ function api (sub, instance = null) {
     // the person's projects (spec 024): only for a site whose site.json asks for "projects", once allowed.
     // openFolder() takes no path: HyperBrowser asks the person to pick the folder.
     o.projects = {}
-    for (const m of ['list', 'create', 'openFolder', 'openCopy', 'join', 'files', 'read', 'write', 'rename', 'remove', 'publish', 'versions',
-      'rollBack', 'preview', 'resetPreview', 'invite', 'inviteContact', 'members', 'removeMember']) {
+    // preview(key) shows the project's draft beside the page (spec 025); again after a save, reloads it.
+    for (const m of ['list', 'create', 'openFolder', 'openCopy', 'join', 'leave', 'files', 'read', 'write', 'rename', 'remove', 'publish',
+      'versions', 'rollBack', 'preview', 'resetPreview', 'closePreview', 'invite', 'inviteContact', 'members', 'removeMember', 'status']) {
       o.projects[m] = (...args) => invoke({ op: 'call', ...at, method: 'projects.' + m, args })
     }
+    o.projects.on = (fn) => subscribe({ op: 'on', ...at, event: 'projects' }, fn) // { project }: its files changed
     // any site, through HyperBrowser (spec 013): opening needs a click on the page; a request, the person's yes
     o.people = {
       chat: (identity) => people('chat', identity),
