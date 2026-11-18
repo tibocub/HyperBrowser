@@ -4,5 +4,5 @@
   { "id": "preset:apps", "key": "7nrzmnuotf13eziq7wz5q1886bfmu5o1qpnd9ue1jiyzcp1fqjeo", "title": "Apps", "glyph": "site", "kind": "installed" },
   { "id": "preset:chat", "key": "ycexw7hb3cqmckdtsewjxgnxnnjom3t6ofqmkq1hgqxqaceutmro", "title": "Chat", "glyph": "site", "kind": "installed" },
   { "id": "preset:contacts", "key": "11b3p18zue869siu7izmpr38hbhrs3n73hc45tf3f313txgaqr6o", "title": "Contacts", "glyph": "site", "kind": "installed" },
-  { "id": "preset:ide", "title": "IDE", "glyph": "site", "kind": "installed" }
+  { "id": "preset:ide", "key": "74oyu9fisarjtxzo3xjhuqwxtnfyxfkyios14ymgjpysk5z8nnuy", "title": "IDE", "glyph": "site", "kind": "installed" }
 ]
