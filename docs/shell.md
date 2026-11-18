@@ -251,3 +251,7 @@ another site in itself, so this is the shell's: the only shell feature the IDE n
 - The split is a share of the width, kept in `shell.json` (`settings.split`, 0.55 at first), so it is the same for
   every tab and after a restart.
 - The frame check docks a preview and checks both views' bounds after the keys, a drag and the minimum.
+- **The focus** (spec 028): a (re)load of the preview never takes the keyboard from the page that asked for it. If
+  the page had the focus, it is given back the moment the preview takes it, until 300ms after the load. So typing
+  in the IDE goes on through each save, the caret where it was, while a click into the preview later keeps it
+  there. The frame check types through three reloads.

@@ -804,6 +804,14 @@ async function checkIde (win, views, out, tmp, chat) {
   const after = memory()
   // spec 026 I1: the tree: a right-click menu, Shift+F10 on the focused row, Escape, rename in place, a new folder
   const menuItems = "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent).join('|')"
+  // spec 028: names from their first letter (the theme's li text-indent cut two), cut at the end, the path as tooltip
+  const names = await run(`[...document.querySelectorAll('[role=treeitem]')].map((li) => {
+    const span = [...li.querySelectorAll('span')].find((x) => x.textContent && !/^[▸▾ ]*$/.test(x.textContent))
+    const r = document.createRange()
+    r.selectNodeContents(span)
+    return r.getBoundingClientRect().left >= span.getBoundingClientRect().left - 0.5 && span.textContent === li.dataset.path.split('/').pop() && li.title === li.dataset.path
+  }).every(Boolean)`)
+  pass('ide: the tree shows each name from its first letter, the whole path as its tooltip', names)
   await run(`${item('index.hmd')}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 120 })); 0`)
   const rightClick = await run(menuItems)
   pass('ide: right-click on a file: Open, Rename, Delete, Cut, Copy, New file, New folder', ['Open', 'Rename', 'Delete…', 'Cut', 'Copy', 'New file…', 'New folder…'].every((x) => rightClick.split('|').includes(x)))
@@ -881,6 +889,14 @@ async function checkIde (win, views, out, tmp, chat) {
   win.contentView.addChildView(c.view)
   const chatStuck = await fitsAll(c)
   pass('chat: no page scrollbar at those sizes' + (chatStuck ? ' (scrolls at ' + chatStuck + ')' : ''), !chatStuck)
+  // spec 028: a long word (a 300-character hg: link) wraps: no horizontal overflow, in the messages nor the page
+  c.view.setBounds({ x: 0, y: 0, width: 700, height: 500 })
+  const crun = (js) => c.webContents.executeJavaScript(js, true)
+  const link = 'hg:' + 'x'.repeat(297)
+  await crun(`(() => { const t = document.querySelector('textarea[name=text]'); t.value = ${JSON.stringify(link)}; t.closest('form').requestSubmit(); return 0 })()`)
+  const shown = await waitFor(() => crun(`document.querySelector('[data-key]')?.textContent.includes(${JSON.stringify(link)})`), 10000)
+  const wide = await crun("(() => { const m = document.querySelector('[data-key]'); const e = document.scrollingElement; return m.scrollWidth <= m.clientWidth + 1 && e.scrollWidth <= innerWidth + 1 })()")
+  pass('chat: a 300-character hg: link wraps (no horizontal overflow)', shown && wide)
   const ffolder = path.join(tmp, 'forum-fit')
   fs.cpSync(path.join(HERE, '..', 'sites', 'forum'), ffolder, { recursive: true })
   const { key: fkey } = await rpc.request('site.publish', { folder: ffolder })
@@ -893,6 +909,7 @@ async function checkIde (win, views, out, tmp, chat) {
   await frun(`location.search = '?instance=${fit}'; 0`)
   await waitFor(() => frun("!!document.querySelector('.layout')"), 30000)
   const forumStuck = await fitsAll(f)
+  pass('forum: long words wrap anywhere (posts, titles, names: spec 028)', await frun("getComputedStyle(document.querySelector('.layout')).overflowWrap === 'anywhere'"))
   pass('forum: no page scrollbar at those sizes (its columns and its desk scroll)' + (forumStuck ? ' (scrolls at ' + forumStuck + ')' : ''), !forumStuck)
   const { key: draft } = await run('window.hyper.projects.list().then(([p]) => window.hyper.projects.preview(p.key))')
   const pv = await openSite(draft)
@@ -961,9 +978,28 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
   await waitFor(async () => !!inspect().side, 15000)
   await wait(200)
   out.push(['docked again: the line where it was left', inspect().views[0].width === 240 && meet(inspect())])
+  // spec 028: typing in the page while its preview reloads (each save): the keyboard stays in the page, the caret too
+  await wc.executeJavaScript("(() => { const t = document.createElement('textarea'); t.id = 'typing'; document.body.append(t); t.focus(); return 0 })()")
+  win.focus()
+  wc.focus()
+  const type = (text) => { for (const c of text) { wc.sendInputEvent({ type: 'keyDown', keyCode: c }); wc.sendInputEvent({ type: 'char', keyCode: c }); wc.sendInputEvent({ type: 'keyUp', keyCode: c }) } }
+  const kept = []
+  type('abc')
+  for (const more of ['def', 'ghi', 'jkl']) {
+    dock(wc, key) // a save: the preview reloads
+    await waitFor(async () => !inspect().handle || !tabOfSide(inspect)?.isLoading(), 5000)
+    await wait(400)
+    kept.push(wc.isFocused() && !(await wc.executeJavaScript("document.activeElement?.id === 'typing'").then((x) => !x)))
+    type(more)
+  }
+  await wait(200)
+  const typed = await wc.executeJavaScript("(() => { const t = document.getElementById('typing'); return t.value + '|' + (t.selectionStart === t.value.length) })()")
+  out.push(['typing while the preview reloads: the focus stays in the page, every key and the caret where they were', kept.every(Boolean) && typed === 'abcdefghijkl|true'])
   undock(wc)
   return out
 }
+
+const tabOfSide = (inspect) => inspect().sideWc
 
 // The frame check: the demo site in a frame of its own, then where everything is.
 async function framecheck (dir) {

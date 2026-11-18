@@ -23,7 +23,8 @@ html { background-color: var(--paper); background-image: repeating-conic-gradien
   background-size: calc(2 * var(--px)) calc(2 * var(--px)); background-attachment: fixed; }
 /* spec 026: an app fits the window; its columns and its desk scroll, never the page */
 html { overflow: hidden; }
-body { margin: 0; height: 100vh; overflow: hidden; font: 13px/1.6 'Cozette', 'Plex Mono', ui-monospace, monospace; color: var(--ink); }
+/* spec 028: a long word (an hg: link) in a post, a title or a name wraps anywhere rather than widen the page */
+body { margin: 0; height: 100vh; overflow: hidden; overflow-wrap: anywhere; font: 13px/1.6 'Cozette', 'Plex Mono', ui-monospace, monospace; color: var(--ink); }
 a { color: var(--ink); text-underline-offset: 3px; }
 button, input, textarea, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }

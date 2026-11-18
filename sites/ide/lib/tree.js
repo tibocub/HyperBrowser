@@ -49,10 +49,11 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
   let renaming = null
   let focused = null
   const expanded = new Set()
-  const list = document.createElement('ul')
+  // divs, not ul/li: the theme's list style (a bullet, text-indent: -2ch) cut the names' first letters (spec 028)
+  const list = document.createElement('div')
   list.setAttribute('role', 'tree')
   list.setAttribute('aria-label', label)
-  list.style.cssText = 'list-style:none; margin:0; padding:2px 0; min-height:100%; box-sizing:border-box; outline:none'
+  list.style.cssText = 'margin:0; padding:2px 0; min-height:100%; box-sizing:border-box; outline:none'
   el.replaceChildren(list)
   list.addEventListener('contextmenu', (e) => {
     if (e.target.closest('input')) return
@@ -75,13 +76,13 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
     const rows = visible()
     if (!rows.some((r) => r.path === focused)) focused = rows.find((r) => r.path === selected)?.path ?? rows[0]?.path ?? null
     list.replaceChildren(...rows.map(row))
-    if (!rows.length) list.append(Object.assign(document.createElement('li'), { textContent: 'No files yet.', style: 'padding:2px 8px; opacity:.7' }))
+    if (!rows.length) list.append(Object.assign(document.createElement('div'), { textContent: 'No files yet.', style: 'padding:2px 8px; opacity:.7' }))
     const field = list.querySelector('input')
     if (field) { field.focus(); field.setSelectionRange(0, field.value.lastIndexOf('.') > 0 ? field.value.lastIndexOf('.') : field.value.length) }
   }
 
   function row (r) {
-    const li = document.createElement('li')
+    const li = document.createElement('div')
     li.setAttribute('role', 'treeitem')
     li.dataset.path = r.path
     li.dataset.kind = r.folder ? 'folder' : 'file'
@@ -130,7 +131,8 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
     } else {
       const name = document.createElement('span')
       name.textContent = r.name
-      name.style.cssText = 'overflow:hidden; text-overflow:ellipsis'
+      name.style.cssText = 'flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis' // cut at the end, the whole name in the tooltip
+      li.title = r.path
       li.append(name)
       const m = mark(r.path)
       if (m) li.append(Object.assign(document.createElement('span'), { textContent: ' ' + m, title: 'Changed since the last git commit' }))
