@@ -2,6 +2,15 @@
 
 What HyperBrowser needs from SwarmFS and doesn't work around (constitution IV). Newest first.
 
+## F10. `site()` says "not a site" when the site's records are only late (2026-11-18, specs/research/bare-crash.md)
+
+- **Seen**: under load (the Bare suite, 6 jobs), a site or instance reached but whose `site` record hadn't arrived
+  within `timeout` (10 s by default; `useInstance` uses the default) failed with `NOT_FOUND` "not a site: KEY".
+  `siteOf()` returns `{ site: null, complete: false }` on a timeout, and `site()` reads only `site`.
+- **Ask**: `site()` throws `NOT_FOUND` only when `complete` is true; otherwise a timeout code (e.g. `TIMEOUT`,
+  "the site's records didn't arrive within N s"), so a slow network isn't reported as a wrong key.
+- **Here meanwhile**: nothing; the shell and pages show the "not a site" message as it comes.
+
 ## F9. Is a linked folder in step with its space? (2026-11-17, spec 025)
 
 - **Need**: a project's Publish writes its files over the site's linked pages folder. If a co-author's publish is
