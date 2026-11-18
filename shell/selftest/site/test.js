@@ -10,10 +10,10 @@ const refused = (p) => p.then(() => false, () => true)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // mine: the person's own data for this site (spec 006), on their settings, not a space
 // instance, instances: the app's instances (spec 009), checked by the engine
-// contacts (only with the permission), people: through HyperBrowser (spec 013); apps: the same (spec 014)
+// contacts (only with the permission), people: through HyperBrowser (spec 013); apps: the same (spec 014); projects: 024
 const API = ['apps', 'circles', 'completeFrom', 'contacts', 'copies', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
   'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
-  'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'secure', 'setRole',
+  'projects', 'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'secure', 'setRole',
   'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'trimHistory', 'types', 'unrelate', 'untag'] // since: spec 017; circles, copies, rotateKey: 018; secure, trimHistory: 023
 
 const common = [
@@ -96,6 +96,8 @@ const dynamics = [
     refused(window.hyper.instance(other).query('profile').latest(10))],
   ["contacts: a site whose site.json doesn't ask for them gets NOT_ALLOWED", () =>
     window.hyper.contacts.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+  ["projects: a site whose site.json doesn't ask for them gets NOT_ALLOWED (spec 024)", () =>
+    window.hyper.projects.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
   ['people: opening a chat without a click opens nothing', async () => (await window.hyper.people.chat(other)) === false],
   ['people: a friend request the person refused is NOT_ALLOWED', () =>
     window.hyper.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],

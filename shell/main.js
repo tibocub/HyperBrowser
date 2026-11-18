@@ -75,7 +75,7 @@ const early = new Map() // engine subscription id -> events that came before its
 const pages = new WeakMap() // webContents -> how many pages it has loaded (the preload's 'page' message)
 const asking = new Map() // key -> the identity question in progress
 const asked = [] // keys the question was asked for (the self-test checks: once per site)
-const permits = new Map() // key -> the contacts question in progress (spec 013)
+const permits = new Map() // key + permission -> the contacts (spec 013) or projects (spec 024) question in progress
 const notifyAsks = new Map() // key -> the notifications question in progress (spec 016)
 const viewed = new WeakMap() // webContents -> the instance its page says it shows (hyper.notifications.viewing)
 const marked = [] // the self-test's record of the places a page's viewing marked read
@@ -123,16 +123,23 @@ function ask (key) {
   return asking.get(key)
 }
 
-// "Let this site see and manage your contacts?": once per site declaring it (spec 013); the engine remembers.
-function askPermit (key) {
-  if (!permits.has(key)) {
+// "Let this site see and manage your contacts?" (spec 013) or "...your projects?" (spec 024): once per site
+// declaring it; the engine remembers.
+const QUESTIONS = {
+  contacts: ['see and manage your contacts', 'It will list your friends and requests, accept or remove them, and send requests. Only HyperBrowser\'s Contacts and Chat need this.'],
+  projects: ['edit and publish your projects', 'It will read and change the files of your projects, publish their sites, preview them and invite co-authors. Nothing outside your projects. Only an editor like HyperBrowser\'s IDE needs this.']
+}
+function askPermit (key, permission = 'contacts') {
+  const id = key + ' ' + permission
+  if (!permits.has(id)) {
     const title = sites.get(key).manifest.title
+    const [what, detail] = QUESTIONS[permission]
     const answer = SELFTEST
       ? Promise.resolve(true)
-      : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 1, cancelId: 1, message: `Let "${title}" see and manage your contacts?`, detail: 'It will list your friends and requests, accept or remove them, and send requests. Only HyperBrowser\'s Contacts and Chat need this.' }).then((r) => r.response === 0)
-    permits.set(key, answer.then((allow) => rpc.request('site.permit', { key, permission: 'contacts', allow })).finally(() => permits.delete(key)))
+      : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 1, cancelId: 1, message: `Let "${title}" ${what}?`, detail }).then((r) => r.response === 0)
+    permits.set(id, answer.then((allow) => rpc.request('site.permit', { key, permission, allow })).finally(() => permits.delete(id)))
   }
-  return permits.get(key)
+  return permits.get(id)
 }
 
 // "Let this app notify you?": right after the identity question (spec 016), once; the engine remembers.
@@ -195,15 +202,17 @@ async function bridge (wc, msg) {
   if (!method) throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
   // only the fields of that call; the key is the view's
   const params = { key, sub, instance, method: msg.method, args: msg.args, chain: msg.chain, opts: msg.opts, event: msg.event }
+  const permission = typeof msg.method === 'string' && msg.method.startsWith('projects.') ? 'projects' : 'contacts'
+  if (msg.op === 'call' && msg.method === 'projects.openFolder') params.args = [await pickFolder()] // spec 024: never a page's path
   let result
   try {
     result = await rpc.request(method, params)
   } catch (err) {
     if (err.code !== 'NEEDS_CONSENT' && err.code !== 'NEEDS_PERMISSION') throw err
-    await (err.code === 'NEEDS_CONSENT' ? ask(key) : askPermit(key))
-    result = await rpc.request(method, params).catch(async (err) => { // the identity first, then the contacts
+    await (err.code === 'NEEDS_CONSENT' ? ask(key) : askPermit(key, permission))
+    result = await rpc.request(method, params).catch(async (err) => { // the identity first, then the contacts or projects
       if (err.code !== 'NEEDS_PERMISSION') throw err
-      await askPermit(key)
+      await askPermit(key, permission)
       return rpc.request(method, params)
     })
   }
@@ -217,6 +226,14 @@ async function bridge (wc, msg) {
     early.delete(result.id)
   }
   return result
+}
+
+// hyper.projects.openFolder() (spec 024): the person picks the folder; cancelled: CANCELLED.
+async function pickFolder () {
+  const o = { title: 'Open a folder as a project', properties: ['openDirectory'] }
+  const r = await (ui?.win ? dialog.showOpenDialog(ui.win, o) : dialog.showOpenDialog(o))
+  if (r.canceled || !r.filePaths[0]) throw Object.assign(new Error('no folder picked'), { code: 'CANCELLED' })
+  return r.filePaths[0]
 }
 
 ipcMain.handle('site', async (evt, msg) => {
@@ -1032,7 +1049,8 @@ async function startEngine (dir, more = {}) {
   const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
   // spec 015: the apps a build packed (scripts/build.js --apps-from) next to shell/; none when run from the repo
-  const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), ...more })
+  const projects = path.join(app.getPath('documents'), 'HyperBrowser') // spec 024: new projects, where the person finds them
+  const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), projects, ...more })
   if (APPS.chat) await rpc.request('apps.set', { chat: APPS.chat }) // spec 013: friends' conversations are Chat's (also after a join)
   return up
 }

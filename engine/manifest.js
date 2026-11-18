@@ -1,5 +1,7 @@
 // site.json (specs/001-engine/data-model.md) and the path rule shared by publish and site.read.
 import b4a from 'b4a'
+import fs from 'fs'
+import path from 'path'
 
 const error = (code, message) => Object.assign(new Error(message), { code })
 
@@ -84,6 +86,17 @@ export function watch (w, types, follow = false) {
   }
   if (w.by !== undefined && (typeof w.by !== 'string' || !MEMBER.test(w.by))) bad("by is a member's key")
   if (w.popup !== undefined && typeof w.popup !== 'boolean') bad('popup is true or false')
+}
+
+// The checked manifest of a folder about to be published: site.json parsed, its entry and icon present.
+export async function readManifest (folder) {
+  let text
+  try { text = await fs.promises.readFile(path.join(folder, 'site.json'), 'utf-8') } catch { throw error('NO_MANIFEST', `no site.json in ${folder}`) }
+  const manifest = parseManifest(text)
+  for (const p of [manifest.entry, manifest.icon].filter(Boolean)) {
+    try { await fs.promises.stat(path.join(folder, ...p.split('/'))) } catch { throw error('INVALID_MANIFEST', `site.json names ${p}, which isn't in the folder`) }
+  }
+  return manifest
 }
 
 // Dynamic: asks for its space (the hypergraph API); unknown permissions are ignored.

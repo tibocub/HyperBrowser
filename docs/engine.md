@@ -109,7 +109,8 @@ through the engine's own calls as the shell is; `engine/helper-config.js` reads 
 
 ## Which sites this device serves (spec 004)
 
-- **Installed** (`site.keep(true)`) and **your own** sites: joined and served from engine start, tab or not.
+- **Installed** (`site.keep(true)`) and **your own** sites (owner, or admin: a project's co-author, spec 024): joined
+  and served from engine start, tab or not.
 - **Any other site**: joined while a tab shows it (`site.open` … `site.close`), and for a grace period after
   its last tab closes (5 min: `init`'s `grace`). Then the engine leaves its space (SwarmFS `leave`, hypergraph
   `leaveSpace`): it is no longer announced or served, and its records go from this device. Its files stay
@@ -219,10 +220,37 @@ reads (`circles.list` + each `circles.members`) and the engine's idle CPU while 
 (spec 019) Invite contacts… to `--friends` friends, one `contacts.inviteToCircle` after another (10: 133 ms in all,
 8 to 24 ms each, 2026-11-17).
 
+## Projects (spec 024)
+
+`engine/projects.js`: the `projects.*` site calls (docs/site-api.md), behind the `projects` permission
+(`site.permit { permission: 'projects' }`, as `contacts`). Facts and choices: `specs/024-site-files/plan.md`.
+
+- **A project**: a private SwarmFS files space linked (both ways) to a folder under `init { projects }` (the shell
+  passes `Documents/HyperBrowser`; default `<engine dir>/projects`). The person's list is the setting
+  `hyperbrowser/projects` (`{ [space key]: { name } }`): each device links the projects it holds to a folder of its
+  own (on start, `spaces` and `settings`). `.swarmfsignore` gets `.git/` and `node_modules/` before every link.
+- **Publish**: `site.json` checked, the files copied into `<engine dir>/versions/<site>/<n>/` (unchanged ones hard
+  links to the newest version; a copy where links fail), then copied over the site's pages folder
+  `<engine dir>/published/<site>/` (linked as `site.publish` links), changed files only. A device publishing a site
+  for the first time links that folder and waits up to 60 s for the pages already there (`BUSY` after). Roll back:
+  a version's files as a new version.
+- **Co-authors**: SwarmFS `editor`s of the project; the site owner's engine makes each one an `admin` of the site
+  (on the project's `members` event and after a Publish), and takes it back from those removed.
+- **Preview**: a private site never made public, its key in `<engine dir>/drafts.json` (`{ [project]: key }`);
+  `site.open` and `site.read` on it read the project folder, its calls need no consent. Reset: left, a new one.
+- `openFolder` takes a path: the shell fills it from the person's folder picker, never from the page.
+- Paths: a page reaches only what the project syncs (`inside()`: never `.git`, `node_modules` or ignored paths, any
+  case; `.hyperbrowser.json` read-only). Short names (`GIT~1`) are refused, and the checks run again on the path as
+  the disk resolves it (native realpath: links and short names), so a link inside the project to `.git` is refused too. `remove` walks a folder itself: ignored paths stay, links are unlinked.
+
+`npm run perf:projects [-- --files 1000]`: two devices, 1000 files of 1 KB written into a project: on the other
+device in ~100 s (SwarmFS's pace); Publish: the first ~10 s, one file changed ~3.4 s (a visitor reads it ~6 s
+after the click; 2026-11-17, HDD).
+
 ## Tests
 
 ```bash
-npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications, circles (spec 018), names (spec 022)
+npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications, circles (spec 018), names (spec 022), projects (spec 024)
 npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
 npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %, the tray (spec 010)
 npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS

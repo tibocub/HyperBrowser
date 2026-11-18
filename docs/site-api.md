@@ -232,3 +232,43 @@ allowed it ("Let X see and manage your contacts?"): `hyper.contacts.me()`, `setM
 `on(fn)` (the list may have changed). Without the permission: `NOT_ALLOWED`. Only HyperBrowser's own Contacts and
 Chat ask for it; a site that asks is asking for the person's whole social graph. The whole design:
 `specs/013-contacts-chat/`; the apps: [chat.md](chat.md).
+
+## Projects (spec 024): edit sites, publish them, with co-authors
+
+A site whose `site.json` lists `"projects"` in `permissions` (an editor, such as HyperBrowser's IDE) may work on the
+person's projects, once the person allowed it ("Let X edit and publish your projects?"); without the permission:
+`NOT_ALLOWED`. A **project** is a folder on disk (`Documents/HyperBrowser/<name>`, editable with any tool) synced
+between the person's devices and co-authors while online; saving never publishes.
+
+- `hyper.projects.list()` → `[{ key, name, folder, site, role }]` (`site`: its published site's key, or null;
+  `role`: `owner` or `editor`, a co-author). `create(name)`, `openFolder()` (HyperBrowser asks the person to pick a
+  folder, e.g. a cloned GitHub repo: the page never names a path; `CANCELLED` if they don't), `openCopy(siteKey)` (a
+  site's published files as a new project: no posts or messages; publishing it makes a new site), `join(link)` (a
+  co-author's invite) → the project.
+- Files, by paths inside the project (`css/site.css`; no `..`, no absolute path, no Windows short name such as `GIT~1`,
+  nothing leading out through a link:
+  `INVALID_PATH`, `NOT_ALLOWED`): `files(key)` → `[{ path, size, mtime }]`, `read(key, path)` → `Uint8Array`,
+  `write(key, path, textOrBytes)` (folders made as needed; 32 MB a write), `rename(key, from, to)`,
+  `remove(key, path)` (a folder with what the project syncs in it; links in it unlinked, never followed).
+- Only what the project syncs: `.git`, `node_modules` (any case, at any depth) and what `.swarmfsignore` lists are
+  `NOT_ALLOWED` for every call (git runs `.git/hooks` outside the sandbox); `.hyperbrowser.json` is read-only (only
+  HyperBrowser writes it); `.swarmfsignore` always keeps `.git/` and `node_modules/`. Open a copy leaves out such pages.
+- Never synced: `.git/`, `node_modules/` and what the project's `.swarmfsignore` lists (each device keeps its own
+  git). Two devices or people saving one file at once: both versions are kept, the other as `name (<who>'s copy).ext`.
+- `publish(key)` → `{ site, created, version }`: the project's files (not `.swarmfsignore`, not `.hyperbrowser.json`)
+  become the site's pages at once, as one version. The site is made on the first Publish (its key goes in the
+  project's `.hyperbrowser.json`). A broken `site.json` (not JSON, an entry or icon that isn't there) is refused
+  before anything is published (`INVALID_MANIFEST`, `NO_MANIFEST`).
+- `versions(key)` → `[{ version, at }]`, newest first; `rollBack(key, version)` publishes that version again, as a
+  new version (the project's files stay as they are). **Versions are kept per device**: each device lists the
+  versions it published, and rolls back only to those.
+- `preview(key)` → `{ key }`: a draft site of the project's current files, on this device only (open it like any
+  site: edits show at once). A dynamic app's draft gets its own throwaway space (no identity question): nothing
+  reaches the real site or its data. `resetPreview(key)` → `{ key }`: a new, empty space.
+- **Co-authors** edit the files and publish the site (they become its admins while they are in the project):
+  `invite(key)` → `{ link }` (one use; the owner only), `inviteContact(key, identity)` (the link sent in the chat with
+  that friend), `members(key)` → `[{ identity, name, role, you, removed, banned, online }]`,
+  `removeMember(key, identity)` (the owner: they can no longer publish, nor read new edits). Not yet: read-only
+  viewers (hypergraph H6).
+  A co-author's files reach your folder like your own (`package.json` scripts, editor settings): invite only
+  people whose code you would run.
