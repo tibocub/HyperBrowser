@@ -11,6 +11,8 @@ import { parseAddress, nameError, shortKey, upsert, move, remove, checkShare, gb
 import { startTray, hasTray } from './tray.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
+const HANDLE = 6 // px: the preview's split handle (spec 027)
+const SPLIT_MIN = 240 // px: the least either side keeps
 const POLL = 2000
 const HELD = 10000 // site.held reads every file record of the site: every 10 s, not every poll
 const KINDS = new Set(['installed', 'bookmark'])
@@ -86,7 +88,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const s = saved?.settings || {}
     return {
       desktop: { icons },
-      settings: { theme: THEMES.has(s.theme) ? s.theme : 'system', accent: ACCENTS.has(s.accent) ? s.accent : '#1f4fd1', tray: s.tray !== false, trayNoticed: !!s.trayNoticed, circleNoticed: !!s.circleNoticed }
+      settings: { theme: THEMES.has(s.theme) ? s.theme : 'system', accent: ACCENTS.has(s.accent) ? s.accent : '#1f4fd1', tray: s.tray !== false, trayNoticed: !!s.trayNoticed, circleNoticed: !!s.circleNoticed,
+        split: typeof s.split === 'number' && s.split >= 0.1 && s.split <= 0.9 ? s.split : 0.55 } // spec 027: the IDE's share beside its preview
     }
   }
 
@@ -134,11 +137,17 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const { width, height } = win.getContentBounds()
     const tab = tabOf(current)
     for (const t of tabs) if (t.view) t.view.setVisible(t === tab)
-    for (const t of tabs) if (t.side) t.side.view.setVisible(t === tab)
+    for (const t of tabs) if (t.side?.view) t.side.view.setVisible(t === tab)
+    for (const t of tabs) if (t.side?.handle) t.side.handle.setVisible(t === tab)
     const h = Math.max(0, height - bars)
-    const main = tab.side ? Math.round(width * 0.55) : width // spec 025: a project's preview docked beside the IDE
+    const main = tab.side ? splitAt(width) : width // spec 025: a project's preview docked beside the IDE (027: resizable)
     if (tab.view) tab.view.setBounds({ x: 0, y: bars, width: main, height: h })
-    if (tab.side) tab.side.view.setBounds({ x: main, y: bars, width: width - main, height: h })
+    if (tab.side?.view) tab.side.view.setBounds({ x: main, y: bars, width: width - main, height: h })
+    const handle = tab.side?.handle
+    if (handle) { // a strip over the line; while dragged, over both views, so the pointer never leaves it
+      handle.setBounds(tab.side.dragging ? { x: 0, y: bars, width, height: h } : { x: main - HANDLE / 2, y: bars, width: HANDLE, height: h })
+      if (!handle.webContents.isDestroyed()) handle.webContents.send('split-at', { at: tab.side.dragging ? main - HANDLE / 2 : 0, value: Math.round(100 * main / width) })
+    }
     frame.setBounds({ x: 0, y: 0, width, height: cover || !tab.view ? height : bars })
   }
 
@@ -234,7 +243,15 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     openSite(key).then((v) => {
       if (tab.side !== side || !tabs.includes(tab)) return v.close()
       Object.assign(side, { view: v.view, wc: v.webContents, close: v.close, pending: false })
+      side.handle = new WebContentsView({ webPreferences: { preload: path.join(HERE, 'split-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } })
+      side.handle.setBackgroundColor('#00000000')
+      side.handle.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+      side.handle.webContents.on('will-navigate', (e) => e.preventDefault())
+      side.handle.webContents.loadFile(path.join(HERE, 'ui', 'split.html'))
+      side.handle.webContents.on('before-input-event', (e, input) => { if (keys(input, side.handle.webContents)) e.preventDefault() })
+      side.handle.webContents.once('did-finish-load', layout)
       win.contentView.addChildView(v.view)
+      win.contentView.addChildView(side.handle)
       win.contentView.addChildView(frame) // on top of every site
       layout()
     }, () => { if (tab.side === side) tab.side = null })
@@ -249,9 +266,38 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       win.contentView.removeChildView(side.view)
       side.close()
     }
+    if (side.handle) {
+      win.contentView.removeChildView(side.handle)
+      side.handle.webContents.close()
+    }
     layout()
     return true
   }
+
+  // spec 027: where the line between the IDE and its preview is (px from the left), at least SPLIT_MIN for each
+  function splitAt (width) {
+    if (width < 2 * SPLIT_MIN) return Math.round(width / 2)
+    return Math.min(width - SPLIT_MIN, Math.max(SPLIT_MIN, Math.round(width * data.settings.split)))
+  }
+
+  function setSplit (px, width) {
+    const at = width < 2 * SPLIT_MIN ? width / 2 : Math.min(width - SPLIT_MIN, Math.max(SPLIT_MIN, px))
+    data.settings.split = Math.min(0.9, Math.max(0.1, at / width))
+    layout()
+  }
+
+  // What the handle says (split.html): a drag (start, move, end), a key (step: ±1 = 24px, ±5, ±100), leave (F6, Escape).
+  ipcMain.on('split', (evt, msg) => {
+    const tab = tabs.find((t) => t.side?.handle?.webContents === evt.sender)
+    if (!tab || !msg || typeof msg !== 'object') return
+    const { width } = win.getContentBounds()
+    const now = splitAt(width)
+    if (msg.op === 'start') { tab.side.dragging = true; layout() }
+    if (msg.op === 'move' && tab.side.dragging && Number.isFinite(msg.x)) setSplit(Math.round(msg.x), width)
+    if (msg.op === 'end') { tab.side.dragging = false; layout(); save() }
+    if (msg.op === 'key' && Number.isFinite(msg.step)) { setSplit(now + Math.max(-100, Math.min(100, msg.step)) * 24, width); save() }
+    if (msg.op === 'leave') tab.wc?.focus()
+  })
 
   // `query`: for the shell's own calls (spec 013: Contacts on one person, '?person=<key>')
   function openKey (input, query = '') {
@@ -363,6 +409,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       return true
     }
     if (input.key === 'F5' || (mod && input.key.toLowerCase() === 'r')) { tabOf(current)?.wc?.reload(); return true }
+    // spec 027: F6 between the IDE, the line beside its preview (arrows move it) and back
+    if (input.key === 'F6' && tabOf(current)?.side?.handle && wc !== tabOf(current).side.handle.webContents) { tabOf(current).side.handle.webContents.focus(); return true }
     if (input.alt && input.key === 'ArrowLeft') { go(-1); return true }
     if (input.alt && input.key === 'ArrowRight') { go(1); return true }
     return false
@@ -621,6 +669,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     clearInterval(following)
     if (tray) tray.destroy()
     ipcMain.removeHandler('frame')
+    ipcMain.removeAllListeners('split')
     for (const t of tabs) if (t.close) t.close()
   })
   layout()
@@ -631,7 +680,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   follow()
   refresh()
   // for the frame check (npm run test:sandbox): where everything is
-  const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()), ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
+  const side = () => tabOf(current)?.side
+  const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()),
+    wcs: tabs.filter((t) => t.wc).map((t) => t.wc), side: side()?.view?.getBounds() || null, handle: side()?.handle || null, split: data.settings.split, ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
   const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') } // the engine's 'devices' event
   const circlesChanged = () => { if (!fwc.isDestroyed()) fwc.send('frame-circles', {}) } // the engine's 'circles' event
   // After a join (or a failed one, back on the old folder): another engine, maybe another identity. The open

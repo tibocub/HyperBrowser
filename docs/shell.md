@@ -241,3 +241,13 @@ Building, releasing, installing: [packaging.md](packaging.md).
 view beside the page's view in its tab (`frame.js` `dock`): 55 % / 45 %, the same key again reloads it (a save).
 `hyper.projects.closePreview()` (the shell's alone) removes it; closing the tab does too. A site can't show
 another site in itself, so this is the shell's: the only shell feature the IDE needs.
+
+**The line between them** (spec 027) is a third, 6px view over the boundary (`shell/ui/split.html`,
+`split-preload.cjs`): a `separator` with a col-resize cursor.
+- **Drag it.** While dragging, it covers both views so the pointer never leaves it, then it is a strip again.
+- **Keyboard:** F6 moves the focus to it. ←/→ move it 24px, Shift for 120px, Home and End to the ends. F6 or Escape
+  goes back to the page.
+- Each side keeps at least 240px.
+- The split is a share of the width, kept in `shell.json` (`settings.split`, 0.55 at first), so it is the same for
+  every tab and after a restart.
+- The frame check docks a preview and checks both views' bounds after the keys, a drag and the minimum.

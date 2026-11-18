@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Split</title>
+<!-- spec 027: the line between the IDE and its preview. Drag it, or focus it (F6) and use the arrows. While dragging,
+     the frame makes this view cover both (so the pointer never leaves it) and says where the strip is (`at`). -->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  #h { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; box-sizing: border-box; cursor: col-resize;
+    background: #fff; border-left: 1px solid #000; border-right: 1px solid #000; outline: none; }
+  #h:focus-visible { background: repeating-linear-gradient(to bottom, #000 0 1px, #fff 1px 2px); }
+  body.dragging { cursor: col-resize; }
+  @media (prefers-color-scheme: dark) {
+    #h { background: #000; border-color: #fff; }
+    #h:focus-visible { background: repeating-linear-gradient(to bottom, #fff 0 1px, #000 1px 2px); }
+  }
+</style>
+<div id="h" role="separator" aria-orientation="vertical" aria-label="Resize the preview (arrows; F6 goes back)" tabindex="0"></div>
+<script>
+  const h = document.getElementById('h')
+  let dragging = false
+  window.split.on(({ at, value }) => {
+    h.style.left = at + 'px'
+    h.setAttribute('aria-valuenow', value)
+  })
+  h.addEventListener('pointerdown', (e) => {
+    dragging = true
+    document.body.classList.add('dragging')
+    h.focus()
+    window.split.send({ op: 'start' })
+    e.preventDefault()
+  })
+  document.addEventListener('pointermove', (e) => { if (dragging) window.split.send({ op: 'move', x: e.clientX }) })
+  const end = () => {
+    if (!dragging) return
+    dragging = false
+    document.body.classList.remove('dragging')
+    window.split.send({ op: 'end' })
+  }
+  document.addEventListener('pointerup', end)
+  document.addEventListener('pointercancel', end)
+  h.addEventListener('keydown', (e) => {
+    const keys = { ArrowLeft: -1, ArrowRight: 1, Home: -100, End: 100 }
+    if (e.key in keys) window.split.send({ op: 'key', step: keys[e.key] * (e.shiftKey ? 5 : 1) })
+    else if (e.key === 'Escape' || e.key === 'F6') window.split.send({ op: 'leave' })
+    else return
+    e.preventDefault()
+  })
+</script>
+</html>
