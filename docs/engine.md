@@ -229,6 +229,8 @@ reads (`circles.list` + each `circles.members`) and the engine's idle CPU while 
   passes `Documents/HyperBrowser`; default `<engine dir>/projects`). The person's list is the setting
   `hyperbrowser/projects` (`{ [space key]: { name } }`): each device links the projects it holds to a folder of its
   own (on start, `spaces` and `settings`). `.swarmfsignore` gets `.git/` and `node_modules/` before every link.
+- **Built pages** (spec 026): `projects.build` writes them to `<engine dir>/builds/<project key>/`, never into the
+  project. A project's file of the same path wins in the preview and in Publish. `leave` removes them.
 - **Publish**: `site.json` checked, the files copied into `<engine dir>/versions/<site>/<n>/` (unchanged ones hard
   links to the newest version; a copy where links fail), then copied over the site's pages folder
   `<engine dir>/published/<site>/` (linked as `site.publish` links), changed files only. A device publishing a site

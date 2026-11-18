@@ -34,7 +34,7 @@ fs.writeFileSync(path.join(tmp, 'editor.js'), `
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, drawSelection, highlightActiveLine, highlightSpecialChars } from '@codemirror/view'
 import { history, defaultKeymap, historyKeymap, undo, redo } from '@codemirror/commands'
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, indentOnInput } from '@codemirror/language'
+import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, indentOnInput, indentUnit } from '@codemirror/language'
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search'
 import { javascript } from '@codemirror/lang-javascript'
 import { html } from '@codemirror/lang-html'
@@ -51,12 +51,21 @@ const look = EditorView.theme({
   '.cm-cursor': { borderLeftColor: 'var(--ink, CanvasText)' },
   '.cm-gutters': { color: 'inherit', backgroundColor: 'var(--paper, Canvas)', borderRight: '1px solid' },
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent', outline: '1px dotted' },
-  '.cm-scroller': { fontFamily: 'inherit' }
+  '.cm-scroller': { fontFamily: 'inherit' },
+  // the shared theme's scrollbars (shell/ui/theme.css), which can't reach into a shadow root
+  '.cm-scroller::-webkit-scrollbar': { width: '16px', height: '16px', background: 'var(--paper, Canvas)' },
+  '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'var(--paper, Canvas)', backgroundImage: 'repeating-conic-gradient(var(--ink, CanvasText) 0 25%, var(--paper, Canvas) 0 50%)', backgroundSize: 'calc(2 * var(--px, 1px)) calc(2 * var(--px, 1px))' },
+  '.cm-scroller::-webkit-scrollbar-track:vertical': { borderLeft: '1px solid var(--ink, CanvasText)' },
+  '.cm-scroller::-webkit-scrollbar-track:horizontal': { borderTop: '1px solid var(--ink, CanvasText)' },
+  '.cm-scroller::-webkit-scrollbar-thumb': { background: 'var(--paper, Canvas)', border: '1px solid var(--ink, CanvasText)' },
+  '.cm-scroller::-webkit-scrollbar-thumb:active': { background: 'var(--ink, CanvasText)' },
+  '.cm-scroller::-webkit-scrollbar-corner': { background: 'var(--paper, Canvas)' }
 })
 
 // An editor in \`parent\` for a file named \`name\`: { get(), set(text), focus(), undo(), redo(), search(), destroy() }.
 // In a shadow root: its styles stay there (a <style> in the page would turn HyperBrowser's default theme off).
-export function editor (parent, { name = '', doc = '', onChange = () => {}, label = 'Code' } = {}) {
+// wrap: long lines wrapped; tabSize: a tab's width and an indent's; lineNumbers: shown (spec 026 I3).
+export function editor (parent, { name = '', doc = '', onChange = () => {}, label = 'Code', wrap = false, tabSize = 2, lineNumbers: numbers = true } = {}) {
   const lang = LANGS[name.split('.').pop().toLowerCase()]
   const root = parent.shadowRoot || parent.attachShadow({ mode: 'open' })
   const view = new EditorView({
@@ -65,7 +74,8 @@ export function editor (parent, { name = '', doc = '', onChange = () => {}, labe
     state: EditorState.create({
       doc,
       extensions: [
-        lineNumbers(), highlightSpecialChars(), history(), drawSelection(), indentOnInput(), bracketMatching(),
+        ...(numbers ? [lineNumbers()] : []), ...(wrap ? [EditorView.lineWrapping] : []),
+        EditorState.tabSize.of(tabSize), indentUnit.of(' '.repeat(tabSize)), highlightSpecialChars(), history(), drawSelection(), indentOnInput(), bracketMatching(),
         highlightActiveLine(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), search({ top: true }),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         look,

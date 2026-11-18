@@ -85,22 +85,31 @@ export async function create (projects, name, template = 'hypermd') {
 export const paths = async (projects, key) => (await projects.files(key)).map((f) => f.path)
 export const read = async (projects, key, path) => text(await projects.read(key, path))
 
-// The HyperMD pages written again from their sources; → the paths written. Nothing for a project without pages.
+// The HyperMD pages built again from their sources, into the project's built pages (spec 026: outside the project
+// folder, so they never sync, never reach git). A .html the IDE wrote beside its .hmd before (exactly what the build
+// makes now) is removed; any other .html of a page's name is the person's and wins over the built one.
+// → { built, hidden }: the built pages, and those a hand-written .html hides.
 export async function build (projects, key) {
   const all = await paths(projects, key)
-  if (!isHyperMD(all)) return []
+  if (!isHyperMD(all)) return { built: [], hidden: [] }
   const sources = {}
   for (const p of all) if (p.endsWith('.hmd')) sources[p] = await read(projects, key, p)
   const css = all.filter((p) => !p.includes('/') && p.endsWith('.css')).sort()
   const pages = buildPages(sources, css)
-  for (const [p, html] of Object.entries(pages)) await projects.write(key, p, html)
-  return Object.keys(pages)
+  await projects.build(key, pages)
+  const hidden = []
+  for (const [p, html] of Object.entries(pages)) {
+    if (!all.includes(p)) continue
+    if ((await read(projects, key, p)) === html) await projects.remove(key, p) // ours, from 025: never the person's
+    else hidden.push(p)
+  }
+  return { built: Object.keys(pages), hidden }
 }
 
-// A file saved; its pages built again when it is HyperMD's or a root stylesheet. → the paths written.
+// A file saved; its pages built again when it is HyperMD's or a root stylesheet. → build()'s answer, or null.
 export async function save (projects, key, path, body) {
   await projects.write(key, path, body)
-  return /\.hmd$/.test(path) || (!path.includes('/') && path.endsWith('.css')) ? build(projects, key) : []
+  return /\.hmd$/.test(path) || (!path.includes('/') && path.endsWith('.css')) ? build(projects, key) : null
 }
 
 // Beginners' pages: [{ path, title }] in menu order, no file names.
@@ -169,10 +178,18 @@ export async function upload (projects, key, name, bytes, folder = '') {
   return path
 }
 
+// The preview (spec 026 B1): every HyperMD page built first, so site.json's entry (index.html) is there. `reset`: a new
+// throwaway space.
+// → { key, hidden }: hidden, the pages a hand-written .html of the same name replaces.
+export async function preview (projects, key, reset = false) {
+  const { hidden } = await build(projects, key)
+  return { ...(reset ? await projects.resetPreview(key) : await projects.preview(key)), hidden }
+}
+
 // Publish: the pages built first, so what is published is what the project says.
 export async function publish (projects, key) {
-  await build(projects, key)
-  return projects.publish(key)
+  const { hidden } = await build(projects, key)
+  return { ...(await projects.publish(key)), hidden }
 }
 
 export { pageTitle, parse }

@@ -3,6 +3,7 @@
 // preview sits beside the page (HyperBrowser docks it: hyper.projects.preview), reloaded on save (D5). No stylesheet:
 // HyperBrowser's default theme (CodeMirror's styles are adopted sheets, so it stays). The work itself: lib/site.js.
 import * as ide from './lib/site.js'
+import { fileTree } from './lib/tree.js'
 
 const hyper = window.hyper
 const root = document.getElementById('app')
@@ -31,6 +32,14 @@ let timer = null
 let lastText = ''
 let image = null // the open picture's blob URL
 let box = null // the editor's place, kept across redraws (its undo history with it)
+let folders = [] // spec 026: the project's folders (empty ones too), for the tree
+let tree = null // the file tree (lib/tree.js), and its place: kept across redraws
+let treeBox = null
+let treeShown = true // spec 026 I2: the list beside the editor shown (hyper.mine 'tree')
+let clip = null // cut or copied: { op: 'cut' | 'copy', path, kind }
+// spec 026 I3: the editor's settings (hyper.mine 'editor'), per person
+const DEFAULTS = { wrap: false, tabSize: 2, fontSize: 14, lineNumbers: true }
+let prefs = { ...DEFAULTS }
 
 start().catch((err) => {
   root.replaceChildren(h('p', {}, err.code === 'NOT_ALLOWED' ? 'The IDE needs your projects. Reload the page to be asked again.' : 'The IDE could not start: ' + err.message))
@@ -52,6 +61,9 @@ async function start () {
   setInterval(() => { // who is online (the line under the title): no event tells it
     if (cur) projects.status(cur.key).then((st) => { status = st; drawState() }, () => {})
   }, 5000)
+  const mine = await hyper.mine.all().catch(() => ({}))
+  treeShown = mine.tree !== false
+  prefs = { ...DEFAULTS, ...(mine.editor || {}) }
   list = await projects.list()
   draw()
 }
@@ -77,6 +89,9 @@ async function openProject (p) {
   open = null
   panel = null
   previewing = false
+  clip = null
+  treeBox = h('div', { style: 'min-height:100%' })
+  tree = fileTree(treeBox, { label: 'Files', open: (path) => choose(path), rename: renameTo, menu: treeMenu, mark: (path) => (status?.git?.changed || []).some((c) => c.path === path) ? '•' : '' })
   await reload()
   mode = ide.isHyperMD(files.map((f) => f.path)) ? 'pages' : 'files'
   open = mode === 'pages' ? pageList[0]?.path || null : (files.find((f) => f.path === 'index.html') || files[0])?.path || null
@@ -87,7 +102,9 @@ async function reload () {
   list = await projects.list()
   cur = list.find((p) => p.key === cur.key) || null
   if (!cur) return
-  files = (await projects.files(cur.key)).sort((a, b) => (a.path < b.path ? -1 : 1))
+  const all = await projects.files(cur.key, { folders: true })
+  files = all.filter((f) => !f.folder).sort((a, b) => (a.path < b.path ? -1 : 1))
+  folders = all.filter((f) => f.folder)
   pageList = await ide.pages(projects, cur.key)
   status = await projects.status(cur.key).catch(() => null)
 }
@@ -127,7 +144,7 @@ async function load () {
   editor?.destroy()
   editor = null
   area = null
-  box = h('div', { id: 'editor', style: 'flex:1; min-height:0; overflow:auto; border:1px solid' })
+  box = newBox()
   if (image) URL.revokeObjectURL(image)
   image = null
   dirty = false
@@ -137,6 +154,20 @@ async function load () {
   } else if (open) {
     lastText = await ide.read(projects, cur.key, open)
   }
+  draw()
+}
+
+function newBox () {
+  return h('div', { id: 'editor', style: `flex:1; min-height:0; overflow:auto; border:1px solid; font-size:${prefs.fontSize}px` })
+}
+
+// The editor made again with the settings (its text and its "not saved" kept).
+function remount () {
+  lastText = current()
+  editor?.destroy()
+  editor = null
+  area = null
+  box = newBox()
   draw()
 }
 
@@ -165,7 +196,7 @@ function save () {
   saving = (async () => {
     await saving
     await ide.save(projects, key, path, text)
-    if (previewing && cur?.key === key) await projects.preview(key)
+    if (previewing && cur?.key === key) await ide.preview(projects, key)
   })().catch((err) => { dirty = true; notice = 'Not saved: ' + err.message; draw() })
   drawState()
   return saving
@@ -183,6 +214,9 @@ async function choose (path) {
   await load()
 }
 
+// A hand-written x.html wins over the page x.hmd (spec 026): said, so the person knows why an edit doesn't show.
+const hiding = (hidden) => hidden?.length ? ` ${hidden.join(', ')} ${hidden.length > 1 ? 'are' : 'is'} your own, so used instead of the page${hidden.length > 1 ? 's' : ''} built from .hmd.` : ''
+
 // --- drawing ---
 
 function draw () {
@@ -191,11 +225,15 @@ function draw () {
   root.replaceChildren(cur ? project() : home())
   if (inMenu) root.querySelector('[data-menu="' + inMenu + '"] > button')?.focus()
   if (typing) (area || editor)?.focus()
+  if (tree && root.contains(treeBox)) {
+    tree.set([...files, ...folders])
+    tree.select(open)
+  }
   mountEditor()
 }
 
 function home () {
-  return h('div', { style: 'max-width:720px; margin:0 auto; padding:8px' },
+  return h('div', { style: 'overflow:auto; flex:1; min-height:0; padding:8px' },
     h('h1', {}, 'IDE'),
     notice ? h('p', { role: 'alert' }, notice) : null,
     h('section', {}, h('h2', {}, 'Your projects'), list.length
@@ -214,25 +252,27 @@ function home () {
 }
 
 function project () {
-  return h('div', { style: 'display:grid; grid-template-rows:auto auto 1fr; height:100vh; box-sizing:border-box; padding:6px; gap:6px' },
+  return h('div', { style: 'display:grid; grid-template-rows:auto auto 1fr; flex:1; min-height:0; gap:6px' }, // spec 026: fits the window (body.hb-app)
     h('header', { style: 'display:flex; gap:8px; align-items:center; flex-wrap:wrap' },
       h('button', { onclick: () => act(closeProject), 'aria-label': 'Back to your projects' }, '←'),
       h('h1', { style: 'margin:0; font-size:1.2em' }, cur.name),
       h('span', { style: 'flex:1' }),
-      h('button', { onclick: () => act(async () => { await flush(); previewing = !previewing; if (previewing) await projects.preview(cur.key); else await projects.closePreview() }), 'aria-pressed': String(previewing) }, 'Preview'),
-      h('button', { onclick: () => act(async () => { await flush(); const r = await ide.publish(projects, cur.key); await reload(); return r }, (r) => `Published: version ${r.version}. Its address: ${r.site}`) }, 'Publish'),
+      h('button', { onclick: toggleTree, 'aria-pressed': String(treeShown), title: 'More room for the editor' }, treeShown ? 'Hide the list' : 'Show the list'),
+      h('button', { onclick: () => act(async () => { await flush(); previewing = !previewing; if (previewing) return ide.preview(projects, cur.key); else await projects.closePreview() }, (r) => hiding(r?.hidden)), 'aria-pressed': String(previewing) }, 'Preview'),
+      h('button', { onclick: () => act(async () => { await flush(); const r = await ide.publish(projects, cur.key); await reload(); return r }, (r) => `Published: version ${r.version}. Its address: ${r.site}` + hiding(r.hidden)) }, 'Publish'),
       more('project', [
         [mode === 'pages' ? 'Show the files' : 'Show the pages', () => act(async () => { await flush(); mode = mode === 'pages' ? 'files' : 'pages'; await load() })],
         ['Site setup', () => { panel = 'settings'; draw() }],
+        ['Editor settings', () => { panel = 'editor'; draw() }],
         ['Versions', () => { panel = 'versions'; act(async () => { versions = await projects.versions(cur.key) }) }],
         ['People', () => { panel = 'people'; act(loadPeople) }],
-        ['Reset the preview’s data', () => act(async () => { await projects.resetPreview(cur.key); previewing = true }, 'The preview starts again with no data.')],
+        ['Reset the preview’s data', () => act(async () => { await ide.preview(projects, cur.key, true); previewing = true }, 'The preview starts again with no data.')],
         ['Leave this project…', async () => (await sure('Leave "' + cur.name + '"? Its folder stays on this computer.', 'Leave')) && act(async () => { await projects.leave(cur.key); await closeProject() })],
         ['Delete this project…', async () => (await sure('Delete "' + cur.name + '"? Its files are deleted from this computer (a .git folder stays), and it leaves your list on every device.', 'Delete')) && act(async () => { await projects.leave(cur.key, { deleteFiles: true }); await closeProject() })]
       ])),
     h('p', { id: 'state', class: 'small', style: 'margin:0; min-height:1.3em', role: 'status' }, stateLine()),
-    h('div', { style: 'display:grid; grid-template-columns:220px 1fr; gap:6px; min-height:0' },
-      h('nav', { 'aria-label': mode === 'pages' ? 'Pages' : 'Files', style: 'overflow:auto' }, mode === 'pages' ? pagesNav() : filesNav()),
+    h('div', { style: 'display:grid; grid-template-columns:' + (treeShown ? '240px ' : '') + '1fr; gap:6px; min-height:0' },
+      treeShown ? h('nav', { 'aria-label': mode === 'pages' ? 'Pages' : 'Files', style: 'overflow:auto; min-height:0' }, mode === 'pages' ? pagesNav() : filesNav()) : null,
       h('main', { style: 'display:flex; flex-direction:column; min-height:0; min-width:0' }, panel ? panelView() : fileView())))
 }
 
@@ -280,19 +320,93 @@ function manifestOf () {
   return manifestCache.m
 }
 
+// spec 026 I1: the files as a tree (lib/tree.js): right-click (or the Menu key, Shift+F10) for its actions.
 function filesNav () {
-  const changedGit = new Map((status?.git?.changed || []).map((c) => [c.path, c.state]))
   return [
-    h('ul', { style: 'padding-left:0; list-style:none; margin:0' }, files.map((f) => h('li', { style: 'display:flex; gap:4px; align-items:center; padding-left:' + (f.path.split('/').length - 1) + 'em' },
-      h('button', { onclick: () => choose(f.path), title: f.path, 'aria-current': open === f.path ? 'page' : null, style: 'flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis' + (open === f.path ? '; font-weight:bold' : '') },
-        f.path.split('/').pop(), changedGit.has(f.path) ? ' •' : ''),
-      more('f:' + f.path, [
-        ['Rename…', async () => { const to = await ask('New path', f.path); if (to && to !== f.path) act(async () => { await projects.rename(cur.key, f.path, to); if (open === f.path) open = to; await reload() }) }],
-        ['Delete…', async () => (await sure('Delete ' + f.path + '?', 'Delete')) && act(async () => { await projects.remove(cur.key, f.path); if (open === f.path) { open = null; await load() } await reload() })]
-      ])))),
-    h('p', {}, h('button', { onclick: async () => { const p = await ask('The new file’s path (folders with /)'); if (p) act(async () => { await projects.write(cur.key, p, ''); await reload(); await choose(p) }) } }, 'New file'), ' ',
-      pick('Upload', '', async (name, bytes) => { const p = await ide.upload(projects, cur.key, name, bytes); await reload(); return p }))
+    h('div', { style: 'display:flex; flex-wrap:wrap; gap:2px; padding:2px 0 4px' },
+      h('button', { onclick: () => newFile(dirOf(tree?.selected)) }, 'New file'),
+      h('button', { onclick: () => newFolder(dirOf(tree?.selected)) }, 'New folder'),
+      pick('Upload', '', async (name, bytes) => { const p = await ide.upload(projects, cur.key, name, bytes); await reload(); return p })),
+    treeBox
   ]
+}
+
+const parentOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
+const nameOf = (p) => p.slice(p.lastIndexOf('/') + 1)
+const join = (dir, name) => (dir ? dir + '/' + name : name)
+// A new file goes into the selected folder, or beside the selected file.
+const dirOf = (p) => (!p ? '' : folders.some((f) => f.path === p) ? p : parentOf(p))
+
+// The tree's context menu for a row (or the empty area): its actions, then the clipboard's, then new ones.
+function treeMenu (path, kind) {
+  const dir = !path ? '' : kind === 'folder' ? path : parentOf(path)
+  const items = []
+  if (kind === 'file') items.push(['Open', () => choose(path)])
+  if (path) items.push(['Rename', () => tree.rename(path)], ['Delete…', () => remove(path)], null,
+    ['Cut', () => { clip = { op: 'cut', path, kind } }], ['Copy', () => { clip = { op: 'copy', path, kind } }])
+  if (clip) items.push(['Paste ' + nameOf(clip.path), () => act(() => paste(dir))])
+  items.push(null, ['New file…', () => newFile(dir)], ['New folder…', () => newFolder(dir)])
+  return items.filter((x, i, all) => x || (i > 0 && all[i - 1] && i < all.length - 1))
+}
+
+async function renameTo (from, to) {
+  try {
+    await projects.rename(cur.key, from, to)
+  } catch (err) {
+    notice = err.message + (err.code ? ' (' + err.code + ')' : '')
+    draw()
+    throw err
+  }
+  if (open === from || open?.startsWith(from + '/')) open = to + open.slice(from.length)
+  await reload()
+  draw()
+}
+
+async function remove (path) {
+  if (!(await sure('Delete ' + path + '?' + (folders.some((f) => f.path === path) ? ' And what is in it.' : ''), 'Delete'))) return
+  act(async () => {
+    await projects.remove(cur.key, path)
+    if (open === path || open?.startsWith(path + '/')) { open = null; await load() }
+    await reload()
+  })
+}
+
+async function newFile (dir) {
+  const name = await ask('The new file’s name' + (dir ? ' (in ' + dir + ')' : ''))
+  if (name) act(async () => { const p = join(dir, name.trim()); await projects.write(cur.key, p, ''); await reload(); await choose(p) })
+}
+
+async function newFolder (dir) {
+  const name = await ask('The new folder’s name' + (dir ? ' (in ' + dir + ')' : ''))
+  if (name) act(async () => { const p = join(dir, name.trim()); await projects.mkdir(cur.key, p); tree.expanded.add(p); await reload() })
+}
+
+// The clipboard's file or folder into `dir`: moved (cut) or copied, under a free name.
+async function paste (dir) {
+  const { op, path } = clip
+  if (op === 'cut' && (dir === path || dir.startsWith(path + '/'))) throw Object.assign(new Error('a folder can’t go inside itself'), { code: 'INVALID_PATH' })
+  const have = new Set([...files, ...folders].map((f) => f.path))
+  const name = nameOf(path)
+  const dot = folders.some((f) => f.path === path) ? -1 : name.lastIndexOf('.')
+  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
+  let to = join(dir, name)
+  if (op === 'cut' && to === path) return
+  for (let n = 1; have.has(to); n++) to = join(dir, `${stem} copy${n > 1 ? ' ' + n : ''}${ext}`)
+  if (op === 'cut') {
+    await renameTo(path, to)
+    clip = null
+    return
+  }
+  const under = (p) => p === path || p.startsWith(path + '/')
+  for (const f of folders.filter((f) => under(f.path))) await projects.mkdir(cur.key, to + f.path.slice(path.length)).catch(() => {})
+  for (const f of files.filter((f) => under(f.path))) await projects.write(cur.key, to + f.path.slice(path.length), await projects.read(cur.key, f.path))
+  await reload()
+}
+
+function toggleTree () {
+  treeShown = !treeShown
+  hyper.mine.set('tree', treeShown).catch(() => {})
+  draw()
 }
 
 // A button that picks a file from the computer, then `fn(name, bytes)`.
@@ -310,7 +424,7 @@ function fileView () {
   if (!TEXT.test(open)) return h('p', {}, open + ' is not text: it is published as it is.')
   const beginner = mode === 'pages' && open.endsWith('.hmd')
   return [
-    beginner ? toolbar() : h('div', { style: 'display:flex; gap:4px; align-items:center' }, h('code', {}, open), h('span', { style: 'flex:1' }),
+    beginner ? toolbar() : h('div', { style: 'display:flex; flex-wrap:wrap; gap:4px; align-items:center' }, h('code', { style: 'overflow-wrap:anywhere' }, open), h('span', { style: 'flex:1' }),
       h('button', { onclick: () => editor?.undo() }, 'Undo'), h('button', { onclick: () => editor?.redo() }, 'Redo'),
       h('button', { onclick: () => editor?.search() }, 'Search'), h('button', { onclick: () => save() }, 'Save')),
     box
@@ -371,7 +485,7 @@ async function mountEditor () {
   const { editor: make } = await import('./vendor/editor.js')
   if (!root.contains(slot)) return
   editor?.destroy()
-  editor = make(slot, { name: open, doc: text, label: open, onChange: edited })
+  editor = make(slot, { name: open, doc: text, label: open, onChange: edited, wrap: prefs.wrap, tabSize: prefs.tabSize, lineNumbers: prefs.lineNumbers })
 }
 
 // --- panels ---
@@ -389,7 +503,24 @@ function panelView () {
         : h('p', {}, 'Not published from this computer yet.')]
   }
   if (panel === 'people') return [back, peopleView()]
+  if (panel === 'editor') return [back, editorSettings()]
   return [back, setupView()]
+}
+
+// spec 026 I3: a small first set, saved per person (on every device of theirs).
+function editorSettings () {
+  const set = (change) => {
+    prefs = { ...prefs, ...change }
+    hyper.mine.set('editor', prefs).catch(() => {})
+    remount()
+  }
+  return h('div', { style: 'overflow:auto' },
+    h('h2', {}, 'Editor settings'),
+    h('p', {}, h('label', {}, h('input', { type: 'checkbox', checked: prefs.wrap ? '' : null, onchange: (e) => set({ wrap: e.target.checked }) }), ' Wrap long lines (code)')),
+    h('p', {}, h('label', {}, h('input', { type: 'checkbox', checked: prefs.lineNumbers ? '' : null, onchange: (e) => set({ lineNumbers: e.target.checked }) }), ' Line numbers')),
+    h('p', {}, h('label', {}, 'Tab size ', h('select', { onchange: (e) => set({ tabSize: Number(e.target.value) }) }, [2, 4, 8].map((n) => h('option', { value: n, selected: n === prefs.tabSize ? '' : null }, n + ' spaces'))))),
+    h('p', {}, h('label', {}, 'Text size ', h('select', { onchange: (e) => set({ fontSize: Number(e.target.value) }) }, [12, 13, 14, 16, 18, 20].map((n) => h('option', { value: n, selected: n === prefs.fontSize ? '' : null }, n + ' px'))))),
+    h('p', {}, h('button', { onclick: () => set({ ...DEFAULTS }) }, 'Back to the defaults')))
 }
 
 async function loadPeople () {

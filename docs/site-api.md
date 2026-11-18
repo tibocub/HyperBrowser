@@ -29,6 +29,16 @@ HyperBrowser's default theme: the official site's fonts, colours, light and dark
 dithered background. A HyperMD site built without a `style.css` looks like the official site. Add any
 stylesheet and the page is yours alone.
 
+The default theme (spec 026):
+- A page is at most 1140px wide.
+- **An app** fits the window instead: `<body class="hb-app">`.
+  - The page never scrolls as a whole; its window fills the browser's.
+  - The body's child is a column that fills it. Give the parts that should scroll `overflow: auto` and
+    `min-height: 0` (Chat: its conversations and messages; the IDE: its tree and its editor).
+- Scrollbars are the desk's: a dithered track and a white box.
+- Buttons keep 2px free on their right and below, their shadow's room, so a pressed button never covers its
+  neighbour.
+
 ## Static sites
 
 Scripts run as on the web, without any HyperBrowser API (`window.hyper` is undefined).
@@ -270,6 +280,11 @@ between the person's devices and co-authors while online; saving never publishes
   that friend), `members(key)` → `[{ identity, name, role, you, removed, banned, online }]`,
   `removeMember(key, identity)` (the owner: they can no longer publish, nor read new edits). Not yet: read-only
   viewers (hypergraph H6).
+- Spec 026: `build(key, { 'x.html': html })` replaces the project's built pages, kept outside the project.
+  Paths are `.html` inside the site; 64 MB in all. Preview and Publish use them wherever the project has no file of
+  that name: the person's own file wins.
+- Spec 026: `files(key, { folders: true })` lists the folders too (`{ path, folder: true }`, empty ones included);
+  `mkdir(key, path)` makes an empty folder (`EXISTS` if something is there).
 - Spec 025: `status(key)` → `{ devices, coauthors, git }`. `devices` and `coauthors` are those online now. `git` is
   `{ branch, changed: [{ path, state: 'modified' | 'new' | 'deleted' }] }`, read from `.git` without running git, or
   null without one. `leave(key, { deleteFiles })`: off the person's list on every device, the folder kept unless
