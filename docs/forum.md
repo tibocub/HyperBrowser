@@ -89,6 +89,9 @@ on; its entry opens the post (`#/r/{id}`). Publish again (`npm run forum:publish
 (`siteApi(e, app).instance(forum)` in `test/helpers.js` is the page's `window.hyper.instance(...)`): invite-only, boards, threads, the tree, votes, edit and delete, moderation,
 sorting, unread across a restart, mentions, names and icons, and the text subset. Node and Bare.
 
+Long words (an `hg:` link) wrap anywhere, in posts, titles and names (`overflow-wrap: anywhere` on the page,
+spec 028); code blocks keep their own horizontal scroll.
+
 ## Limits (milestone 1)
 
 - Live views hold the newest 500 threads, 2000 replies and 5000 votes of the forum (reply counts and scores

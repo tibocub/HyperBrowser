@@ -104,7 +104,9 @@ compiler.
   - The menu floats at the click and moves nothing. It also opens with the Menu key and Shift+F10; Escape closes it
     and the focus goes back to the row.
   - Roles: `tree`, `treeitem`, `aria-expanded`, `aria-selected`.
-  - The rows aren't buttons, so a click never shifts them.
+  - The rows aren't buttons, so a click never shifts them. They are `div`s, not `li`s: the theme's list style (a
+    bullet, `text-indent: -2ch`) cut names' first two letters (spec 028). A long name is cut at its end; its
+    tooltip has the whole path.
 - Previews and Publish build every HyperMD page first (spec 026: `sites/home` previews with `entry: index.html`),
   into the engine's `builds/<project>/` through `hyper.projects.build`.
 - `sites/ide/lib/site.js` does the work: templates, HyperMD built in the page, pages by title, `site.json` changes,

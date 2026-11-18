@@ -83,6 +83,9 @@ Chat's `site.json` watches `message` (its text) and `invite` ("invited you to a 
 "Let Chat notify you?" like any app. Its conversations stay online first (up to 24). A new `site.json` reaches
 people only once Chat is published again (`npm run chat:publish`).
 
+Long words (an `hg:` link) wrap anywhere, in messages, names and the conversation list, rather than widen the
+page (spec 028; the self-test posts a 300-character link).
+
 ## Limits (shortcuts)
 
 - A conversation shows its latest 300 messages; past that, a new message shifts your place by the one that drops.

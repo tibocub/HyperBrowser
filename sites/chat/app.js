@@ -90,7 +90,8 @@ function draw () {
   const top = keepScroll(root.querySelector('[data-key]'), view?.key, view?.toEnd)
   if (view) view.toEnd = false
   // spec 026: Chat fits the window (body.hb-app); the conversations and the messages scroll, never the page
-  root.replaceChildren(h('div', { style: 'display:flex; gap:16px; flex:1; min-height:0; padding:4px' },
+  // overflow-wrap (spec 028): a long word (an hg: link) wraps anywhere rather than widen the page
+  root.replaceChildren(h('div', { style: 'display:flex; gap:16px; flex:1; min-height:0; padding:4px; overflow-wrap:anywhere' },
     h('nav', { style: 'width:220px; flex:none; display:flex; flex-direction:column; min-height:0' },
       h('h2', {}, 'Chat'),
       h('p', { class: 'small' }, 'You are ', h('b', {}, me.name || '(no name yet)'), ' · ',

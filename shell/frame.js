@@ -233,8 +233,22 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   function dock (wc, key) {
     const tab = tabs.find((t) => t.wc === wc)
     if (!tab) return false
+    // spec 028: a (re)load of the preview never takes the keyboard from the page that asked (the IDE, typing): it is
+    // given back as soon as the preview takes it, the page's caret where it was
+    const had = wc.isFocused()
+    // only while it loads (and 300ms after): a click into the preview afterwards keeps it there
+    const keep = (side) => {
+      if (!had) return
+      let done = false
+      const back = () => { if (!done && !wc.isDestroyed() && !wc.isFocused()) wc.focus() }
+      const stop = () => { done = true; if (!side.wc.isDestroyed()) side.wc.removeListener('focus', back) }
+      side.wc.on('focus', back)
+      side.wc.once('did-finish-load', () => { back(); setTimeout(stop, 300) })
+      setTimeout(stop, 10000) // a load that never ends
+    }
     if (tab.side?.key === key) {
-      tab.side.wc.reload()
+      if (tab.side.wc) keep(tab.side)
+      tab.side.wc?.reload()
       return true
     }
     undock(tab)
@@ -243,6 +257,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     openSite(key).then((v) => {
       if (tab.side !== side || !tabs.includes(tab)) return v.close()
       Object.assign(side, { view: v.view, wc: v.webContents, close: v.close, pending: false })
+      keep(side)
       side.handle = new WebContentsView({ webPreferences: { preload: path.join(HERE, 'split-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } })
       side.handle.setBackgroundColor('#00000000')
       side.handle.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -682,7 +697,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   // for the frame check (npm run test:sandbox): where everything is
   const side = () => tabOf(current)?.side
   const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()),
-    wcs: tabs.filter((t) => t.wc).map((t) => t.wc), side: side()?.view?.getBounds() || null, handle: side()?.handle || null, split: data.settings.split, ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
+    wcs: tabs.filter((t) => t.wc).map((t) => t.wc), side: side()?.view?.getBounds() || null, handle: side()?.handle || null, sideWc: side()?.wc || null, split: data.settings.split, ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
   const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') } // the engine's 'devices' event
   const circlesChanged = () => { if (!fwc.isDestroyed()) fwc.send('frame-circles', {}) } // the engine's 'circles' event
   // After a join (or a failed one, back on the old folder): another engine, maybe another identity. The open
