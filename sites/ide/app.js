@@ -273,7 +273,8 @@ function project () {
     h('p', { id: 'state', class: 'small', style: 'margin:0; min-height:1.3em', role: 'status' }, stateLine()),
     h('div', { style: 'display:grid; grid-template-columns:' + (treeShown ? '240px ' : '') + '1fr; gap:6px; min-height:0' },
       treeShown ? h('nav', { 'aria-label': mode === 'pages' ? 'Pages' : 'Files', style: 'overflow:auto; min-height:0' }, mode === 'pages' ? pagesNav() : filesNav()) : null,
-      h('main', { style: 'display:flex; flex-direction:column; min-height:0; min-width:0' }, panel ? panelView() : fileView())))
+      // a div, not <main>: the theme gives <main> a HyperMD page's window (1140px at most, margins), spec 027
+      h('div', { role: 'main', style: 'display:flex; flex-direction:column; min-height:0; min-width:0' }, panel ? panelView() : fileView())))
 }
 
 function stateLine () {

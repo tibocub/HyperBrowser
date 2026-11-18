@@ -832,12 +832,36 @@ async function checkIde (win, views, out, tmp, chat) {
   await run(`${button('Show the list')}.click(); 0`)
   await run(`${menu}.querySelector('button').click(); 0`)
   await run(`${button('Editor settings')}.click(); 0`)
-  await waitFor(() => run("!!document.querySelector('main input[type=checkbox]')"), 5000)
-  await run("(() => { const c = document.querySelector('main input[type=checkbox]'); c.checked = true; c.dispatchEvent(new Event('change')); return 0 })()")
+  await waitFor(() => run("!!document.querySelector('[role=main] input[type=checkbox]')"), 5000)
+  await run("(() => { const c = document.querySelector('[role=main] input[type=checkbox]'); c.checked = true; c.dispatchEvent(new Event('change')); return 0 })()")
   const saved = await waitFor(() => run('window.hyper.mine.all().then((m) => m.editor?.wrap === true)'), 5000)
   await run(`${button('← Back to the editor')}.click(); 0`)
   const wrapping = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-lineWrapping')"), 10000)
   pass('ide: Editor settings: line wrapping on, saved per person (hyper.mine)', saved && wrapping)
+  // spec 027: the editor fills what is left beside the list (both ways), the list shown or hidden, at any width
+  const fill = `(() => {
+    const box = document.querySelector('#editor')
+    const cm = box?.shadowRoot?.querySelector('.cm-editor')
+    if (!cm) return 'no editor'
+    const b = box.getBoundingClientRect()
+    const c = cm.getBoundingClientRect()
+    const body = getComputedStyle(document.body)
+    const right = document.body.getBoundingClientRect().right - parseFloat(body.paddingRight) - parseFloat(body.borderRightWidth)
+    const ok = Math.abs(b.right - right) <= 2 && Math.abs(c.width - box.clientWidth) <= 2 && Math.abs(c.height - box.clientHeight) <= 2
+    return ok ? 'ok' : JSON.stringify({ box: [b.left, b.right], right, cm: [c.width, c.height], inner: [box.clientWidth, box.clientHeight] })
+  })()`
+  const fills = []
+  for (const shown of [true, false]) {
+    if (!shown) await run(`${button('Hide the list')}.click(); 0`)
+    for (const width of [1400, 900, 600]) {
+      v.view.setBounds({ x: 0, y: 0, width, height: 700 })
+      await wait(400)
+      const r = await run(fill)
+      if (r !== 'ok') fills.push(`${shown ? 'list' : 'no list'} ${width}: ${r}`)
+    }
+  }
+  await run(`${button('Show the list')}.click(); 0`)
+  pass('ide: the editor fills the space left over, the list shown or hidden, at 1400, 900, 600 px' + (fills.length ? ' (' + fills.join('; ') + ')' : ''), !fills.length)
   // spec 026 L5: a button keeps its shadow's room, so a pressed one never covers the next
   pass('ide: buttons keep their shadow\'s room (2px right and below)', await run("(() => { const c = getComputedStyle(document.querySelector('button')); return c.marginRight === '2px' && c.marginBottom === '2px' })()"))
   // spec 026 L3: apps fit the window at every size; only their parts scroll
@@ -888,6 +912,59 @@ async function checkIde (win, views, out, tmp, chat) {
   console.log(`PERF ide.preview.reload ${ms(reload)} ms`)
 }
 
+// spec 027: the IDE's preview, docked beside the tab's site with a line between them: where both views are, the line
+// moved by its arrow keys and by a drag (each side keeps 240px), remembered in shell.json and when docked again.
+async function checkSplit (win, inspect, dock, undock, key, file) {
+  const out = []
+  const wc = inspect().wcs.find((w) => w.getURL().startsWith('hyper://' + key))
+  dock(wc, key)
+  await waitFor(async () => !!inspect().side && !!inspect().handle && !inspect().handle.webContents.isLoading(), 15000)
+  await wait(300)
+  const { width } = win.getContentBounds()
+  const meet = (i) => !!i.side && i.views[0].width === i.side.x && i.side.x + i.side.width === width && i.views[0].y === i.side.y
+  let i = inspect()
+  out.push(['spec 027: the preview docks beside the site, the two meeting at the line (55% at first)', meet(i) && Math.abs(i.views[0].width - Math.round(width * 0.55)) <= 1])
+  const h = i.handle.webContents
+  const hb = i.handle.getBounds()
+  out.push(["the line's handle: a 6px strip over the line, a focusable separator", hb.width === 6 && hb.x === i.views[0].width - 3 &&
+    await h.executeJavaScript("document.getElementById('h').tabIndex === 0 && document.getElementById('h').getAttribute('role') === 'separator'")])
+  const before = i.views[0].width
+  h.focus()
+  await h.executeJavaScript("document.getElementById('h').focus(); 0")
+  for (let n = 0; n < 2; n++) {
+    h.sendInputEvent({ type: 'keyDown', keyCode: 'Left' })
+    h.sendInputEvent({ type: 'keyUp', keyCode: 'Left' })
+  }
+  await wait(300)
+  i = inspect()
+  out.push(['the arrow keys move the line (24px a step)', i.views[0].width === before - 48 && meet(i)])
+  const drag = async (x) => {
+    const at = i.handle.getBounds().width === 6 ? 3 : i.views[0].width
+    h.sendInputEvent({ type: 'mouseDown', x: at, y: 100, button: 'left', clickCount: 1 })
+    await wait(250)
+    h.sendInputEvent({ type: 'mouseMove', x, y: 100, button: 'left' })
+    await wait(250)
+    h.sendInputEvent({ type: 'mouseUp', x, y: 100, button: 'left', clickCount: 1 })
+    await wait(300)
+    i = inspect()
+  }
+  await drag(400)
+  out.push(['a drag moves the line (to 400px); the handle a strip again after it', Math.abs(i.views[0].width - 400) <= 1 && meet(i) && i.handle.getBounds().width === 6])
+  await drag(10)
+  out.push(['each side keeps at least 240px', i.views[0].width === 240 && meet(i)])
+  const saved = JSON.parse(fs.readFileSync(file, 'utf-8')).settings.split
+  out.push(['the split is remembered (shell.json)', Math.abs(saved * width - 240) <= 1])
+  undock(wc)
+  await wait(200)
+  out.push(['closing the preview gives the site the whole width', inspect().views[0].width === width && !inspect().side])
+  dock(wc, key)
+  await waitFor(async () => !!inspect().side, 15000)
+  await wait(200)
+  out.push(['docked again: the line where it was left', inspect().views[0].width === 240 && meet(inspect())])
+  undock(wc)
+  return out
+}
+
 // The frame check: the demo site in a frame of its own, then where everything is.
 async function framecheck (dir) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-framecheck-'))
@@ -895,7 +972,7 @@ async function framecheck (dir) {
   const { key } = await rpc.request('site.publish', { folder: path.join(tmp, 'site') })
   const { fake, calls } = scripted(key)
   fs.writeFileSync(path.join(tmp, 'shell.json'), JSON.stringify({ settings: { circleNoticed: true } })) // spec 018: Q8's notice seen (a dialog would wait)
-  const { win, inspect, notify } = startFrame({ rpc: fake, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
+  const { win, inspect, notify, dock, undock, open: openTab } = startFrame({ rpc: fake, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
   const timeout = setTimeout(() => { console.log('FRAMECHECK TIMEOUT'); app.exit(2) }, 90000)
   const settled = async () => inspect().ready === 1 && await inspect().fwc.executeJavaScript("document.getElementById('tabs').children.length === 2").catch(() => false)
   while (!(await settled())) await new Promise((resolve) => setTimeout(resolve, 250))
@@ -918,6 +995,8 @@ async function framecheck (dir) {
   const circles = await checkCirclesWindow(i.fwc)
   const notes = await checkNotes(i.fwc, inspect, notify, calls)
   const names = await checkNames(i.fwc, key)
+  openTab(key) // its tab current again (the checks before opened others)
+  const split = await checkSplit(win, inspect, dock, undock, key, path.join(tmp, 'shell.json'))
   clearTimeout(timeout)
   const b = win.getBounds()
   const c = win.getContentBounds()
@@ -934,7 +1013,8 @@ async function framecheck (dir) {
     ['Devices: Add a device shows a code', coded],
     ...circles,
     ...notes,
-    ...names
+    ...names,
+    ...split
   ]
   for (const [name, pass] of out) console.log((pass ? 'PASS ' : 'FAIL ') + 'frame  ' + name)
   const ok = out.every(([, pass]) => pass)

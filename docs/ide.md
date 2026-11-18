@@ -11,6 +11,7 @@ files it edits. Specs: `specs/024-site-files/` (projects) and `specs/025-ide/` (
    - **Image** picks a picture from your computer.
    - **Link** takes an address, or the title of another of your pages.
 4. **Your work saves as you type.** Click **Preview** to see the site beside the page; it follows your typing.
+   Drag the line between the page and the preview to give either more room (or press F6, then the arrows).
 5. Under **The site**, set its title, an icon (**Choose a picture**) and whether it is **invite-only**.
 6. Click **Publish**. Visitors get this version; the IDE shows the site's address.
    Saving never publishes: you publish when you choose.
@@ -91,6 +92,9 @@ compiler.
 
 - `sites/ide/app.js` is the page. It fits the window (`<body class="hb-app">`): the tree and the editor scroll,
   never the page.
+  Its editor panel is a `div role="main"`, not a `<main>`: the theme gives `<main>` a HyperMD page's window
+  (1140px at most, margins), which left blank space beside the editor (spec 027). The self-test checks the editor
+  fills the space left over, with the list shown and hidden, at three widths.
 - `sites/ide/lib/tree.js` is the file tree, a component with nothing of the IDE's. HyperBrowser's file manager will
   reuse it: a site loads only its own files, so that app takes a copy.
   - `fileTree(element, { label, open(path), rename(from, to), menu(path, kind) → [[label, fn] | null], mark(path) })`
