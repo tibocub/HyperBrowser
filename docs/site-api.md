@@ -280,6 +280,9 @@ between the person's devices and co-authors while online; saving never publishes
   that friend), `members(key)` → `[{ identity, name, role, you, removed, banned, online }]`,
   `removeMember(key, identity)` (the owner: they can no longer publish, nor read new edits). Not yet: read-only
   viewers (hypergraph H6).
+- Spec 026: `build(key, { 'x.html': html })` replaces the project's built pages, kept outside the project.
+  Paths are `.html` inside the site; 64 MB in all. Preview and Publish use them wherever the project has no file of
+  that name: the person's own file wins.
 - Spec 026: `files(key, { folders: true })` lists the folders too (`{ path, folder: true }`, empty ones included);
   `mkdir(key, path)` makes an empty folder (`EXISTS` if something is there).
 - Spec 025: `status(key)` → `{ devices, coauthors, git }`. `devices` and `coauthors` are those online now. `git` is

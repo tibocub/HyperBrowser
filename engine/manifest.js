@@ -88,13 +88,15 @@ export function watch (w, types, follow = false) {
   if (w.popup !== undefined && typeof w.popup !== 'boolean') bad('popup is true or false')
 }
 
-// The checked manifest of a folder about to be published: site.json parsed, its entry and icon present.
-export async function readManifest (folder) {
+// The checked manifest of a folder about to be published: site.json parsed, its entry and icon present (in `folder`,
+// or in `built`: a project's built pages, spec 026).
+export async function readManifest (folder, built = null) {
   let text
   try { text = await fs.promises.readFile(path.join(folder, 'site.json'), 'utf-8') } catch { throw error('NO_MANIFEST', `no site.json in ${folder}`) }
   const manifest = parseManifest(text)
   for (const p of [manifest.entry, manifest.icon].filter(Boolean)) {
-    try { await fs.promises.stat(path.join(folder, ...p.split('/'))) } catch { throw error('INVALID_MANIFEST', `site.json names ${p}, which isn't in the folder`) }
+    const there = async (d) => !!d && !!(await fs.promises.stat(path.join(d, ...p.split('/'))).catch(() => null))
+    if (!(await there(folder)) && !(await there(built))) throw error('INVALID_MANIFEST', `site.json names ${p}, which isn't in the folder`)
   }
   return manifest
 }

@@ -64,7 +64,14 @@ It syncs with your other computers while they are online.
   - It is checked exactly as HyperBrowser checks it before it is written.
   - Types and fields can only be added once published.
   - Roles are not in `site.json`: an app makes them while it runs (`hyper.defineRole`).
-- Pages written in HyperMD (`.hmd`) are built into `.html` beside them on each save, by HyperMD running in the IDE:
+- Pages written in HyperMD (`.hmd`) are built into `.html` on each save, by HyperMD running in the IDE:
+  - The built pages are kept **outside your folder**, on this computer, in HyperBrowser's own folder. So they never
+    sync, never reach git, and co-authors never get conflict copies of them; your folder holds only what you wrote.
+  - The preview and Publish use your files plus the built pages.
+  - **What you wrote wins.** If you write `about.html` yourself and also have `about.hmd`, your `about.html` is used.
+    The IDE says so when you preview or publish.
+  - Pages the IDE wrote beside `.hmd` files before (until spec 026) are removed at the next build, but only those
+    exactly as the build makes them.
   - `_layout.hmd` wraps every page;
   - its `::menu` lists the pages (`::page{order=N}`);
   - root `.css` files style every page.
@@ -94,7 +101,8 @@ compiler.
     and the focus goes back to the row.
   - Roles: `tree`, `treeitem`, `aria-expanded`, `aria-selected`.
   - The rows aren't buttons, so a click never shifts them.
-- Previews and Publish build every HyperMD page first (spec 026: `sites/home` previews with `entry: index.html`).
+- Previews and Publish build every HyperMD page first (spec 026: `sites/home` previews with `entry: index.html`),
+  into the engine's `builds/<project>/` through `hyper.projects.build`.
 - `sites/ide/lib/site.js` does the work: templates, HyperMD built in the page, pages by title, `site.json` changes,
   Publish. `test/ide.test.js` runs it on Node and Bare.
 - `sites/ide/vendor/editor.js` (CodeMirror 6: JS, HTML, CSS, JSON, Markdown, search, undo) is loaded the first time

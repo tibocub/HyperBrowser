@@ -15,6 +15,7 @@ const IGNORE = '.swarmfsignore' // SwarmFS's ignore file, also what Publish skip
 const ALWAYS = ['.git/', 'node_modules/'] // D4: each device keeps its own
 const NAME_MAX = 64
 const WRITE_MAX = 32 * 1024 * 1024 // one write crossing from a page
+const BUILD_MAX = 64 * 1024 * 1024 // a project's built pages, all together
 const CATCH_UP = 60000 // a publish waits this long for the pages already there to be held here
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 const GIT_MAX = 500 // changed files listed
@@ -38,7 +39,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   const me = hg.identity.publicKey
   const DRAFTS = path.join(dir, 'drafts.json') // this device's: { [project]: draft site key }
   let drafts = {}
-  const folders = new Map() // draft key -> the project folder it shows
+  const folders = new Map() // draft key -> the project it shows
   const watched = new Set() // projects whose members this device follows (site owner: grants admin)
   let queue = Promise.resolve() // list writes, links and publishes, one at a time
   let following = Promise.resolve()
@@ -54,10 +55,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   async function start () {
     try { drafts = JSON.parse(await fs.promises.readFile(DRAFTS, 'utf-8')) } catch {}
-    for (const [project, key] of Object.entries(drafts)) {
-      const folder = await folderOf(project)
-      if (folder) folders.set(key, folder)
-    }
+    for (const [project, key] of Object.entries(drafts)) folders.set(key, project)
     hg.on('settings', onChange)
     hg.on('spaces', onChange)
     await follow()
@@ -132,6 +130,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       case 'openCopy': return openCopy(a)
       case 'join': return join(a)
       case 'files': return files(await project(a), b?.folders === true)
+      case 'build': await project(a); return one(() => build(a, b))
       case 'mkdir': return mkdir(await project(a), b)
       case 'read': return readFile(await project(a), b)
       case 'write': return writeFile(await project(a), b, c)
@@ -303,8 +302,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
         if (e.isDirectory() && folders) out.push({ path: rel, folder: true })
         if (e.isDirectory()) await walk(full)
         else if (e.isFile()) {
-          const st = await fs.promises.stat(full)
-          out.push({ path: rel, size: st.size, mtime: st.mtimeMs })
+          const st = await fs.promises.stat(full).catch(() => null) // gone meanwhile: SwarmFS replaces a file by trash, then rename
+          if (st) out.push({ path: rel, size: st.size, mtime: st.mtimeMs })
         }
       }
     }
@@ -394,6 +393,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       await fs.promises.writeFile(DRAFTS, JSON.stringify(drafts))
     }
     await sfs.leave(key)
+    await fs.promises.rm(builtDir(key), { recursive: true, force: true })
     if (deleteFiles) await rmSynced(folder, folder)
     return true
   }
@@ -447,11 +447,58 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return (await files(folder)).map((f) => f.path).filter((p) => p !== IGNORE && p !== PROJECT)
   }
 
+  // --- built pages (spec 026): outside the project, so they never sync, never reach git, never meet a co-author's ---
+
+  const builtDir = (key) => path.join(dir, 'builds', key)
+  const slash = (p) => p.split(path.sep).join('/')
+
+  // `pages` ({ 'x.html': html }, the IDE's HyperMD build) replace the project's built pages, all at once.
+  async function build (key, pages) {
+    if (!pages || typeof pages !== 'object' || Array.isArray(pages)) throw error('INVALID_PARAMS', 'build takes { path: html }')
+    let size = 0
+    for (const [p, html] of Object.entries(pages)) {
+      if (!sitePath(p) || !p.endsWith('.html') || p.split('/').some((s) => s.includes(':') || RESERVED.test(s))) throw error('INVALID_PATH', 'a built page is a .html path inside the site: ' + JSON.stringify(p))
+      if (typeof html !== 'string') throw error('INVALID_PARAMS', 'a built page is text')
+      size += html.length
+    }
+    if (size > BUILD_MAX) throw error('TOO_BIG', `at most ${BUILD_MAX} bytes of built pages`)
+    const to = builtDir(key)
+    const tmp = to + '.new'
+    await fs.promises.rm(tmp, { recursive: true, force: true })
+    for (const [p, html] of Object.entries(pages)) {
+      const file = path.join(tmp, ...p.split('/'))
+      await fs.promises.mkdir(path.dirname(file), { recursive: true })
+      await fs.promises.writeFile(file, html)
+    }
+    await fs.promises.mkdir(tmp, { recursive: true })
+    await fs.promises.rm(to, { recursive: true, force: true })
+    await fs.promises.rename(tmp, to)
+    return true
+  }
+
+  async function builtPages (key) {
+    return (await walkFiles(builtDir(key)).catch(() => [])).map(slash)
+  }
+
+  // A file of the project, else its built page: what the person wrote always wins.
+  async function readSite (key, folder, p) {
+    try {
+      return await readFile(folder, p)
+    } catch (err) {
+      if (err.code !== 'NOT_FOUND' || !(await builtPages(key)).includes(p)) throw err
+      return fs.promises.readFile(path.join(builtDir(key), ...p.split('/')))
+    }
+  }
+
   async function publish (key) {
     const folder = await project(key)
-    const manifest = await readManifest(folder) // a broken site.json: refused before anything is written
+    const manifest = await readManifest(folder, builtDir(key)) // a broken site.json: refused before anything is written
     const known = await siteKeyOf(folder)
-    const tmp = await snapshot(folder, await publishable(folder), false, known && await newest(known))
+    const mine = await publishable(folder)
+    const have = new Set(mine)
+    const built = new Set((await builtPages(key)).filter((p) => !have.has(p))) // a hand-written page wins
+    const src = (p) => path.join(built.has(p) ? builtDir(key) : folder, ...p.split('/'))
+    const tmp = await snapshot(src, [...mine, ...built], false, known && await newest(known))
     try {
       const { site, created } = await siteFor(folder, manifest)
       const version = await keep(site.key, tmp)
@@ -482,12 +529,13 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   // `list` files of `from` in a new folder: copied, or hard links (`link`: `from` is a version, never changed; or
   // equal to the file of the newest version `last`).
+  // `from`: a folder, or p → the file's path.
   async function snapshot (from, list, link, last) {
     const tmp = path.join(dir, 'versions', '.new')
     await fs.promises.rm(tmp, { recursive: true, force: true })
     await fs.promises.mkdir(tmp, { recursive: true })
     for (const p of list) {
-      const src = path.join(from, ...p.split('/'))
+      const src = typeof from === 'function' ? from(p) : path.join(from, ...p.split('/'))
       const to = path.join(tmp, ...p.split('/'))
       await fs.promises.mkdir(path.dirname(to), { recursive: true })
       const same = last && path.join(last, ...p.split('/'))
@@ -642,10 +690,10 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   async function preview (key, reset = false) {
     const folder = await project(key)
-    const manifest = await readManifest(folder)
+    const manifest = await readManifest(folder, builtDir(key))
     const old = drafts[key]
     if (old && !reset && held(old)) {
-      folders.set(old, folder)
+      folders.set(old, key)
       return { key: old }
     }
     if (old) {
@@ -656,13 +704,25 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     const site = await sfs.createSite(manifest.title + ' (draft)', { private: true, types: manifest.types })
     drafts = { ...drafts, [key]: site.key }
     await fs.promises.writeFile(DRAFTS, JSON.stringify(drafts))
-    folders.set(site.key, folder)
+    folders.set(site.key, key)
     return { key: site.key }
   }
 
   // The folder a draft key shows, or null (sync: the engine asks on every open and read).
+  // The project a draft key shows, or null (sync: the engine asks on every open and read).
   function draft (key) {
     return folders.get(key) || null
+  }
+
+  // A draft's site.json and pages: the project's files, then its built pages.
+  async function draftManifest (key) {
+    const p = folders.get(key)
+    return readManifest(await project(p), builtDir(p))
+  }
+
+  async function readDraft (key, p) {
+    const shown = folders.get(key)
+    return readSite(shown, await project(shown), p)
   }
 
   function close () {
@@ -682,7 +742,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return () => sfs.off('sync', listener)
   }
 
-  return { start, call, draft, readDraft: readFile, onChange: watchFiles, close }
+  return { start, call, draft, draftManifest, readDraft, onChange: watchFiles, close }
 }
 
 // A git index (v2, v3) → Map(path → { size, mtime (s) }); null for another version.

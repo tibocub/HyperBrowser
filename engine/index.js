@@ -226,13 +226,13 @@ export function start (ipc) {
     let site
     if (key.startsWith('hg:')) site = await sfs.visit(key, { timeout }) // an invite or a public link
     else site = await visitSite(key, timeout)
-    const draft = works.draft(site.key) // spec 024: a project's preview, its pages read from the project folder
+    const draft = works.draft(site.key) // spec 024: a project's preview, its pages read from the project (026: and its built pages)
     if (draft) {
-      const manifest = await readManifest(draft)
+      const manifest = await works.draftManifest(site.key)
       if (manifest.types) await site.declareTypes(manifest.types).catch(() => {}) // types added since (additions only)
       const known = sites.get(site.key)
       if (known) Object.assign(known, { manifest, tabs: known.tabs + 1 })
-      else sites.set(site.key, { site, manifest, scope: null, instances: new Map(), idle: new Map(), tabs: 1, draft })
+      else sites.set(site.key, { site, manifest, scope: null, instances: new Map(), idle: new Map(), tabs: 1, draft: site.key })
       return { key: site.key, manifest, dynamic: isDynamic(manifest), draft: true }
     }
     if (site.app) { // an app's instance (spec 009): its app opens on it, and the app may reach it from now on

@@ -214,6 +214,9 @@ async function choose (path) {
   await load()
 }
 
+// A hand-written x.html wins over the page x.hmd (spec 026): said, so the person knows why an edit doesn't show.
+const hiding = (hidden) => hidden?.length ? ` ${hidden.join(', ')} ${hidden.length > 1 ? 'are' : 'is'} your own, so used instead of the page${hidden.length > 1 ? 's' : ''} built from .hmd.` : ''
+
 // --- drawing ---
 
 function draw () {
@@ -255,8 +258,8 @@ function project () {
       h('h1', { style: 'margin:0; font-size:1.2em' }, cur.name),
       h('span', { style: 'flex:1' }),
       h('button', { onclick: toggleTree, 'aria-pressed': String(treeShown), title: 'More room for the editor' }, treeShown ? 'Hide the list' : 'Show the list'),
-      h('button', { onclick: () => act(async () => { await flush(); previewing = !previewing; if (previewing) await ide.preview(projects, cur.key); else await projects.closePreview() }), 'aria-pressed': String(previewing) }, 'Preview'),
-      h('button', { onclick: () => act(async () => { await flush(); const r = await ide.publish(projects, cur.key); await reload(); return r }, (r) => `Published: version ${r.version}. Its address: ${r.site}`) }, 'Publish'),
+      h('button', { onclick: () => act(async () => { await flush(); previewing = !previewing; if (previewing) return ide.preview(projects, cur.key); else await projects.closePreview() }, (r) => hiding(r?.hidden)), 'aria-pressed': String(previewing) }, 'Preview'),
+      h('button', { onclick: () => act(async () => { await flush(); const r = await ide.publish(projects, cur.key); await reload(); return r }, (r) => `Published: version ${r.version}. Its address: ${r.site}` + hiding(r.hidden)) }, 'Publish'),
       more('project', [
         [mode === 'pages' ? 'Show the files' : 'Show the pages', () => act(async () => { await flush(); mode = mode === 'pages' ? 'files' : 'pages'; await load() })],
         ['Site setup', () => { panel = 'settings'; draw() }],

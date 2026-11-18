@@ -772,16 +772,24 @@ async function checkIde (win, views, out, tmp, chat) {
   const bare = await run("!/\\.(hmd|html|json)\\b|\\{/.test(document.body.innerText)")
   pass('ide: a beginner makes a site of two pages, by their titles, with no file name or JSON shown (FR-001)', made && two && bare)
   await run("(() => { const a = document.querySelector('textarea'); a.value += 'Hello **you**'; a.dispatchEvent(new Event('input')); return 0 })()")
-  const built = await waitFor(() => run("window.hyper.projects.list().then(async ([p]) => new TextDecoder().decode(await window.hyper.projects.read(p.key, 'about.html')).includes('<strong'))"), 10000)
-  pass('ide: typing a page builds it (HyperMD in the page)', built)
+  // spec 026: built pages live outside the project; the preview (the project, then its built pages) shows them
+  const builtPage = async () => {
+    const { key } = await run('window.hyper.projects.list().then(([p]) => window.hyper.projects.preview(p.key))')
+    await rpc.request('site.open', { key })
+    const html = Buffer.from((await rpc.request('site.read', { key, path: 'about.html' })).bytes).toString()
+    await rpc.request('site.close', { key })
+    return html.includes('<strong') && !(await run("window.hyper.projects.list().then(async ([p]) => (await window.hyper.projects.files(p.key)).some((f) => f.path.endsWith('.html')))"))
+  }
+  const built = await waitFor(builtPage, 10000)
+  pass('ide: typing a page builds it (HyperMD in the page), outside the project folder', built)
   const menu = "document.querySelector('header [data-menu]')"
   pass('ide: the project\'s "…" opens without moving anything', !(await moves(run, menu, `${menu}.querySelector('button').click()`)))
   const before = memory()
   const t1 = performance.now()
   await run(`${button('Show the files')}.click(); 0`)
   const item = (p) => `document.querySelector('[role=treeitem][data-path=${JSON.stringify(p)}]')`
-  await waitFor(() => run(`!!${item('index.html')}`), 5000)
-  await run(`${item('index.html')}.click(); 0`)
+  await waitFor(() => run(`!!${item('index.hmd')}`), 5000)
+  await run(`${item('index.hmd')}.click(); 0`)
   const cm = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-editor')"), 15000)
   const editorLoad = performance.now() - t1
   pass('ide: a file in the files view opens in CodeMirror, loaded then', cm)
@@ -789,7 +797,7 @@ async function checkIde (win, views, out, tmp, chat) {
   const after = memory()
   // spec 026 I1: the tree: a right-click menu, Shift+F10 on the focused row, Escape, rename in place, a new folder
   const menuItems = "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent).join('|')"
-  await run(`${item('index.html')}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 120 })); 0`)
+  await run(`${item('index.hmd')}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 120 })); 0`)
   const rightClick = await run(menuItems)
   pass('ide: right-click on a file: Open, Rename, Delete, Cut, Copy, New file, New folder', ['Open', 'Rename', 'Delete…', 'Cut', 'Copy', 'New file…', 'New folder…'].every((x) => rightClick.split('|').includes(x)))
   await run("document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); 0")
