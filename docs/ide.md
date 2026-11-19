@@ -92,6 +92,9 @@ compiler.
 
 - `sites/ide/app.js` is the page. It fits the window (`<body class="hb-app">`): the tree and the editor scroll,
   never the page.
+  Its "…" menus stay inside the window: under their button, flipped right, left or up where they would not fit
+  (`fitMenu`, spec 029). Full-width fields are `border-box`, and the page's text area is a block, so nothing pushes a
+  right border out of its box. The self-test checks these at 1400 and 770px.
   Its editor panel is a `div role="main"`, not a `<main>`: the theme gives `<main>` a HyperMD page's window
   (1140px at most, margins), which left blank space beside the editor (spec 027). The self-test checks the editor
   fills the space left over, with the list shown and hidden, at three widths.
