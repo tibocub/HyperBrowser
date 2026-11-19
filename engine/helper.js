@@ -1,11 +1,11 @@
-// The helper (spec 020): an engine with its own identity that joins circles from its config, holds always on,
+// The helper: an engine with its own identity that joins circles from its config, holds always on,
 // and keeps apps online. Driven through the engine's own calls on `rpc`, like the shell; engine/cli.js reads the
 // config file and gives it here (apply), again on each change. Logs one line per change, a summary every hour.
 import fs from 'fs'
 import path from 'path'
 import { GB } from './circles.js'
 
-const SPARE = 2 * GB // left free on the disk, as holding.set checks it (018 FR-006)
+const SPARE = 2 * GB // left free on the disk, as holding.set checks it
 const DEFAULT_MAX = 100 * GB
 const MIN = 0.1 * GB
 const TICK = 60000 // apps not reached yet tried again, links nobody answered, new versions looked for

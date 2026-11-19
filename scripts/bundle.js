@@ -1,4 +1,4 @@
-// The official apps inside HyperBrowser (spec 015): snapshots of their own signed P2P data (SwarmFS packs),
+// The official apps inside HyperBrowser: snapshots of their own signed P2P data (SwarmFS packs),
 // made from the owner's engine folder by `npm run build -- --apps-from <dir>`, imported by the engine at start
 // (engine/index.js unbundle). Not copies of their files: the same sites, same keys, updated by peers.
 import fs from 'fs'

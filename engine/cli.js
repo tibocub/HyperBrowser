@@ -3,7 +3,7 @@
 // worker, on one end of an in-process stream. Node or Bare:
 //   node engine/cli.js publish <folder> [--dir d] [--bootstrap host:port,...] [--instance name] [--invite member|admin] [--once]
 //   node engine/cli.js open <key> [--dir d] [--bootstrap host:port,...] [--once]
-//   node engine/cli.js helper [--config file] [--dir d] [--join hg:...] [--bootstrap host:port,...]  (spec 020)
+//   node engine/cli.js helper [--config file] [--dir d] [--join hg:...] [--bootstrap host:port,...]
 import process from 'process'
 import fs from 'fs'
 import os from 'os'
@@ -21,7 +21,7 @@ const USAGE = `usage:
   helper             the always-on helper (docs/helper.md): its config file, circles, apps; until stopped
 options: --dir <engine folder> (default ~/.hyperbrowser)  --bootstrap host:port,...  --once
   --invite member|admin   (publish) then print a one-use invite link to the site (an invite-only site's way in)
-  --instance <name>       (publish) an app's instance owned by this engine (spec 009): made once, the same one after;
+  --instance <name>       (publish) an app's instance owned by this engine: made once, the same one after;
                           the app's \`official\` record names it if the app has that type; --invite is then to it
   --new                   (publish) a fresh site for this folder, with a new key; the folder's old site is left
   --config <file>         (helper) default ~/.config/hyperbrowser-helper.conf; --join hg:... (repeatable) a circle invite`
@@ -84,7 +84,7 @@ async function run (rpc) {
   console.log(`entry bytes: ${bytes.byteLength}`)
 }
 
-// The helper (spec 020): the config file read at start and again when it changes (the folder watched: editors
+// The helper: the config file read at start and again when it changes (the folder watched: editors
 // replace the file), `dir` only at start. SIGINT and SIGTERM close it.
 async function runHelper () {
   const file = opts.config || configFile()

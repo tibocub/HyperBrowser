@@ -1,4 +1,4 @@
-// Circles (spec 018): people whose computers keep each other's spaces online (hypergraph 023, 5 copies: 024).
+// Circles: people whose computers keep each other's spaces online (5 copies of each space, hypergraph's).
 // The shell's own calls only (circles.*, holding.*), never a page's: making, joining, inviting, members,
 // and how much this computer holds. Holding runs whenever the engine runs; turning it off deletes what is
 // held (hypergraph), so only the person's "Turn off" does it. The person's circles are a list in their
@@ -11,10 +11,10 @@ const LIST = 'hyperbrowser/circles' // { [circle key]: true }
 const CONTACTS = 'hyperbrowser/contacts' // engine/contacts.js: names of the person's friends
 const NAME_TYPE = 'circle-name' // a rename: the latest one by the owner or an admin (hypergraph has no rename)
 const TYPES = { [NAME_TYPE]: { fields: { name: 'string' } } }
-const WEEK = 7 * 24 * 3600 * 1000 // an invite's life (Q10)
+const WEEK = 7 * 24 * 3600 * 1000 // an invite's life
 const MAX = 50 // hypergraph refuses the 51st (CIRCLE_FULL)
 const MIN_SHARE = 0.1 * GB
-const SPARE = 2 * GB // left free on the disk (Q9)
+const SPARE = 2 * GB // left free on the disk
 const RECORDS = 1000 // hg/holder records read, newest first (as hypergraph does)
 const CHECK = 30000 // share full: hypergraph tells no event for it
 const DECIDERS = new Set(['owner', 'admin'])
@@ -46,7 +46,7 @@ export function pickName (records, deciders, made) {
   return r ? r.name : made
 }
 
-// Share full (FR-007): told once when what is held reaches the share, again only after it went under 90%.
+// Share full: told once when what is held reaches the share, again only after it went under 90%.
 export function shareFull ({ full }, { on, used, bytes }) {
   if (!on) return { full: false, tell: false }
   if (used >= bytes) return { full: true, tell: !full }
@@ -145,7 +145,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return holding()
   }
 
-  // The first circle made or joined turns holding on at 1 GB, unless the person chose before (FR-003) or the
+  // The first circle made or joined turns holding on at 1 GB, unless the person chose before or the
   // disk has no room for it (then it stays off: the Circles section says so).
   async function firstCircle () {
     if (local.set || hg.holding().on) return
@@ -217,7 +217,7 @@ export function circles ({ sfs, dir, notes, emit }) {
       role: m.role,
       you: !!m.you,
       holds: holds.has(m.identity),
-      share: m.share ?? null, // spec 021 (hypergraph 026): bytes, across all their circles; null: not reported
+      share: m.share ?? null, // bytes, across all their circles; null: not reported
       used: m.used ?? null
     }))
   }

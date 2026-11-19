@@ -1,4 +1,4 @@
-// Projects (spec 024): a folder on disk backed by a private SwarmFS files space, read by its members only (the
+// Projects: a folder on disk backed by a private SwarmFS files space, read by its members only (the
 // person's devices, co-authors). Saving syncs, never publishes; Publish copies the project into its site's pages
 // as one version, kept on this device (specs/024-site-files/plan.md). A page reaches it with the `projects`
 // permission only; every path stays inside the project folder.
@@ -66,7 +66,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     following = following.then(async () => {
       for (const [key, { name, left }] of Object.entries(await all())) {
         if (closed || !held(key)) continue
-        if (left) { // left on another device of the person (spec 025): left here too, its folder kept
+        if (left) { // left on another device of the person: left here too, its folder kept
           await one(() => sfs.leave(key)).catch(() => {})
           continue
         }
@@ -97,7 +97,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     for (let n = 2; await taken(folder); n++) folder = `${base} (${n})`
     await fs.promises.mkdir(folder, { recursive: true })
     await ensureIgnore(folder)
-    await hg.space(key).ready() // a space joined on another device stays closed until used (hypergraph 015); SwarmFS's link needs it open
+    await hg.space(key).ready() // a space joined on another device stays closed until used; SwarmFS's link needs it open
     await sfs.space(key).link(key, folder)
   }
 
@@ -290,7 +290,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     if (paths.some((p) => p.toLowerCase() === IGNORE)) await ensureIgnore(folder)
   }
 
-  // [{ path, size, mtime }]; `folders` (spec 026, a file tree): the folders too, as { path, folder: true }.
+  // [{ path, size, mtime }]; `folders` (a file tree): the folders too, as { path, folder: true }.
   async function files (folder, folders = false) {
     const rules = await rulesOf(folder)
     const out = []
@@ -327,7 +327,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
-  // A new empty folder (spec 026); its parents too. EXISTS if something is there.
+  // A new empty folder; its parents too. EXISTS if something is there.
   async function mkdir (folder, p) {
     const full = await inside(folder, p, true)
     if (await fs.promises.lstat(full).catch(() => null)) throw error('EXISTS', p + ' is there already')
@@ -375,7 +375,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     await rm(at)
   }
 
-  // --- leaving (spec 025): off the person's list on every device, the space left; `deleteFiles`: this device's synced
+  // --- leaving: off the person's list on every device, the space left; `deleteFiles`: this device's synced
   // files deleted too (what it ignores, .git included, stays). Its site and versions stay.
 
   async function leave (key, opts) {
@@ -398,7 +398,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
-  // --- status (spec 025): who is online, and the folder's git state (read only: branch, changed files) ---
+  // --- status: who is online, and the folder's git state (read only: branch, changed files) ---
 
   async function status (key) {
     const folder = await project(key)
@@ -447,7 +447,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return (await files(folder)).map((f) => f.path).filter((p) => p !== IGNORE && p !== PROJECT)
   }
 
-  // --- built pages (spec 026): outside the project, so they never sync, never reach git, never meet a co-author's ---
+  // --- built pages: outside the project, so they never sync, never reach git, never meet a co-author's ---
 
   const builtDir = (key) => path.join(dir, 'builds', key)
   const slash = (p) => p.split(path.sep).join('/')

@@ -1,4 +1,4 @@
-/* HyperBrowser's default theme for sites (spec 008): a page with no stylesheet of its own (no <style>, no
+/* HyperBrowser's default theme for sites: a page with no stylesheet of its own (no <style>, no
    <link rel=stylesheet>) gets sites/home's look. The shell injects it as a *user* stylesheet (views.js), so
    author CSS wins anyway; the :has() test also keeps half-styled pages (a colour, no background) as they are.
    Fonts: views.js turns url(fonts/…) into data: URLs (a site's CSP allows data:, not the shell's files). */
@@ -26,14 +26,14 @@
   background-attachment: fixed;
 
   /* a plain page: the body is a window on the desk */
-  /* 1140px (spec 026: 760px left half a full-screen window unused) */
+  /* 1140px (760px left half a full-screen window unused) */
   & body { box-sizing: border-box; width: min(1140px, calc(100% - 32px)); margin: 28px auto; padding: 4px 28px 20px;
     background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
     font: 15px/1.6 'HB Plex Mono', ui-monospace, monospace; color: var(--ink); }
   /* a HyperMD page (header, main, footer): sites/home's layout, main is the window */
   & body:has(> main) { width: auto; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     margin: 0; padding: 0 16px 24px; background: none; border: 0; box-shadow: none; }
-  /* an app (spec 026: <body class="hb-app">): the window fills the browser's and the page never scrolls as a whole;
+  /* an app (<body class="hb-app">): the window fills the browser's and the page never scrolls as a whole;
      the app's own parts scroll (its root, the body's child, is a column that fills it) */
   &:has(body.hb-app) { overflow: hidden; }
   & body.hb-app { width: auto; height: calc(100vh - 14px); margin: 6px 8px 8px 6px; padding: 4px 8px 8px; overflow: hidden;
@@ -89,13 +89,13 @@
   & nav[aria-label="Contents"] li:last-child::before { content: '└─ '; }
   & body > footer { margin-top: 20px; padding: 2px 10px; background: var(--paper); border: 1px solid var(--ink); font: 13px/1.6 'HB Cozette', ui-monospace, monospace; text-align: center; }
   & body > footer p { margin: 0; }
-  /* buttons (spec 008): square, whole pixels, the windows' 2px hard shadow; pressed, it sinks into it. The margin keeps
-     the shadow's room free (spec 026): a pressed button never covers the one below or beside it */
+  /* buttons: square, whole pixels, the windows' 2px hard shadow; pressed, it sinks into it. The margin keeps
+     the shadow's room free: a pressed button never covers the one below or beside it */
   & button, & input[type="submit"], & input[type="button"] { appearance: none; padding: 4px 14px; margin: 0 2px 2px 0; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink);
     box-shadow: 2px 2px 0 var(--ink); font: 700 13px/1.6 'HB Cozette', ui-monospace, monospace; cursor: pointer; }
   & button:active, & input[type="submit"]:active, & input[type="button"]:active { transform: translate(2px, 2px); box-shadow: none; }
   & input:not([type]), & input[type="text"], & textarea, & select { appearance: none; padding: 4px 8px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font: inherit; }
-  /* scrollbars (spec 026): the desk's dither for the track, a white box for the thumb, whole pixels; the editor's
+  /* scrollbars: the desk's dither for the track, a white box for the thumb, whole pixels; the editor's
      copy is in sites/ide (its shadow root), the forum's in its style.css */
   &::-webkit-scrollbar, & ::-webkit-scrollbar { width: 16px; height: 16px; background: var(--paper); }
   &::-webkit-scrollbar-track, & ::-webkit-scrollbar-track { background-color: var(--paper);

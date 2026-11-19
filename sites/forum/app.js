@@ -1,13 +1,13 @@
-// The forum's page (spec 006): one page, hash routes, redrawn from live views. The data: lib/forum.js; what is
+// The forum's page: one page, hash routes, redrawn from live views. The data: lib/forum.js; what is
 // derived: lib/view.js; post text: lib/text.js; icons: lib/icon.js. The shell draws the frame; this, the content.
-// Spec 017: on the left, your forums (dots, numbers, join, leave), then this forum's boards (dots).
+// on the left, your forums (dots, numbers, join, leave), then this forum's boards (dots).
 import { forum, watch, people, LIMITS, MODERATORS, ADMINS, copiesLine, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/forum.js'
 import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, ago, boardTree, SORTS, addNew, pruneUnread, without } from './lib/view.js'
 import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/text.js'
 import * as icon from './lib/icon.js'
 
 const app = document.getElementById('app')
-// The forum app (spec 009): each forum is an instance of it, owned by whoever made it; ?instance=<key> says which.
+// The forum app: each forum is an instance of it, owned by whoever made it; ?instance=<key> says which.
 // With none, the start page: your forums, the official one, make one, join one.
 const at = new URLSearchParams(location.search).get('instance')
 const hyper = window.hyper && at ? window.hyper.instance(at) : null
@@ -24,14 +24,14 @@ let title = 'Forum' // the forum's name, once known
 const drafts = {} // form key → { text, title, picks }
 const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null, joining: null, leaveWarning: null, forget: false, trimN: 6, trimUnit: 'months', suggest: null, suggested: new Set() }
 const opened = {} // thread id → the ids of its replies new when it was opened ("new" marks)
-let news = { cursor: null, unread: {} } // spec 017 R5: what is new, found with since() (lib/forum.js catchUp)
+let news = { cursor: null, unread: {} } // what is new, found with since() (lib/forum.js catchUp)
 let forums = [] // the person's forums (this app's instances)
-let counts = {} // { [forum]: { count, dot } }: the forums' numbers and dots (HyperBrowser's, spec 017 R4)
+let counts = {} // { [forum]: { count, dot } }: the forums' numbers and dots
 let follows = [] // this app's follows (boards, people)
 let collapsed = false // the forums column
 let threadView = { id: null, stop: null, items: [], complete: false }
 let mentionView = { items: [], complete: false, seenAtOpen: null }
-const about = {} // spec 018: { [forum]: { copies, private } }, read when its "…" opens
+const about = {} // { [forum]: { copies, private } }, read when its "…" opens
 
 // --- start ---
 
@@ -48,7 +48,7 @@ async function start () {
   if (!hyper) return startPage()
   f = forum(hyper)
   me = await f.me() // the identity question, once per site
-  if (me.moved && !me.movedTo) { // spec 023: secured without this person (removed or banned): no new address
+  if (me.moved && !me.movedTo) { // secured without this person (removed or banned): no new address
     app.replaceChildren(windowBox(me.name || 'Forum', h('p', { class: 'pad' }, 'You no longer have access to this forum: it was secured, and you were not taken along.')))
     return
   }
@@ -57,7 +57,7 @@ async function start () {
   document.title = title
   mine = await f.mine()
   news = { cursor: mine.cursor ?? null, unread: mine.unread || {} }
-  const stamps = Object.keys(mine).filter((n) => n.startsWith('read/')) // spec 016's read stamps, replaced by since() (R5): dropped
+  const stamps = Object.keys(mine).filter((n) => n.startsWith('read/')) // an older format's read stamps, replaced by since(): dropped
   if (stamps.length) f.forget(stamps).catch(() => {})
   let pruned = false
   watch(hyper, (state, name) => {
@@ -77,12 +77,12 @@ async function start () {
   hyper.on('peers', (list) => { peers = Array.isArray(list) ? list.length : peers; schedule() })
   hyper.peers().then((list) => { peers = list.length; schedule() }, () => {})
   window.addEventListener('hashchange', () => { ui.replyTo = ui.editing = ui.confirm = ui.joining = null; enter(); schedule() })
-  window.hyper.notifications?.viewing(at).catch(() => {}) // spec 016: this forum is shown here, so not notified
+  window.hyper.notifications?.viewing(at).catch(() => {}) // this forum is shown here, so not notified
   enter()
   schedule()
 }
 
-// --- what is new (spec 017 R5): since() from the cursor kept in mine, by message numbers, never by dates ---
+// --- what is new: since() from the cursor kept in mine, by message numbers, never by dates ---
 
 let catching = null
 function catchUpSoon () {
@@ -155,12 +155,12 @@ function forumsColumn () {
     h('button', { class: 'link add', 'aria-label': 'Join or make a forum', onclick: () => { ui.joining = { name: '', public: false, link: '', error: '', busy: false }; schedule() } }, collapsed ? '+' : '+ Join or make'))
 }
 
-// spec 018: a forum's copies ("Kept by N of 5 copies", a warning under 2 online), and Change key on a private one
+// a forum's copies ("Kept by N of 5 copies", a warning under 2 online), and Change key on a private one
 // its owner has. Read when its "…" opens.
 async function readAbout (i) {
   const x = window.hyper.instance(i.key)
   const [copies, info, st] = await Promise.all([x.copies().catch(() => null), x.info().catch(() => null), x.status().catch(() => null)])
-  about[i.key] = { copies, private: !!info?.private, waiting: !!st?.warnings?.some((w) => w.code === 'RENEW_WAITING') } // waiting: spec 023
+  about[i.key] = { copies, private: !!info?.private, waiting: !!st?.warnings?.some((w) => w.code === 'RENEW_WAITING') }
   schedule()
 }
 
@@ -173,14 +173,14 @@ function aboutLines (i) {
     a?.private && i.role === 'owner'
       ? h('p', { class: 'small' }, h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.instance(i.key).rotateKey(); notice = 'Key changed.' }) }, 'Change key'), ' ', CHANGE_KEY)
       : null,
-    // spec 023: owners and admins; Secure on a private forum, Trim on any
+    // owners and admins; Secure on a private forum, Trim on any
     a?.private && ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'secure' + i.key; ui.forget = false; schedule() } }, 'Secure this place…') : null,
     ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'trim' + i.key; schedule() } }, 'Trim history…') : null,
     a?.waiting ? h('p', { class: 'small', role: 'note' }, RENEW_WAITING) : null
   ]
 }
 
-// spec 023: "Secure this place" (new keys now, a new address members follow; optionally the history before now
+// "Secure this place" (new keys now, a new address members follow; optionally the history before now
 // deleted) and "Trim history" (keep the last N days/weeks/months/years), each confirmed with its warning.
 function secureBox (i) {
   return h('div', { class: 'confirm-box small', role: 'alert' },
@@ -230,7 +230,7 @@ async function trim (i) {
   schedule()
 }
 
-// spec 023 FR-002: after a ban, Secure this place is suggested once (a private forum, its owner or an admin).
+// after a ban, Secure this place is suggested once (a private forum, its owner or an admin).
 async function suggestSecure () {
   if (!ADMINS.has(me.role) || ui.suggested.has(at)) return
   const info = await hyper.info().catch(() => null)
@@ -247,7 +247,7 @@ function suggestion () {
     h('button', { class: 'link', onclick: () => { ui.suggest = null; schedule() } }, 'Dismiss'))
 }
 
-// Q4: an owner may leave, warned: the forum lives on while members keep it; without an admin, nobody can make boards
+// An owner may leave, warned: the forum lives on while members keep it; without an admin, nobody can make boards
 // or moderators any more.
 async function askLeave (i) {
   ui.leaveWarning = null
@@ -325,7 +325,7 @@ function currentBoard (r) {
   return flat.find((b) => b.id === id) || (r.page === 'b' ? flat[0] : null) || null
 }
 
-// --- follows (spec 017 R3): a board's new threads, a person's posts; a dot, a popup only if asked ---
+// --- follows: a board's new threads, a person's posts; a dot, a popup only if asked ---
 
 const followOf = (match) => follows.find((x) => x.place === at && match(x))
 
@@ -350,7 +350,7 @@ async function refreshRole () {
 }
 
 // --- routes: #/b/<board>, #/t/<thread>, #/new/<board>, #/mentions, #/you, #/members, #/mod, #/board/<id|new>,
-// #/r/<record>: a thread or a comment (a notification's link, spec 016), opened as its thread ---
+// #/r/<record>: a thread or a comment (a notification's link), opened as its thread ---
 
 function route () {
   const [page = '', id = null] = location.hash.replace(/^#\/?/, '').split('/')
@@ -842,7 +842,7 @@ function membersPage () {
     status(`${list.length} members`, online()))
 }
 
-// --- the start page (spec 009): your forums, the official one, make one, join one ---
+// --- the start page: your forums, the official one, make one, join one ---
 
 async function startPage () {
   const root = window.hyper

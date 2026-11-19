@@ -1,4 +1,4 @@
-// A file tree (spec 026 I1): folders that open and close, icons, one selection, rename in place, a context menu (right
+// A file tree: folders that open and close, icons, one selection, rename in place, a context menu (right
 // click, the Menu key, Shift+F10). No framework and nothing of the IDE's: HyperBrowser's file manager reuses it (a site
 // loads only its own files, so it takes a copy of this file). It draws and asks; the caller does the work.
 //
@@ -49,7 +49,7 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
   let renaming = null
   let focused = null
   const expanded = new Set()
-  // divs, not ul/li: the theme's list style (a bullet, text-indent: -2ch) cut the names' first letters (spec 028)
+  // divs, not ul/li: the theme's list style (a bullet, text-indent: -2ch) cut the names' first letters
   const list = document.createElement('div')
   list.setAttribute('role', 'tree')
   list.setAttribute('aria-label', label)
@@ -91,7 +91,7 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
     if (r.folder) li.setAttribute('aria-expanded', String(expanded.has(r.path)))
     li.tabIndex = r.path === focused ? 0 : -1
     const on = r.path === selected
-    // rows, not buttons: no press shift, so nothing ever covers the row below (spec 026 L5)
+    // rows, not buttons: no press shift, so nothing ever covers the row below
     li.style.cssText = `display:flex; align-items:center; gap:4px; padding:1px 8px 1px ${4 + (r.level - 1) * 14}px; cursor:default; white-space:nowrap;` +
       (on ? ' background:var(--ink, CanvasText); color:var(--paper, Canvas);' : '')
     const twisty = document.createElement('span')

@@ -11,11 +11,11 @@
 // print its own "# tests = n/n" line to count as passed.
 // HG_TEST_TMP (the same setting as hypergraph's) puts the files' temp folders
 // there: on an SSD. Six files at once on a spinning disk run ~10x slower and
-// time out (2026-11-06).
+// time out.
 //
 // Files run as plain scripts (`node file`, `bare file`), not through brittle's
 // CLI, whose glob walks the whole cwd (node_modules, .claude/worktrees...)
-// before each file: ~4 s per file on this machine (measured 2026-11-02).
+// before each file: ~4 s per file on this machine (measured).
 
 import { spawn } from 'child_process'
 import path from 'path'

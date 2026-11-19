@@ -1,4 +1,4 @@
-// The helper's config file (spec 020 FR-002, FR-003): `key = value` lines, `#` comments, `join` and `seed`
+// The helper's config file: `key = value` lines, `#` comments, `join` and `seed`
 // repeated for lists. Pure: parse, the defaults, the file written when there is none, and the merge.
 import os from 'os'
 import path from 'path'

@@ -1,4 +1,4 @@
-// Post text: a HyperMD subset (spec 006 R5) rendered to HTML. Everything is escaped first; only the subset's
+// Post text: a HyperMD subset rendered to HTML. Everything is escaped first; only the subset's
 // own tags are made: **bold**, _italic_, `code`, ``` blocks, > quotes, [links](to), ![images](path),
 // and mentions (@ + a member's key, shown as their current name). Never raw HTML, never a script.
 

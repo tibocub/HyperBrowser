@@ -1,4 +1,4 @@
-// Spec 020: the helper's idle CPU and memory while it holds for a circle and keeps the official apps. Tibo's engine
+// the helper's idle CPU and memory while it holds for a circle and keeps the official apps. The owner's engine
 // publishes the apps (scripts/apps.js, into a copy of preset.json) and makes a circle; `--people` others join it and
 // stay online in this process; the helper then runs alone in a fresh process, joins from its config, keeps the apps,
 // and is measured for `--minutes`.
@@ -35,23 +35,23 @@ async function engine (name) {
 
 if (CHILD) await measure()
 
-const tibo = await engine('tibo')
+const owner = await engine('owner')
 const preset = path.join(tmp, 'preset.json')
 fs.copyFileSync(path.join(ROOT, 'shell', 'preset.json'), preset)
 const apps = APPS.filter((a) => fs.existsSync(path.join(ROOT, a.folder))) // out/home: after npm run home:build
-await publishApps(tibo, { root: ROOT, preset, apps, replace: true })
-const ring = await tibo.request('circles.create', { name: 'Perf' })
+await publishApps(owner, { root: ROOT, preset, apps, replace: true })
+const ring = await owner.request('circles.create', { name: 'Perf' })
 const others = []
 for (let p = 0; p < people; p++) {
   const e = await engine('p' + p)
-  await e.request('circles.join', { link: (await tibo.request('circles.invite', { key: ring.key })).link })
+  await e.request('circles.join', { link: (await owner.request('circles.invite', { key: ring.key })).link })
   others.push(e)
 }
-const link = (await tibo.request('circles.invite', { key: ring.key })).link
+const link = (await owner.request('circles.invite', { key: ring.key })).link
 console.log(`${apps.length} apps published, a circle of ${people + 1}`)
 const child = spawn(process.execPath, ['--expose-gc', fileURLToPath(import.meta.url), '--measure', tmp, '--bootstrap', JSON.stringify(bootstrap), '--minutes', String(minutes), '--people', String(people), '--link', link, '--apps', String(apps.filter((a) => !a.instance).length)], { stdio: 'inherit' })
 const code = await new Promise((resolve) => child.on('exit', resolve))
-for (const e of [tibo, ...others]) await e.request('close').catch(() => {})
+for (const e of [owner, ...others]) await e.request('close').catch(() => {})
 await testnet.destroy()
 fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 })
 process.exit(code)

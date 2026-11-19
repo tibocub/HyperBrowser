@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The release folder `pear stage` takes (spec 011), from what npm run build made on each OS:
+// The release folder `pear stage` takes, from what npm run build made on each OS:
 //
 //   npm run release -- <build> [<build> ...] [--out <dir>] [--mac-arch arm64|x64]
 //   e.g. npm run release -- out/dist/win-unpacked ../HyperBrowser.AppImage

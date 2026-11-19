@@ -10,7 +10,7 @@ export function keepScroll (list, key, toEnd = false) {
   return list.scrollHeight - list.scrollTop - list.clientHeight <= SLACK ? null : list.scrollTop
 }
 
-// spec 017 R8: where the "New messages" line goes when a conversation opens with `count` unread (HyperBrowser's
+// where the "New messages" line goes when a conversation opens with `count` unread (HyperBrowser's
 // count): above the first of the last `count` messages from others (`messages` oldest first). Its index, or -1:
 // none, open at the end. More unread than shown: above the first one from others shown.
 export function newLine (messages, count, me) {

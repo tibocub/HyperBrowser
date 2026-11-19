@@ -1,4 +1,4 @@
-// Bundled apps (spec 015): snapshots of the apps' own data packed from an owner's engine folder; a fresh
+// Bundled apps: snapshots of the apps' own data packed from an owner's engine folder; a fresh
 // engine with nobody online opens every page; the next start doesn't import again; an edit published after
 // the build reaches it from a peer. A changed snapshot is refused (the start goes on).
 import test from 'brittle'

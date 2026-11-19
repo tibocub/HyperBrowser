@@ -14,7 +14,7 @@ const SINCE = 1000 // records a since() call returns at most (the engine's cap)
 const need = (ok, message) => { if (!ok) throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }) }
 const clean = (s) => String(s ?? '').trim()
 
-// spec 018: "Kept by N of 5 copies, M online" from hyper.copies(), and the warning under 2 online; null when nothing
+// "Kept by N of 5 copies, M online" from hyper.copies(), and the warning under 2 online; null when nothing
 // is handed (no circle holding).
 export function copiesLine ({ wanted, kept, online }) {
   if (!wanted) return null
@@ -22,7 +22,7 @@ export function copiesLine ({ wanted, kept, online }) {
 }
 export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspected leak'
 
-// spec 023 (hypergraph 027): Secure this place, Trim history. The same texts in Chat.
+// Secure this place, Trim history. The same texts in Chat.
 export const SECURE_TEXT = 'New keys now, and a new address its members follow by themselves: the people removed or banned can no longer see who joins, who posts or when. What they could read before, they keep.'
 export const FORGET_TEXT = "Also delete everything written before now, on every member's device. Copies others already took can't be recalled."
 export const TRIM_TEXT = "Older posts are deleted on every member's device and every copy your circles keep. Copies others already took can't be recalled."
@@ -43,7 +43,7 @@ export function renewError (err, nameOf = () => null) {
 }
 
 export function forum (hyper) {
-  // also: the author of what a reply answers (spec 017 R6: a reply notifies them), unless it is oneself
+  // also: the author of what a reply answers (a reply notifies them), unless it is oneself
   async function writeMentions (on, text, also = null) {
     const who = new Set(mentioned(text))
     if (also && also !== (await hyper.info()).identity) who.add(also)
@@ -117,14 +117,14 @@ export function forum (hyper) {
     unban: (identity) => hyper.moderateAction('unban', identity),
     setRole: (identity, role) => hyper.setRole(identity, role),
     invite: ({ role = 'member', uses = 1 } = {}) => hyper.createInvite({ role, uses }),
-    // spec 023: owners and admins of a private forum; resolves to { key } of the secured forum
+    // owners and admins of a private forum; resolves to { key } of the secured forum
     secure: ({ forgetHistory = false } = {}) => hyper.secure({ forget: forgetHistory }),
     trimHistory: (days) => hyper.trimHistory({ before: trimBefore(days, 'days') }),
 
     // --- the person's own (on their devices, never in the forum) ---
     mine: () => hyper.mine.all(),
     async forget (names) { for (const n of names) await hyper.mine.set(n, null) },
-    // spec 017 R5: what is new since the last look ({ cursor, unread }), found with since(): by message numbers.
+    // what is new since the last look ({ cursor, unread }), found with since(): by message numbers.
     // A first look (no cursor) starts from now: what was there is read.
     async catchUp ({ cursor = null, unread = {} } = {}, me) {
       for (;;) {

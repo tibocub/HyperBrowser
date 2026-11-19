@@ -1,4 +1,4 @@
-// The tray (spec 010): closing the window keeps HyperBrowser running here, so its engine keeps hosting the
+// The tray: closing the window keeps HyperBrowser running here, so its engine keeps hosting the
 // installed sites, the person's own and the joined forums. The menu: open the window, how many sites this
 // device hosts, Quit. frame.js decides when there is one (the setting in "HyperBrowser ▾", hasTray()).
 import { Tray, Menu, Notification, nativeImage } from 'electron'
@@ -21,7 +21,7 @@ export function hasTray () {
   }
 }
 
-// The icon with a mark (spec 016: something unread): a red square in its lower right corner.
+// The icon with a mark (something unread): a red square in its lower right corner.
 function withMark (image) {
   const { width, height } = image.getSize()
   const px = Buffer.from(image.toBitmap()) // BGRA

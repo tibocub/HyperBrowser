@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The update path, end to end on this machine (spec 011): version N installed, N+1 released on a channel,
+// The update path, end to end on this machine: version N installed, N+1 released on a channel,
 // N picks it up while running and keeps its data. A local DHT (hyperdht testnet) and a throwaway channel
 // written here (the drive `pear stage` would write), so nothing reaches the real network's release channel.
 //

@@ -1,4 +1,4 @@
-// Spec 023 (hypergraph 027): Secure this place, Trim history. The site calls (secure, trimHistory: on the page's
+// Secure this place, Trim history. The site calls (secure, trimHistory: on the page's
 // own app's instances, owners and admins only, as hypergraph checks), the app's instance list and open pages
 // following a move by themselves, a removed person told they no longer have access, and the forum's own flows.
 // Node and Bare.

@@ -1,4 +1,4 @@
-// Publishing a folder and opening it by key (spec 001 US1, US2; FR-006..008; SC-001, SC-006).
+// Publishing a folder and opening it by key.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -110,7 +110,7 @@ test('site.keep and site.held: install a site, the bytes held here (spec 003; Sw
   t.is((await visitor.rpc.request('site.held', { key })).kept, false, 'handed back to the cache')
 })
 
-// Tibo's forum (2026-11-08): its folder was first published invite-only; a later site.json without "public": false
+// The official forum's case: its folder was first published invite-only; a later site.json without "public": false
 // reused that site silently, so nobody could load the app. Now it's refused, and --new (fresh) makes a public site.
 test('an invite-only site is never made public by a republish; fresh makes a new public site', async (t) => {
   const owner = await engine(t)

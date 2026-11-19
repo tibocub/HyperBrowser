@@ -1,4 +1,4 @@
-// Contacts' page (spec 013): you, requests, friends; ?person=<key> opens one person's page. The list lives in
+// Contacts' page: you, requests, friends; ?person=<key> opens one person's page. The list lives in
 // HyperBrowser (window.hyper.contacts, this app's permission); Chat opens through hyper.people.chat. No
 // stylesheet: HyperBrowser's default theme.
 
@@ -7,11 +7,11 @@ const root = document.getElementById('app')
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 let me = null
 let list = []
-let circles = [] // spec 018: the circles you may invite to ({ key, name })
+let circles = [] // the circles you may invite to ({ key, name })
 let person = new URLSearchParams(location.search).get('person')
 let notice = ''
 let link = null
-let menu = null // spec 019: the friend whose "…" menu is open (kept across draw())
+let menu = null // the friend whose "…" menu is open (kept across draw())
 
 start().catch((err) => {
   root.replaceChildren(h('p', {}, err.code === 'NOT_ALLOWED' ? 'Contacts needs your identity and your contacts. Reload the page to be asked again.' : 'Contacts could not start: ' + err.message))
@@ -94,7 +94,7 @@ function home () {
   ]
 }
 
-// A friend's "…" (spec 018; 019: a button with a gap from Message, its menu floating under it, moving nothing):
+// A friend's "…" (a button with a gap from Message, its menu floating under it, moving nothing):
 // Invite to "<circle>", an invite posted in your Chat conversation with them. Enter or Space opens it, Tab reaches
 // its items; a choice, a click outside or Escape closes it.
 function more (c) {

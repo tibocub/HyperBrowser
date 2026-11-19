@@ -1,4 +1,4 @@
-// Projects (spec 024): folders backed by a private SwarmFS space, edited by the person's devices and co-authors,
+// Projects: folders backed by a private SwarmFS space, edited by the person's devices and co-authors,
 // published explicitly with versions, previewed on a throwaway space. Through the site API, as the IDE sees it.
 import test from 'brittle'
 import fs from 'fs'

@@ -1,4 +1,4 @@
-// Members' 16×16 1-bit icons (spec 006 FR-009): 32 bytes, rows top down, the high bit leftmost.
+// Members' 16×16 1-bit icons: 32 bytes, rows top down, the high bit leftmost.
 
 export const SIZE = 16
 export const BYTES = 32

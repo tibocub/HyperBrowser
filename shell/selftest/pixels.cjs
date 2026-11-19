@@ -1,4 +1,4 @@
-// The textures check (spec 008), an Electron app of its own: run with --force-device-scale-factor=1.25 (or 1,
+// The textures check, an Electron app of its own: run with --force-device-scale-factor=1.25 (or 1,
 // 1.5…). Each dithered background (the shell's desktop, sites/home, sites/forum, the default theme for sites)
 // must be a clean checkerboard of whole device pixels (no gray from scaling) and must not move when the page scrolls.
 // Prints PASS/FAIL lines, then PIXELS PASS or PIXELS FAIL. Used by test/sandbox.electron.js.

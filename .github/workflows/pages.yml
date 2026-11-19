@@ -1,4 +1,4 @@
-# The official site on GitHub Pages (spec 005): `hypermd build sites/home`, the same pages HyperBrowser serves.
+# The official site on GitHub Pages: `hypermd build sites/home`, the same pages HyperBrowser serves.
 # Turn it on once in the repo's Settings → Pages → Source: "GitHub Actions".
 name: Official site
 on:

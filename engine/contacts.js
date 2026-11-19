@@ -1,5 +1,5 @@
-// Contacts (spec 013): the person's contact list, in their settings (on every device of theirs). A friend
-// request is a private conversation of the Chat app (an instance, spec 009) made by the sender, with a one-use
+// Contacts: the person's contact list, in their settings (on every device of theirs). A friend
+// request is a private conversation of the Chat app (an instance) made by the sender, with a one-use
 // invite to it; the invite reaches the other person over the DHT (a topic derived from their identity, while
 // both are online) or as a contact link sent by any channel. The invite is signed by its maker: the receiver
 // reads the sender from it, never from the message. Accepting joins the conversation.
@@ -29,7 +29,7 @@ const noop = () => {}
 
 // sfs: the engine's SwarmFS. joinInstance(app, link) → the site, an instance of `app` (else NOT_ALLOWED);
 // listInstance(app, key, on); leaveInstance(app, key). bootstrap: the DHT's (tests). circles(method, params): the
-// engine's circles.* (spec 018).
+// engine's circles.*.
 export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveInstance, circles }) {
   let chat = null // the Chat app's key (apps.set): direct conversations are its instances
   let types = null // its record types, for the conversations made here
@@ -153,10 +153,10 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
         return { link }
       }
       case 'add': return add(a)
-      // spec 018: the circles the person may invite to ({ key, name }), and an invite to one in a friend's conversation
+      // the circles the person may invite to ({ key, name }), and an invite to one in a friend's conversation
       case 'circles': return (await circles('circles.list')).filter((x) => x.role === 'owner' || x.role === 'admin').map((x) => ({ key: x.key, name: x.name }))
       case 'inviteToCircle': return inviteToCircle(a, b)
-      case 'tell': return tell(a, b) // spec 024: the engine's own (a project's invite), never a page's
+      case 'tell': return tell(a, b) // the engine's own (a project's invite), never a page's
       default: throw error('UNKNOWN_METHOD', 'no contacts.' + method)
     }
   }

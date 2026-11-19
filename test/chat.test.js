@@ -1,4 +1,4 @@
-// The Chat app (sites/chat, spec 013): its lib on the site API as its page sees it, engines on a local DHT.
+// The Chat app (sites/chat): its lib on the site API as its page sees it, engines on a local DHT.
 // Friends by contact link (no DHT wait); a group whose owner hands out rights.
 import test from 'brittle'
 import path from 'path'
@@ -63,8 +63,8 @@ test('the "New messages" line: above the first of the unread messages from other
 
 test('a direct conversation and a group where the owner hands out rights', async (t) => {
   t.timeout(300000)
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: FOLDER })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: FOLDER })
   const [ann, bob, cleo, dan] = [await person(t, key, 'Ann'), await person(t, key, 'Bob'), await person(t, key, 'Cleo'), await person(t, key, 'Dan')]
 
   // direct: listed with the friend, private, messages both ways
@@ -111,7 +111,7 @@ test('a direct conversation and a group where the owner hands out rights', async
   t.absent((await texts(dan, g.key)).includes('after Dan'), 'Dan, banned, doesn\'t')
 })
 
-// spec 018: a conversation's copies line, and a circle's invite as a message
+// a conversation's copies line, and a circle's invite as a message
 test('copies: "Kept by N of 5 copies, M online", a warning under 2 online, nothing without a circle', (t) => {
   t.is(copiesLine({ wanted: 0, kept: 0, online: 0 }), null, 'nothing handed: no line')
   t.alike(copiesLine({ wanted: 5, kept: 4, online: 3 }), { text: 'Kept by 4 of 5 copies, 3 online', warn: null })
@@ -124,8 +124,8 @@ test('copies: "Kept by N of 5 copies, M online", a warning under 2 online, nothi
 
 test("a circle's invite from Contacts: a message in the friends' conversation, with its link in the text too; joined by HyperBrowser", async (t) => {
   t.timeout(240000)
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: FOLDER })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: FOLDER })
   const a = await person(t, key, 'Ann')
   const b = await person(t, key, 'Bob')
   const friend = await befriend(a, b)
@@ -146,12 +146,12 @@ test("a circle's invite from Contacts: a message in the friends' conversation, w
   t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).length === 2, 30000), 'Bob is in')
 })
 
-// spec 019 FR-001, FR-002: the circles window's Invite contacts… (the shell's own contacts.list and
+// the circles window's Invite contacts… (the shell's own contacts.list and
 // contacts.inviteToCircle: no page reaches them) and Join with a link… (circles.join with the pasted link)
 test("the shell invites two friends to a circle: each finds it in Chat; a pasted link joins", async (t) => {
   t.timeout(300000)
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: FOLDER })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: FOLDER })
   const a = await person(t, key, 'Ann')
   const b = await person(t, key, 'Bob')
   const c = await person(t, key, 'Cid')

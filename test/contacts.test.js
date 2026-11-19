@@ -1,14 +1,14 @@
-// Contacts (spec 013): friend requests over the DHT and by contact link, each making a private Chat conversation;
+// Contacts: friend requests over the DHT and by contact link, each making a private Chat conversation;
 // the `contacts` permission. Through the site API as the Chat app sees it, engines on a local DHT.
 import test from 'brittle'
 import { engine, siteFolder, siteApi, codeOf, eventually, sleep } from './helpers.js'
 
 const CHAT = { manifest: { title: 'Chat', permissions: ['space', 'contacts'], types: { message: { fields: { text: 'text' } } } } }
 
-// Tibo publishes Chat; each person's engine knows it as its chat app, opened and allowed (identity, contacts).
+// The owner publishes Chat; each person's engine knows it as its chat app, opened and allowed (identity, contacts).
 async function setup (t, names) {
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
   const out = []
   for (const name of names) out.push(await person(t, key, name))
   return { key, people: out }
@@ -128,7 +128,7 @@ test('the contacts permission: declared, asked once, refused after a no; none fo
   t.is(await codeOf(e.rpc.request('site.on', { key, event: 'contacts' })), 'NEEDS_PERMISSION', 'the event too')
   await e.rpc.request('site.permit', { key, permission: 'contacts', allow: false })
   t.is(await codeOf(list()), 'NOT_ALLOWED', 'after a no')
-  // spec 019: the shell's own contacts.list and contacts.inviteToCircle change nothing for a page
+  // the shell's own contacts.list and contacts.inviteToCircle change nothing for a page
   t.is(await codeOf(e.rpc.request('site.call', { key, method: 'contacts.inviteToCircle', args: ['y'.repeat(52), 'y'.repeat(52)] })), 'NOT_ALLOWED', 'inviteToCircle too, after a no')
   await e.rpc.request('site.permit', { key, permission: 'contacts', allow: true })
   t.alike(await list(), [], 'after a yes')

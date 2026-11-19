@@ -1,4 +1,4 @@
-// Spec 024: what projects cost. Two devices of one person on a local DHT: `--files` small files (1 KB) written into a
+// what projects cost. Two devices of one person on a local DHT: `--files` small files (1 KB) written into a
 // project on the PC, the time until all are on the laptop; then Publish: the first (the site made, every file copied),
 // and a next one with one file changed, each until a visitor reads it.
 //   npm run perf:projects [-- --files 1000]   (appends to perf/history.jsonl)

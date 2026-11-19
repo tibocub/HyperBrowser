@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec 025: the IDE's two bundles, made once and committed (the IDE is a site: it loads nothing from outside its
+// the IDE's two bundles, made once and committed (the IDE is a site: it loads nothing from outside its
 // folder, and HyperBrowser gains no dependency):
 //   sites/ide/vendor/editor.js  CodeMirror 6, only JS, HTML, CSS, JSON, Markdown, search and undo (loaded lazily)
 //   sites/ide/vendor/hmd.js     HyperMD's parser and renderer, and the engine's site.json check (engine/manifest.js)
@@ -64,7 +64,7 @@ const look = EditorView.theme({
 
 // An editor in \`parent\` for a file named \`name\`: { get(), set(text), focus(), undo(), redo(), search(), destroy() }.
 // In a shadow root: its styles stay there (a <style> in the page would turn HyperBrowser's default theme off).
-// wrap: long lines wrapped; tabSize: a tab's width and an indent's; lineNumbers: shown (spec 026 I3).
+// wrap: long lines wrapped; tabSize: a tab's width and an indent's; lineNumbers: shown.
 export function editor (parent, { name = '', doc = '', onChange = () => {}, label = 'Code', wrap = false, tabSize = 2, lineNumbers: numbers = true } = {}) {
   const lang = LANGS[name.split('.').pop().toLowerCase()]
   const root = parent.shadowRoot || parent.attachShadow({ mode: 'open' })

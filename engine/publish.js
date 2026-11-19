@@ -1,4 +1,4 @@
-// What `cli.js publish` does on an engine's rpc (spec 001, 009), shared with scripts/apps-publish.js:
+// What `cli.js publish` does on an engine's rpc, shared with scripts/apps-publish.js:
 // publish the folder, then (--instance) the app's instance owned by this engine, and (--invite) an invite.
 // → { key, created, instance, instanceCreated, invite }
 export async function publish (rpc, folder, { fresh = false, instance: name = null, invite = null } = {}) {

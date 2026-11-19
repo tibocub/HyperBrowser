@@ -1,5 +1,5 @@
-// The official forum (spec 006): sites/forum's own code (lib/) on the site API, on an instance of the forum app
-// (spec 009), engines on a local DHT playing the flows: create, invite, join, boards, post, reply, vote, edit, delete, moderate, sorting, unread, mentions,
+// The official forum: sites/forum's own code (lib/) on the site API, on an instance of the forum app
+//, engines on a local DHT playing the flows: create, invite, join, boards, post, reply, vote, edit, delete, moderate, sorting, unread, mentions,
 // names and icons. Node and Bare.
 import test from 'brittle'
 import path from 'path'
@@ -66,7 +66,7 @@ test('invite-only; boards by admins, sub-boards; threads seen by every member, l
   const shape = boardTree(await items(b, 'board'))
   t.alike(shape.map((x) => [x.board.name, x.subs.map((s) => s.name)]), [['Getting started', ['Windows']]], 'Windows is inside Getting started')
 
-  // a live view of threads on the owner's side gets the member's thread (SC-002)
+  // a live view of threads on the owner's side gets the member's thread
   let seen = []
   const stop = a.hyper.query('thread').live(({ items }) => { seen = items }, { limit: 50 })
   const th = await b.post(start.id, { title: 'How do I open a site?', text: 'From its **key**?' })
@@ -128,7 +128,7 @@ test('replies in a tree, votes, edit and delete (US2)', async (t) => {
   t.is(after.find((r) => r.id === rc.id).segs.join(' '), 'pipe elbow', 'the reply under it stays under it')
   t.is(await codeOf(c.reply(th.id, th.id, '  ')), 'INVALID_INPUT')
 
-  // spec 017 R6: a reply notifies the author of what it answers (a mention), never oneself
+  // a reply notifies the author of what it answers (a mention), never oneself
   const toB = () => items(a, 'mention', [['where', { who: me.b }]])
   t.ok(await eventually(async () => (await toB()).filter((x) => [rc.id, rd.id].includes(x.on)).length === 2, WAIT), "c's reply to b's comment and a's reply to b's thread mention b")
   t.absent((await toB()).some((x) => x.on === rb.id), "b's reply to b's own thread mentions nobody")
@@ -197,7 +197,7 @@ test('sorting, unread and new, mentions with the current name; names and icons (
   t.alike((await order('top'))[0], 'Top one')
   t.alike((await order('lively'))[0], 'Old one', 'lively: two replies beat two votes, ties by activity')
 
-  // unread (spec 017 R5): what since() finds, by message numbers, never by dates; kept on the person's devices
+  // unread: what since() finds, by message numbers, never by dates; kept on the person's devices
   const first = await a.catchUp({}, me.a)
   t.alike(first.unread, {}, 'a first look: what was there is read')
   await a.saveUnread(first)
@@ -293,7 +293,7 @@ test('post text: the subset only, never HTML or scripts', (t) => {
   t.absent(/<script|<img src=x|href="https|href="javascript|src="https|src="\.\./.test(html), 'nothing else becomes a tag')
 })
 
-// spec 018: a forum's copies in its "…", and the Change key line
+// a forum's copies in its "…", and the Change key line
 test('copies line and Change key text (the same as Chat)', (t) => {
   t.is(copiesLine({ wanted: 0, kept: 0, online: 0 }), null)
   t.alike(copiesLine({ wanted: 5, kept: 5, online: 1 }), { text: 'Kept by 5 of 5 copies, 1 online', warn: "Few copies online: people may not get this while you're offline" })

@@ -1,4 +1,4 @@
-// The official site (spec 005): sites/home, written in HyperMD, builds to plain HTML where every page, link
+// The official site: sites/home, written in HyperMD, builds to plain HTML where every page, link
 // and file resolves; that built folder, published, loads page by page on a second engine.
 import test from 'brittle'
 import fs from 'fs'

@@ -1,4 +1,4 @@
-// Notifications (spec 016): an app declares in site.json what to watch; once the person says yes the engine
+// Notifications: an app declares in site.json what to watch; once the person says yes the engine
 // watches its instances with no app code, finds what's new with space.since() cursors (never by dates), and
 // tells the shell (notify.* messages, the `notify` event). Engines on a local DHT, no site view open.
 import test from 'brittle'
@@ -23,10 +23,10 @@ const FORUM = {
   }
 }
 
-// Tibo publishes the app; each person opens it, says yes to identity (and to notifications unless notify: false).
+// The owner publishes the app; each person opens it, says yes to identity (and to notifications unless notify: false).
 async function setup (t, app, names, opts = {}) {
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: siteFolder(t, app) })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, app) })
   const out = []
   for (const name of names) out.push(await person(t, key, name, opts))
   return { key, people: out }
@@ -126,7 +126,7 @@ test('a message notifies with no view open; own records and history do not; read
   t.ok(!(await state(bob)).apps.some((a) => a.key === key), 'and its watches')
 })
 
-// Clocks: since() goes by seqs, never stamps (a clock far ahead or a late arrival: hypergraph 021's own tests;
+// Clocks: since() goes by seqs, never stamps (a clock far ahead or a late arrival: hypergraph's own tests;
 // a patched Date.now doesn't reach hypergraph's stamper). Here: records received after a restart.
 test('a restart catches up: what arrived while away notifies, as one summary', async (t) => {
   t.timeout(240000)
@@ -274,7 +274,7 @@ test('two devices of one person: reading on one clears the other; a block follow
   t.ok(await eventually(async () => (await items(laptop)).length === 0, 30000), 'blocked on the PC: blocked on the laptop')
 })
 
-// notifications() on a stub hypergraph: which places since() reads (it opens a closed space: hypergraph 021).
+// notifications() on a stub hypergraph: which places since() reads (it opens a closed space).
 test('watching opens no closed place: only held or open ones are checked, a setting change or a read opens none', async (t) => {
   const APP = 'a'.repeat(52)
   const places = Array.from({ length: 10 }, (_, i) => 'p' + i)
@@ -316,7 +316,7 @@ test('watching opens no closed place: only held or open ones are checked, a sett
   await notes.close()
 })
 
-// --- spec 017: dots, follows, a page's own counts ---
+// --- dots, follows, a page's own counts ---
 
 const BOARDS = {
   manifest: {
@@ -337,8 +337,8 @@ const BOARDS = {
 
 // Another app on p's engine, allowed, with one instance of its own: what the forum's page must not reach.
 async function otherApp (t, p) {
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
   await p.e.rpc.request('site.open', { key })
   await p.e.rpc.request('site.consent', { key, allow: true })
   await p.e.rpc.request('site.permit', { key, permission: 'notifications', allow: true })
@@ -445,7 +445,7 @@ test('follows: a board, a person; quiet unless asked, a dot not a number; unfoll
   t.alike(await bob.hyper.notifications.follows(), [], 'left: its follows go')
 })
 
-// spec 018: HyperBrowser's own news (a circles' share full): listed, counted, popped up, read like any other; no app
+// HyperBrowser's own news (a circles' share full): listed, counted, popped up, read like any other; no app
 // to allow first.
 test("HyperBrowser's own notification: listed and unread at once, read like the others", async (t) => {
   const set = {}

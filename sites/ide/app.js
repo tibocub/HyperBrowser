@@ -1,4 +1,4 @@
-// HyperBrowser's IDE (spec 025): make sites and apps. Beginners see pages by their titles and a toolbar (D1, D6);
+// HyperBrowser's IDE: make sites and apps. Beginners see pages by their titles and a toolbar (D1, D6);
 // developers see files, code (CodeMirror, loaded when first needed: D3) and the site's setup (D7). The project's
 // preview sits beside the page (HyperBrowser docks it: hyper.projects.preview), reloaded on save (D5). No stylesheet:
 // HyperBrowser's default theme (CodeMirror's styles are adopted sheets, so it stays). The work itself: lib/site.js.
@@ -32,12 +32,12 @@ let timer = null
 let lastText = ''
 let image = null // the open picture's blob URL
 let box = null // the editor's place, kept across redraws (its undo history with it)
-let folders = [] // spec 026: the project's folders (empty ones too), for the tree
+let folders = [] // the project's folders (empty ones too), for the tree
 let tree = null // the file tree (lib/tree.js), and its place: kept across redraws
 let treeBox = null
-let treeShown = true // spec 026 I2: the list beside the editor shown (hyper.mine 'tree')
+let treeShown = true // the list beside the editor shown (hyper.mine 'tree')
 let clip = null // cut or copied: { op: 'cut' | 'copy', path, kind }
-// spec 026 I3: the editor's settings (hyper.mine 'editor'), per person
+// the editor's settings (hyper.mine 'editor'), per person
 const DEFAULTS = { wrap: false, tabSize: 2, fontSize: 14, lineNumbers: true }
 let prefs = { ...DEFAULTS }
 
@@ -214,7 +214,7 @@ async function choose (path) {
   await load()
 }
 
-// A hand-written x.html wins over the page x.hmd (spec 026): said, so the person knows why an edit doesn't show.
+// A hand-written x.html wins over the page x.hmd: said, so the person knows why an edit doesn't show.
 const hiding = (hidden) => hidden?.length ? ` ${hidden.join(', ')} ${hidden.length > 1 ? 'are' : 'is'} your own, so used instead of the page${hidden.length > 1 ? 's' : ''} built from .hmd.` : ''
 
 // --- drawing ---
@@ -253,7 +253,7 @@ function home () {
 }
 
 function project () {
-  return h('div', { style: 'display:grid; grid-template-rows:auto auto 1fr; flex:1; min-height:0; gap:6px' }, // spec 026: fits the window (body.hb-app)
+  return h('div', { style: 'display:grid; grid-template-rows:auto auto 1fr; flex:1; min-height:0; gap:6px' }, // fits the window (body.hb-app)
     h('header', { style: 'display:flex; gap:8px; align-items:center; flex-wrap:wrap' },
       h('button', { onclick: () => act(closeProject), 'aria-label': 'Back to your projects' }, '←'),
       h('h1', { style: 'margin:0; font-size:1.2em' }, cur.name),
@@ -274,7 +274,7 @@ function project () {
     h('p', { id: 'state', class: 'small', style: 'margin:0; min-height:1.3em', role: 'status' }, stateLine()),
     h('div', { style: 'display:grid; grid-template-columns:' + (treeShown ? '240px ' : '') + '1fr; gap:6px; min-height:0' },
       treeShown ? h('nav', { 'aria-label': mode === 'pages' ? 'Pages' : 'Files', style: 'overflow:auto; min-height:0' }, mode === 'pages' ? pagesNav() : filesNav()) : null,
-      // a div, not <main>: the theme gives <main> a HyperMD page's window (1140px at most, margins), spec 027
+      // a div, not <main>: the theme gives <main> a HyperMD page's window (1140px at most, margins)
       h('div', { role: 'main', style: 'display:flex; flex-direction:column; min-height:0; min-width:0' }, panel ? panelView() : fileView())))
 }
 
@@ -322,7 +322,7 @@ function manifestOf () {
   return manifestCache.m
 }
 
-// spec 026 I1: the files as a tree (lib/tree.js): right-click (or the Menu key, Shift+F10) for its actions.
+// the files as a tree (lib/tree.js): right-click (or the Menu key, Shift+F10) for its actions.
 function filesNav () {
   return [
     h('div', { style: 'display:flex; flex-wrap:wrap; gap:2px; padding:2px 0 4px' },
@@ -509,7 +509,7 @@ function panelView () {
   return [back, setupView()]
 }
 
-// spec 026 I3: a small first set, saved per person (on every device of theirs).
+// a small first set, saved per person (on every device of theirs).
 function editorSettings () {
   const set = (change) => {
     prefs = { ...prefs, ...change }
@@ -615,7 +615,7 @@ function more (id, items) {
       : null)
 }
 
-// spec 029: an open "…" menu stays inside the window: under its button, flipped right, left or up where it would not fit.
+// an open "…" menu stays inside the window: under its button, flipped right, left or up where it would not fit.
 function fitMenu () {
   const m = root.querySelector('[data-menu] [role=menu]')
   if (!m) return

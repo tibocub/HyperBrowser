@@ -1,4 +1,4 @@
-// Spec 022: what typing a name costs the engine (names.resolve). An authority of `--names` names is made by another
+// what typing a name costs the engine (names.resolve). An authority of `--names` names is made by another
 // person's hypergraph on a local DHT; the engine resolves one name by the authority's link (the first time: it joins
 // the authority), then `--n` names by the authority's name (held: local reads).
 //   npm run perf:names [-- --names 200 --n 20]   (appends to perf/history.jsonl)

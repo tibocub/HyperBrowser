@@ -1,4 +1,4 @@
-// SC-005 (spec 016): with 50 watched places and nothing happening, the engine's memory grows by at most 200 MB and
+// With 50 watched places and nothing happening, the engine's memory grows by at most 200 MB and
 // it adds no sustained CPU load. Ann makes 50 conversations of a test app (24 of them Chat's, so held; 26 in turns),
 // Bob joins them all; Ann leaves; Bob says yes to notifications and is measured while nothing happens.
 //   npm run perf [-- --minutes 3]    appends to perf/history.jsonl (hypergraph's shape: perf/history.jsonl there)
@@ -36,7 +36,7 @@ const site = path.join(tmp, 'site')
 fs.mkdirSync(site)
 fs.writeFileSync(path.join(site, 'index.html'), 'hi')
 fs.writeFileSync(path.join(site, 'site.json'), JSON.stringify({
-  title: 'Chat', // spec 017: a dot watch too, as the forum's
+  title: 'Chat', // a dot watch too, as the forum's
   permissions: ['space', 'notifications'],
   types: { message: { fields: { text: 'text' } }, thread: { fields: { title: 'string' } } },
   notifications: [{ type: 'message', text: 'text' }, { type: 'thread', says: 'posted a thread', show: 'dot' }]

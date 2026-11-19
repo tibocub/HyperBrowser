@@ -1,5 +1,5 @@
 // HyperBrowser's official apps (`npm run apps:publish`): each published from its folder on the owner's engine,
-// its key written in shell/preset.json, and listed in the Apps store (spec 014) with its site.json's title,
+// its key written in shell/preset.json, and listed in the Apps store with its site.json's title,
 // `description` and icon. A folder keeps its key, so a rerun changes nothing.
 import fs from 'fs'
 import path from 'path'
@@ -15,7 +15,7 @@ export const APPS = [
   { id: 'preset:apps', folder: 'sites/apps', store: true },
   { id: 'preset:chat', folder: 'sites/chat' },
   { id: 'preset:contacts', folder: 'sites/contacts' },
-  { id: 'preset:ide', folder: 'sites/ide' } // spec 025
+  { id: 'preset:ide', folder: 'sites/ide' }
 ]
 const ICON_MAX = 16 * 1024
 const MIME = { svg: 'image/svg+xml', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }

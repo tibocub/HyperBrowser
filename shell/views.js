@@ -9,9 +9,9 @@ import { WebContentsView, session } from 'electron'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PRELOAD = path.join(HERE, 'site-preload.cjs')
-// wasm-unsafe-eval: WebAssembly compiles (spec 008); it runs in the same sandbox as the page's JS
+// wasm-unsafe-eval: WebAssembly compiles; it runs in the same sandbox as the page's JS
 const CSP = "default-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' data: blob:"
-// the default theme (spec 008, ui/theme.css), its fonts inlined: a site's CSP loads data: but not the shell's files
+// the default theme (ui/theme.css), its fonts inlined: a site's CSP loads data: but not the shell's files
 const THEME = fs.readFileSync(path.join(HERE, 'ui', 'theme.css'), 'utf-8')
   .replace(/url\(fonts\/([\w.-]+)\)/g, (m, f) => 'url(data:font/woff2;base64,' + fs.readFileSync(path.join(HERE, 'ui', 'fonts', f)).toString('base64') + ')')
 

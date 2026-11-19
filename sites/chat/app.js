@@ -1,6 +1,6 @@
-// Chat's page (spec 013): conversations on the left, the open one on the right, redrawn from live views. No
+// Chat's page: conversations on the left, the open one on the right, redrawn from live views. No
 // stylesheet: HyperBrowser's default theme, with a few inline layout rules. Data: lib/chat.js.
-// Spec 017: unread numbers in the list (HyperBrowser's counts), a "New messages" line, a "…" menu per message.
+// unread numbers in the list (HyperBrowser's counts), a "New messages" line, a "…" menu per message.
 import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/chat.js'
 import { keepScroll, newLine } from './lib/scroll.js'
 
@@ -15,7 +15,7 @@ let view = null // the open conversation: { key, messages, invites, names, membe
 let stops = []
 let joined = {} // invite ids answered here (hyper.mine)
 let notice = ''
-let counts = {} // { [conversation]: { count, dot } }: unread, from HyperBrowser (spec 017 R4)
+let counts = {} // { [conversation]: { count, dot } }: unread, from HyperBrowser
 
 start().catch((err) => {
   root.replaceChildren(h('p', {}, err.code === 'NOT_ALLOWED' ? 'Chat needs your identity and your contacts. Reload the page to be asked again.' : 'Chat could not start: ' + err.message))
@@ -28,7 +28,7 @@ async function start () {
   counts = (await hyper.notifications?.unread?.().catch(() => null)) || {}
   hyper.notifications?.on?.((u) => { counts = u; draw() })
   hyper.contacts.on(() => refresh().catch(() => {}))
-  // spec 019: an open "…" floats over the page; a click outside it or Escape closes it
+  // an open "…" floats over the page; a click outside it or Escape closes it
   const shut = () => { if (view?.menu) { view.menu = null; draw() } }
   document.addEventListener('click', (e) => { if (!e.target.closest('details')) shut() })
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut() })
@@ -54,13 +54,13 @@ function open (key) {
   stops = []
   current = key
   history.replaceState(null, '', '?instance=' + key)
-  hyper.notifications?.viewing(key).catch(() => {}) // spec 016: shown here, so not notified
+  hyper.notifications?.viewing(key).catch(() => {}) // shown here, so not notified
   // unread: the count when it opened (read once shown); line: where "New messages" goes, once the messages are in
   view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null, gone: false, waiting: false, confirm: null, forget: false, trimN: 6, trimUnit: 'months' }
   const v = view
-  // spec 023: secured without this person (no new address), or secured here (waiting for another admin's device)
+  // secured without this person (no new address), or secured here (waiting for another admin's device)
   c.info(key).then((i) => { if (view === v) { v.gone = !!i.moved && !i.movedTo; v.waiting = !!i.renewal?.waiting; draw() } }, () => {})
-  const copies = () => c.copies(key).then((x) => { if (view === v) { v.copies = x; draw() } }, () => {}) // spec 018
+  const copies = () => c.copies(key).then((x) => { if (view === v) { v.copies = x; draw() } }, () => {})
   const names = () => c.names(key).then((n) => { if (view === v) { v.names = n; draw() } }, () => {})
   const members = () => {
     c.role(key).then((r) => { v.role = r; draw() }, () => {})
@@ -89,8 +89,8 @@ function draw () {
   const typing = document.activeElement?.name === 'text' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null
   const top = keepScroll(root.querySelector('[data-key]'), view?.key, view?.toEnd)
   if (view) view.toEnd = false
-  // spec 026: Chat fits the window (body.hb-app); the conversations and the messages scroll, never the page
-  // overflow-wrap (spec 028): a long word (an hg: link) wraps anywhere rather than widen the page
+  // Chat fits the window (body.hb-app); the conversations and the messages scroll, never the page
+  // overflow-wrap: a long word (an hg: link) wraps anywhere rather than widen the page
   root.replaceChildren(h('div', { style: 'display:flex; gap:16px; flex:1; min-height:0; padding:4px; overflow-wrap:anywhere' },
     h('nav', { style: 'width:220px; flex:none; display:flex; flex-direction:column; min-height:0' },
       h('h2', {}, 'Chat'),
@@ -139,7 +139,7 @@ function conversation (conv) {
   return out
 }
 
-// A message's text, or (spec 018) a circle's invite: an Accept button for its receiver (spec 019), which only asks HyperBrowser.
+// A message's text, or a circle's invite: an Accept button for its receiver, which only asks HyperBrowser.
 function body (m) {
   const inv = circleOf(m)
   if (!inv) return h('span', { style: 'white-space:pre-wrap' }, m.text)
@@ -147,15 +147,15 @@ function body (m) {
   return h('button', { onclick: () => act(async () => { if ((await c.joinCircle(inv)).joined) notice = 'You joined "' + inv.name + '".' }) }, acceptLabel(nameOf(m.author), inv.name))
 }
 
-// A "…" menu's content floats under it, moving nothing (spec 019 FR-005); text-indent: the theme's list rows indent
+// A "…" menu's content floats under it, moving nothing; text-indent: the theme's list rows indent
 const MENU = 'display:inline-block; position:relative; text-indent:0'
 const DROP = 'position:absolute; top:100%; left:0; z-index:10; display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:4px 8px; white-space:nowrap; background:var(--paper, Canvas); color:var(--ink, CanvasText); border:1px solid; box-shadow:2px 2px 0 var(--ink, CanvasText)'
 
-// The conversation's "…" (spec 018): its copies ("Kept by N of 5 copies"), and Change key for its owner.
+// The conversation's "…": its copies ("Kept by N of 5 copies"), and Change key for its owner.
 function info () {
   const line = view.copies && copiesLine(view.copies)
   const owner = view.role === 'owner'
-  const admin = !convs.find((x) => x.key === view.key)?.direct && (owner || view.role === 'admin') // spec 023: groups only
+  const admin = !convs.find((x) => x.key === view.key)?.direct && (owner || view.role === 'admin') // groups only
   if (!line && !owner && !admin && !view.waiting) return null
   return h('details', { style: MENU + '; font-size:initial; font-weight:normal', open: view.menu === 'info' ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = 'info'; else if (view.menu === 'info') view.menu = null } },
     h('summary', { 'aria-label': 'About this conversation', style: 'display:inline; cursor:pointer; list-style:none' }, '…'),
@@ -177,7 +177,7 @@ function info () {
         h('button', { onclick: trim }, 'Trim'), ' ', h('button', { onclick: () => { view.confirm = null; draw() } }, 'Cancel')) : null))
 }
 
-// spec 023: a short progress line, then the group at its new address (or the error in plain words)
+// a short progress line, then the group at its new address (or the error in plain words)
 async function secure () {
   const forget = view.forget
   view.confirm = null
@@ -244,7 +244,7 @@ function group (conv) {
 
 // --- actions ---
 
-// spec 023 FR-002: after a removal or a ban in a group, Secure this place is suggested once (its owner, admins)
+// after a removal or a ban in a group, Secure this place is suggested once (its owner, admins)
 const suggested = new Set()
 function suggest () {
   if (suggested.has(view.key) || !['owner', 'admin'].includes(view.role) || convs.find((x) => x.key === view.key)?.direct) return

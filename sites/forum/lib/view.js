@@ -1,4 +1,4 @@
-// What the pages show, computed on the device from records (spec 006 data-model "Derived"): pure functions.
+// What the pages show, computed on the device from records (specs/006-forum/data-model.md, "Derived"): pure functions.
 
 export const SORTS = ['activity', 'newest', 'top', 'lively']
 export const LIVELY = 48 * 3600e3 // "lately" for the lively sort
@@ -96,7 +96,7 @@ export function visible (rows, folded) {
   return out
 }
 
-// Unread (spec 017 R5): the threads with something new, from since()'s records, by message numbers, never by dates
+// Unread: the threads with something new, from since()'s records, by message numbers, never by dates
 // (a reply received late, stamped long ago, still counts). unread: { [thread]: [ids of its new comments] }.
 export const NEW_MAX = 300 // comment ids kept in all (~60 bytes each; a mine value is at most 64 KB): past it the oldest go, their threads stay unread
 export function addNew (unread, records, me) {

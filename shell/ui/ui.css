@@ -1,9 +1,9 @@
-/* The frame's look (spec 002 FR-012): System 1's look, 1-bit black and white plus one accent, Cozette. */
+/* The frame's look: System 1's look, 1-bit black and white plus one accent, Cozette. */
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette.woff2) format('woff2'); font-weight: 400; }
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette-bold.woff2) format('woff2'); font-weight: 700; }
 
 :root { --accent: #1f4fd1; --ink: #000; --paper: #fff; }
-/* --px: one device pixel, so the textures stay on whole pixels at Windows' 125 %, 150 %, 175 % (spec 008) */
+/* --px: one device pixel, so the textures stay on whole pixels at Windows' 125 %, 150 %, 175 % */
 :root { --px: 1px; }
 @media (resolution: 1.25dppx) { :root { --px: calc(1px / 1.25); } }
 @media (resolution: 1.5dppx) { :root { --px: calc(1px / 1.5); } }
@@ -108,7 +108,7 @@ button:disabled { cursor: default; opacity: .35; }
 .swatch i { display: block; width: 18px; height: 14px; }
 .swatch[aria-pressed="true"] { background: var(--paper); outline: 2px solid var(--ink); outline-offset: 1px; }
 
-/* the Devices window (spec 012) */
+/* the Devices window */
 #devices, #circles { top: 60px; z-index: 5; -webkit-app-region: no-drag; }
 #devices ul, #circles ul { list-style: none; margin: 4px 0 12px; padding: 0; }
 #devices li, #circles li { display: flex; align-items: center; gap: 8px; padding: 2px 0 2px 8px; }
@@ -119,7 +119,7 @@ button:disabled { cursor: default; opacity: .35; }
 #dv-out p, #devices .note, #cl-out p, #cf-hold-out p { margin: 0 0 10px; word-break: normal; }
 #dv-out .code, #cl-out .code { user-select: all; word-break: break-all; text-decoration: underline; } /* not bold: Cozette bold has no m */
 #devices textarea, #devices input, #circles input, #cf-share { box-sizing: border-box; width: 100%; padding: 4px 8px; border: 1px solid var(--ink); background: var(--paper); font: inherit; color: inherit; user-select: text; }
-/* spec 018: a "…" per circle and per member */
+/* a "…" per circle and per member */
 #circles li .grow { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #circles details { position: relative; }
 #circles summary { list-style: none; cursor: pointer; padding: 0 8px; border: 1px solid var(--ink); }
@@ -135,7 +135,7 @@ button:disabled { cursor: default; opacity: .35; }
 .dim { opacity: .6; }
 #devices input[type=password] { margin-bottom: 10px; }
 
-/* notifications (spec 016): the counter, its list, icon counts, the Configuration window */
+/* notifications: the counter, its list, icon counts, the Configuration window */
 #bell { width: auto; min-width: 32px; padding: 0 8px; }
 #bell.new { background: var(--accent); color: var(--paper); border-color: var(--accent); }
 #notes { -webkit-app-region: no-drag; position: fixed; z-index: 4; top: 68px; right: 8px; width: min(380px, calc(100% - 16px)); max-height: calc(100% - 84px); overflow: auto; padding: 6px 0; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }

@@ -1,7 +1,7 @@
-// Spec 018: what opening Configuration's circles costs (circles.list, then each circle's members), and the engine's
-// idle CPU while holding (a 1 GB share) for its circles. Tibo makes 3 circles; `--people` others join all three
-// and hold, staying online in this process; Tibo's engine is then measured alone in a fresh process.
-// Spec 019: the circles window's Invite contacts… for `--friends` friends of Tibo's (Chat conversations, not in the
+// what opening Configuration's circles costs (circles.list, then each circle's members), and the engine's
+// idle CPU while holding (a 1 GB share) for its circles. One person (the owner) makes 3 circles; `--people` others join all three
+// and hold, staying online in this process; the owner's engine is then measured alone in a fresh process.
+// the circles window's Invite contacts… for `--friends` friends of the owner's (Chat conversations, not in the
 // circle): each their own invite, one after another as the shell sends them.
 //   npm run perf:circles [-- --people 49 --friends 10 --minutes 1]   (49: circles of 50; appends to perf/history.jsonl)
 import fs from 'fs'
@@ -17,7 +17,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CIRCLES = 3
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i === -1 ? d : Number(process.argv[i + 1]) }
 // shortcut: 5 by default: from 7 (3 circles of 8) hypergraph's autobase crashes while people join (Writer._loadNextNode,
-// 'node' of null, 2026-11-16); 49 (circles of 50) once that is fixed
+// 'node' of null); 49 (circles of 50) once that is fixed
 const people = arg('--people', 5)
 const minutes = arg('--minutes', 1)
 const friends = arg('--friends', 10)
@@ -37,20 +37,20 @@ async function engine (name) {
 
 if (CHILD) await measure()
 
-const tibo = await engine('tibo')
+const owner = await engine('owner')
 const started = Date.now()
 const keys = []
-for (let i = 0; i < CIRCLES; i++) keys.push((await tibo.request('circles.create', { name: 'C' + i })).key)
+for (let i = 0; i < CIRCLES; i++) keys.push((await owner.request('circles.create', { name: 'C' + i })).key)
 const others = []
-const pals = [] // spec 019: Tibo's friends
+const pals = [] // the owner's friends
 for (let p = 0; p < people; p++) {
   const e = await engine('p' + p)
-  for (const key of keys) await e.request('circles.join', { link: (await tibo.request('circles.invite', { key })).link })
+  for (const key of keys) await e.request('circles.join', { link: (await owner.request('circles.invite', { key })).link })
   others.push(e)
 }
 console.log(`${CIRCLES} circles of ${people + 1} made in ${Math.round((Date.now() - started) / 1000)} s`)
 await invites()
-await tibo.request('close')
+await owner.request('close')
 const child = spawn(process.execPath, ['--expose-gc', fileURLToPath(import.meta.url), '--measure', tmp, '--bootstrap', JSON.stringify(bootstrap), '--minutes', String(minutes), '--people', String(people)], { stdio: 'inherit' })
 const code = await new Promise((resolve) => child.on('exit', resolve))
 for (const e of [...others, ...pals]) await e.request('close').catch(() => {})
@@ -58,11 +58,11 @@ await testnet.destroy()
 fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 })
 process.exit(code)
 
-// Tibo's friends by contact link (Chat published by Tibo, a copy of sites/chat), then Invite contacts… to circle C0
+// the owner's friends by contact link (Chat published by the owner, a copy of sites/chat), then Invite contacts… to circle C0
 async function invites () {
   const folder = path.join(tmp, 'chat-site')
   fs.cpSync(path.join(HERE, '..', 'sites', 'chat'), folder, { recursive: true })
-  const { key } = await tibo.request('site.publish', { folder })
+  const { key } = await owner.request('site.publish', { folder })
   const as = (e, method, args = []) => e.request('site.call', { key, method, args })
   const app = async (e) => {
     await e.request('apps.set', { chat: key })
@@ -70,20 +70,20 @@ async function invites () {
     await e.request('site.consent', { key, allow: true })
     await e.request('site.permit', { key, permission: 'contacts', allow: true })
   }
-  await app(tibo)
+  await app(owner)
   for (let f = 0; f < friends; f++) {
     const e = await engine('f' + f)
     pals.push(e)
     await app(e)
-    await as(e, 'contacts.add', [(await as(tibo, 'contacts.link')).link])
+    await as(e, 'contacts.add', [(await as(owner, 'contacts.link')).link])
   }
-  for (const end = Date.now() + 120000; Date.now() < end; await wait(500)) if ((await tibo.request('contacts.list')).filter((c) => c.state === 'friend').length === friends) break
-  const list = (await tibo.request('contacts.list')).filter((c) => c.state === 'friend')
+  for (const end = Date.now() + 120000; Date.now() < end; await wait(500)) if ((await owner.request('contacts.list')).filter((c) => c.state === 'friend').length === friends) break
+  const list = (await owner.request('contacts.list')).filter((c) => c.state === 'friend')
   const each = []
   const t = Date.now()
   for (const c of list) {
     const s = Date.now()
-    await tibo.request('contacts.inviteToCircle', { identity: c.identity, circle: keys[0] })
+    await owner.request('contacts.inviteToCircle', { identity: c.identity, circle: keys[0] })
     each.push(Date.now() - s)
   }
   const all = Date.now() - t
@@ -106,16 +106,16 @@ function record (rows) {
 }
 
 async function measure () {
-  const tibo = await engine('tibo')
+  const owner = await engine('owner')
   await wait(10000) // its circles open, holders found
   const open = []
   for (let i = 0; i < 5; i++) {
     const t = Date.now()
-    const list = await tibo.request('circles.list')
-    for (const c of list) await tibo.request('circles.members', { key: c.key })
+    const list = await owner.request('circles.list')
+    for (const c of list) await owner.request('circles.members', { key: c.key })
     open.push(Date.now() - t)
   }
-  const h = await tibo.request('holding.get')
+  const h = await owner.request('holding.get')
   console.log(`Configuration's circles (list + members of ${CIRCLES}): ${open.join(', ')} ms; holding ${h.on ? 'on' : 'off'}, share ${h.bytes / 1e9} GB, ${Math.round(h.used / 1e6)} MB held`)
   const end = Date.now() + minutes * 60000
   let cpu = process.cpuUsage()
@@ -128,7 +128,7 @@ async function measure () {
     cpu = process.cpuUsage()
     at = Date.now()
   }
-  await tibo.request('close')
+  await owner.request('close')
   const result = { open: stats(open), cpu: stats(load) }
   console.log(`idle while holding: median ${result.cpu.median} % of a core, max ${result.cpu.max} %`)
   record([['circles.open', 'ms', result.open, open.length, people + 1], ['circles.idle.cpu', '% core', result.cpu, load.length, people + 1]])

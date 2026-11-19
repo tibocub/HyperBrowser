@@ -1,9 +1,9 @@
-// Notifications (spec 016): an app declares in site.json what to watch (engine/manifest.js); once the person
-// said yes, its watches are copied to their settings (R2) and the engine watches the app's instances with no
-// app code. What is new is found with space.since() cursors, a seq per log (hypergraph 021), never by dates:
+// Notifications: an app declares in site.json what to watch (engine/manifest.js); once the person
+// said yes, its watches are copied to their settings and the engine watches the app's instances with no
+// app code. What is new is found with space.since() cursors, a seq per log, never by dates:
 // a message written offline and received late still notifies, and a clock far ahead silences nothing.
 // This device keeps the cursors and the latest items in <engine dir>/notifications.json; settings (on all the
-// person's devices) keep the answers, hide, mute and how far each place was read (R4).
+// person's devices) keep the answers, hide, mute and how far each place was read.
 import fs from 'fs'
 import path from 'path'
 import b4a from 'b4a'
@@ -16,16 +16,16 @@ const APP = 'hyperbrowser/notify/app/' // + app: { title, watches, hide }
 const MUTE = 'hyperbrowser/notify/mute/' // + place: true
 const READ = 'hyperbrowser/notify/read/' // + place: { [log, 16 hex]: next unread seq }
 const INSTANCES = (app) => 'hyperbrowser/app/' + app + '/instances'
-const FOLLOW = 'hyperbrowser/notify/follow/' // + app: [{ id, place, type, where?, by?, says | text, open?, popup }] (spec 017 R3)
+const FOLLOW = 'hyperbrowser/notify/follow/' // + app: [{ id, place, type, where?, by?, says | text, open?, popup }]
 const FOLLOWS_MAX = 100 // per app
-const CONTACTS = 'hyperbrowser/contacts' // engine/contacts.js: incoming requests notify (R7)
+const CONTACTS = 'hyperbrowser/contacts' // engine/contacts.js: incoming requests notify
 const CONTACTS_APP = 'contacts' // HyperBrowser's own: allowed unless blocked, never asked
-const HB_APP = 'hyperbrowser' // spec 018: HyperBrowser's own news (a circles' share full), never blocked
+const HB_APP = 'hyperbrowser' // HyperBrowser's own news (a circles' share full), never blocked
 const ITEMS_MAX = 200
 const READ_LOGS = 64
 const BATCH = 500
 const QUIET = 1000 // a place whose history is arriving is checked this often, until complete
-const HELD_MAX = 24 // chats kept online all the time (R3: of hypergraph's 64 open, 32 announced)
+const HELD_MAX = 24 // chats kept online all the time (of hypergraph's 64 open spaces, 32 announced)
 const TURN_N = 2 // the other places: this many at a time, `turn` ms each
 const CATCHUP = 10 // more new items at once than this: one summary, not a popup each (a space catching up)
 const TEXT_MAX = 200
@@ -42,14 +42,14 @@ const matches = (w, r, me) => [].concat(w.type).includes(r.type) && (!w.me || r[
 const typesOf = (watches) => [...new Set(watches.flatMap((w) => [].concat(w.type)))]
 
 // sfs: the engine's SwarmFS. dir: the engine's folder. emit(event, data). turn: ms a place not held is held in
-// its turn, and the launch's catch-up window. counts(): the unread counts or dots may have changed (spec 017: the
+// its turn, and the launch's catch-up window. counts(): the unread counts or dots may have changed (the
 // pages listening to their own).
 export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) {
   const FILE = path.join(dir, 'notifications.json')
   const me = sfs.hg.identity.publicKey
-  // dots (spec 017 R2): places where a dot watch or a follow found something since the person last viewed them
+  // dots: places where a dot watch or a follow found something since the person last viewed them
   let file = { cursors: {}, items: [], dots: {} }
-  const quiet = new Map() // place -> cursor: not complete here yet, its history isn't news (R6)
+  const quiet = new Map() // place -> cursor: not complete here yet, its history isn't news
   const held = new Map() // place -> release()
   const timers = new Map() // place -> debounce
   let queue = Promise.resolve()
@@ -204,7 +204,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
     } catch { return '' }
   }
 
-  // --- friend requests (R7): settings, not records; the cursor is the incoming identities already told ---
+  // --- friend requests: settings, not records; the cursor is the incoming identities already told ---
 
   function requests (s) {
     const incoming = Object.entries(s[CONTACTS] || {}).filter(([, c]) => c?.state === 'incoming')
@@ -282,7 +282,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
     if (file.items.length !== before) dirty = true
   }
 
-  // --- read state (R4): per place, per log, the next unread seq ---
+  // --- read state: per place, per log, the next unread seq ---
 
   const isRead = (s, x) => (s[READ + x.place]?.[x.log] ?? 0) > x.seq
 
@@ -290,7 +290,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
     s = s || await settings()
     const out = { total: 0, byApp: {}, byPlace: {} }
     for (const x of file.items) {
-      if (x.follow || isRead(s, x) || !allowed(s, x.app)) continue // a follow: a dot, not a number (spec 017 Q5)
+      if (x.follow || isRead(s, x) || !allowed(s, x.app)) continue // a follow: a dot, not a number
       out.total++
       out.byApp[x.app] = (out.byApp[x.app] || 0) + 1
       out.byPlace[x.place] = (out.byPlace[x.place] || 0) + 1
@@ -332,7 +332,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
   }
 
   // The places to watch changed (a yes, a block, a join, a leave): chats held, up to HELD_MAX; the others take
-  // turns (R3). The place a page shows is kept open by the page itself.
+  // turns. The place a page shows is kept open by the page itself.
   async function sync () {
     const want = places(await settings())
     watching.clear()
@@ -436,7 +436,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
       return { items: file.items.filter((x) => allowed(s, x.app)).map((x) => view(x, s)), unread: await unread(s), apps }
     },
 
-    // The person's answer for `app` (site.permit, or the Configuration page): the watches copied at a yes (R2).
+    // The person's answer for `app` (site.permit, or the Configuration page): the watches copied at a yes.
     async permit (app, manifest, allow) {
       await ready
       if (allow && manifest) await this.refresh(app, manifest, true)
@@ -531,7 +531,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
       for (const place of Object.keys(s[INSTANCES(app)] || {})) await this.forget(place)
     },
 
-    // --- a page's own (spec 017): `places` are its app's instances (the engine's list), the guard ---
+    // --- a page's own: `places` are its app's instances (the engine's list), the guard ---
 
     // { [place]: { count, dot } } for each of them: count, the unread notifications (not follows); dot, new since viewed.
     async unreadOf (places) {
@@ -564,7 +564,7 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
       return (await settings())[FOLLOW + app] || []
     },
 
-    // spec 018: one of HyperBrowser's own (the circles' share full): listed and popped up, read like any other.
+    // one of HyperBrowser's own (the circles' share full): listed and popped up, read like any other.
     async hyperbrowser ({ id, text }) {
       await ready
       const x = { app: HB_APP, place: HB_APP, id, type: 'notice', author: me, name: 'HyperBrowser', text: clean(text, TEXT_MAX), open: null, stamp: null, at: Date.now(), log: HB_APP, seq: Date.now() }

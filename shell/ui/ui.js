@@ -1,4 +1,4 @@
-// The frame page (spec 002): draws the state main sends (contracts/frame.md) and sends the person's actions.
+// The frame page: draws the state main sends (contracts/frame.md) and sends the person's actions.
 // Plain DOM, no framework; built with DOM calls, never from HTML strings (titles come from sites).
 /* global frame */
 
@@ -85,7 +85,7 @@ function render () {
   $('tabs').replaceChildren(...S.tabs.map((t) => {
     const b = el('button', 'tab' + (t.status === 'opening' || t.loading ? ' busy' : ''))
     if (t.id === S.current) b.setAttribute('aria-current', 'page')
-    b.title = t.id === 0 ? 'Desktop' : t.title + ' · ' + (t.name && t.key ? t.name + ' · ' + t.key : t.key || t.name) // spec 022: a named site's key stays reachable here
+    b.title = t.id === 0 ? 'Desktop' : t.title + ' · ' + (t.name && t.key ? t.name + ' · ' + t.key : t.key || t.name) // a named site's key stays reachable here
     b.append(t.id === 0 ? picture(null, 'desktop') : picture(t.icon, 'site'), el('span', 'name', t.title))
     b.onclick = () => send('select', { id: t.id })
     if (t.id !== 0) {
@@ -108,7 +108,7 @@ function render () {
   $('forward').disabled = !tab.canForward
   $('reload').disabled = !site || tab.status !== 'ready'
   const addr = $('address')
-  if (document.activeElement !== addr) addr.value = !site ? '' : tab.name || tab.title + ' · ' + tab.short // spec 022: a site opened by name shows its name
+  if (document.activeElement !== addr) addr.value = !site ? '' : tab.name || tab.title + ' · ' + tab.short // a site opened by name shows its name
   const star = $('star')
   star.disabled = !site || tab.status !== 'ready' || tab.kind === 'installed'
   star.setAttribute('aria-pressed', String(!!tab.kind))
@@ -150,7 +150,7 @@ function drawDesktop () {
     b.title = i.key ? i.title + ' · ' + i.key : i.title + ' (not published yet)'
     const box = el('span', 'box')
     box.append(picture(i.icon, i.glyph || 'site'))
-    const n = unreadOf(i) // spec 016: its app's unread notifications, or its conversation's
+    const n = unreadOf(i) // its app's unread notifications, or its conversation's
     if (n) {
       const badge = el('span', 'badge', cap(n))
       badge.setAttribute('aria-label', n + ' new')
@@ -220,7 +220,7 @@ function drawMenu () {
       return b
     })
     : [el('div', 'empty', 'Nothing installed yet')]))
-  $('m-update').hidden = !S.update // an update is installed: it starts at the next launch, or now (spec 011)
+  $('m-update').hidden = !S.update // an update is installed: it starts at the next launch, or now
   $('m-update').textContent = S.update ? 'Update ready (' + S.update + '): restart' : ''
   for (const b of document.querySelectorAll('[data-theme]')) b.setAttribute('aria-pressed', String(b.dataset.theme === S.settings.theme))
   for (const b of document.querySelectorAll('[data-tray]')) b.setAttribute('aria-pressed', String((b.dataset.tray === 'on') === S.settings.tray))
@@ -253,7 +253,7 @@ $('ctx').onclick = (e) => {
   if (act === 'remove') send('icon.remove', { id })
 }
 
-// --- notifications (spec 016): the counter, its list, icon counts; the Configuration window ---
+// --- notifications: the counter, its list, icon counts; the Configuration window ---
 
 const cap = (n) => n > 99 ? '99+' : String(n)
 const unreadOf = (icon) => !icon.key ? 0 : S.notes.unread.byPlace[icon.key] || S.notes.unread.byApp[icon.site || icon.key] || 0
@@ -333,7 +333,7 @@ function drawConfig () {
   }))
 }
 
-// --- the Devices window (spec 012): one identity on several computers ---
+// --- the Devices window: one identity on several computers ---
 
 let D = null // the last devices.list: { identity, devices, removed, phrase, owns }
 const out = $('dv-out')
@@ -424,13 +424,13 @@ $('dv-phrase').onclick = async () => {
   show(...nodes)
 }
 
-// --- circles (spec 018): Configuration's Circles section and the circles window ---
+// --- circles: Configuration's Circles section and the circles window ---
 
 const gbs = (b) => (Math.round(b / 1e8) / 10) + ' GB' // hypergraph's GB: 1e9 bytes
 let H = null // the last holding.get: { on, bytes, used, free }
 const holdOut = $('cf-hold-out')
 
-// Holding runs while HyperBrowser runs (Q14): its switch, its share, what is held. Off deletes what is held: asked.
+// Holding runs while HyperBrowser runs: its switch, its share, what is held. Off deletes what is held: asked.
 async function drawHolding () {
   const r = await frame.send('holding.get')
   if (r?.error) return
@@ -530,7 +530,7 @@ $('cl-create').onclick = async () => {
   drawCircles()
 }
 
-// spec 019: the pasted link joins without a "Join?" (pasting is the yes); only Q8's notice the first time
+// the pasted link joins without a "Join?" (pasting is the yes); only the circles notice the first time
 $('cl-join').onclick = () => {
   const box = el('input')
   box.setAttribute('aria-label', 'Invite link')
@@ -549,7 +549,7 @@ $('cl-join').onclick = () => {
   box.focus()
 }
 
-// spec 019: the person's friends, a box each; those already in greyed. Each ticked one gets their own invite in Chat.
+// the person's friends, a box each; those already in greyed. Each ticked one gets their own invite in Chat.
 async function inviteContacts (c) {
   const r = await frame.send('circles.invitees', { key: c.key })
   if (r?.error) return clShow(line(r.error.message))
@@ -596,7 +596,7 @@ function rename (c) {
   box.focus()
 }
 
-// The owner leaving gets the forum's warning (Q6): the circle lives on; without an admin nobody can invite.
+// The owner leaving gets the forum's warning: the circle lives on; without an admin nobody can invite.
 async function askLeave (c) {
   const name = '"' + (c.name || 'this circle') + '"'
   let text = 'Leave ' + name + '? Your computer stops keeping its people\'s copies, and they stop keeping yours.'
@@ -622,7 +622,7 @@ async function members (c) {
   for (const m of r.result) {
     const who = m.name || short(m.identity)
     const li = el('li')
-    const held = m.held // spec 021: e.g. '0.8/3 GB' (frame.js)
+    const held = m.held // e.g. '0.8/3 GB' (frame.js)
     const nums = el('span', 'dim', m.role + (m.holds ? ' · holds' : '') + (held ? ' · ' + held : ''))
     if (held) nums.title = 'What they hold out of their share, across all their circles'
     li.append(el('span', 'grow', who + (m.you ? ' (you)' : '')), nums)
@@ -638,7 +638,7 @@ async function members (c) {
     }
     ul.append(li)
   }
-  const total = l?.result?.find((x) => x.key === c.key)?.totalLine // spec 021: e.g. 'TOTAL ≈ 4.2 GB' (frame.js), now
+  const total = l?.result?.find((x) => x.key === c.key)?.totalLine // e.g. 'TOTAL ≈ 4.2 GB' (frame.js), now
   const room = total && line(total, 'dim')
   if (room) room.title = "Everyone's shares ÷ 5 copies; approximate: shares also serve other circles"
   clShow(line('Members of "' + (c.name || 'this circle') + '" (' + r.result.length + ' of 50):'), ul, ...(room ? [room] : []))
@@ -729,7 +729,7 @@ frame.onState((s) => {
   S = s
   render()
   drawConfig()
-  // a join ended (spec 012): main now runs the engine of whichever identity is in place
+  // a join ended: main now runs the engine of whichever identity is in place
   if (S.joined && S.joined.n !== joinedSeen) {
     joinedSeen = S.joined.n
     openDevices(S.joined.said === 'joined' ? 'This computer is now a device of your identity.' : 'Could not join: ' + S.joined.said + '. This computer is as it was.')

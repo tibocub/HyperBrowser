@@ -1,4 +1,4 @@
-// Apps' page (spec 014): the store's `app` entries (written by its owner with `npm run apps:publish`), each with
+// Apps' page: the store's `app` entries (written by its owner with `npm run apps:publish`), each with
 // Install or Open. Installing goes through HyperBrowser (hyper.apps): a click here, then the person's yes in
 // HyperBrowser's own dialog. No stylesheet: HyperBrowser's default theme.
 

@@ -1,6 +1,6 @@
-// The site API through the engine (spec 001 US4; FR-013..016; SC-004): hypergraph's site handle for the
+// The site API through the engine: hypergraph's site handle for the
 // site's own space, asked once per site, live views across the boundary. The types used are those a
-// SwarmFS site space has (profile, site, file), except the last tests: a site's own types (spec 006).
+// SwarmFS site space has (profile, site, file), except the last tests: a site's own types.
 import test from 'brittle'
 import b4a from 'b4a'
 import fs from 'fs'
@@ -122,7 +122,7 @@ test('a type the space never had: INVALID_TYPE once complete, not before', async
   t.ok(await eventually(async () => (await read()).code === 'INVALID_TYPE', 15000), 'then INVALID_TYPE')
 })
 
-// Spec 006: a site's own types (site.json), invite-only sites, and the person's own data for a site (mine).
+// a site's own types (site.json), invite-only sites, and the person's own data for a site (mine).
 const OWN = {
   manifest: {
     title: 'Own types',

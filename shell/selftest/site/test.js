@@ -8,13 +8,13 @@ document.getElementById('me').textContent = (isStatic ? 'static ' : 'site ') + m
 
 const refused = (p) => p.then(() => false, () => true)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-// mine: the person's own data for this site (spec 006), on their settings, not a space
-// instance, instances: the app's instances (spec 009), checked by the engine
-// contacts (only with the permission), people: through HyperBrowser (spec 013); apps: the same (spec 014); projects: 024
+// mine: the person's own data for this site, on their settings, not a space
+// instance, instances: the app's instances, checked by the engine
+// contacts (only with the permission), people: through HyperBrowser; apps: the same; projects: the same
 const API = ['apps', 'circles', 'completeFrom', 'contacts', 'copies', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
   'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
   'projects', 'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'secure', 'setRole',
-  'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'trimHistory', 'types', 'unrelate', 'untag'] // since: spec 017; circles, copies, rotateKey: 018; secure, trimHistory: 023
+  'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'trimHistory', 'types', 'unrelate', 'untag']
 
 const common = [
   ['no Node: require/process/module/Buffer undefined', async () =>
@@ -59,7 +59,7 @@ const common = [
     return document.cookie.split('; ').filter(Boolean).every((c) => c.startsWith(mine + '='))
   }],
   ['its own files load: fetch probe.js from its own site', async () => (await fetch('probe.js')).ok],
-  // WebAssembly (spec 008): it compiles and runs, in the page's sandbox (the checks above still hold for it)
+  // WebAssembly: it compiles and runs, in the page's sandbox (the checks above still hold for it)
   ['wasm: WebAssembly.instantiateStreaming(fetch("add.wasm")) adds 2 + 3', async () =>
     (await WebAssembly.instantiateStreaming(fetch('add.wasm'))).instance.exports.add(2, 3) === 5],
   ['wasm: WebAssembly.compile of bytes the page holds', async () => {
@@ -101,9 +101,9 @@ const dynamics = [
   ['people: opening a chat without a click opens nothing', async () => (await window.hyper.people.chat(other)) === false],
   ['people: a friend request the person refused is NOT_ALLOWED', () =>
     window.hyper.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],
-  ['apps: installing a site without a click installs nothing', async () => (await window.hyper.apps.install(other)) === false], // spec 014
+  ['apps: installing a site without a click installs nothing', async () => (await window.hyper.apps.install(other)) === false],
   ['apps: opening a site without a click opens nothing', async () => (await window.hyper.apps.open(other)) === false],
-  // spec 018: copies of its own space only; joining a circle only through HyperBrowser, after a click
+  // copies of its own space only; joining a circle only through HyperBrowser, after a click
   ['copies: hyper.subspace(<other site>).copies() is refused', () => refused(window.hyper.subspace(other).copies())],
   ['circles: joining without a click joins nothing', async () => (await window.hyper.circles.join('hg:x')).joined === false],
   ['its own instance: created, then reached', async () => {

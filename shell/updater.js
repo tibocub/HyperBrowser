@@ -1,4 +1,4 @@
-// Bare entry for P2P updates (spec 011), started by main.js in an installed HyperBrowser only: pear-runtime's
+// Bare entry for P2P updates, started by main.js in an installed HyperBrowser only: pear-runtime's
 // updater follows the release channel (package.json "upgrade") and downloads a higher version for this OS.
 // Linux, macOS: swapped in for the installed file right away (pear-runtime's applyUpdate). Windows: the
 // installed thing is a folder (HyperBrowser\, its .exe and files), which can't be renamed while it runs, so

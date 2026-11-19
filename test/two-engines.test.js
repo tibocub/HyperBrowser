@@ -1,5 +1,5 @@
 // Two engines, two processes: the command line publishes a folder, this process opens the printed key alone
-// (spec 001 US1, US2, FR-009; SC-001). The child runs on the runtime running this test (Node or Bare).
+//. The child runs on the runtime running this test (Node or Bare).
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -91,15 +91,15 @@ test('publish --instance: the app\'s instance, made once; its invite opens the a
   t.ok(await eventually(() => new RegExp(`instance: ${instance}\\r?\\n`).test(again.out.text), 60000, 100), 'the same instance the second time: ' + again.out.text.trim()) // Bare prints \r\n on Windows
   await eventually(() => again.out.text.includes('online'), 60000, 100)
 
-  const tibo = await engine(t)
-  const o = await tibo.rpc.request('site.open', { key: link })
+  const owner = await engine(t)
+  const o = await owner.rpc.request('site.open', { key: link })
   t.alike([o.key, o.instance], [key, instance], 'the invite opens the app on the instance')
-  await tibo.rpc.request('site.consent', { key, allow: true })
-  t.ok(await eventually(async () => (await tibo.rpc.request('site.call', { key, method: 'query', args: ['official'], chain: [['latest', [1]]] })).items[0]?.instance === instance, 20000), 'the app names its official instance')
-  t.is(await tibo.rpc.request('site.call', { key, instance, method: 'getRole', args: [(await tibo.rpc.request('site.call', { key, method: 'info' })).identity] }), 'admin', 'an admin of the instance')
+  await owner.rpc.request('site.consent', { key, allow: true })
+  t.ok(await eventually(async () => (await owner.rpc.request('site.call', { key, method: 'query', args: ['official'], chain: [['latest', [1]]] })).items[0]?.instance === instance, 20000), 'the app names its official instance')
+  t.is(await owner.rpc.request('site.call', { key, instance, method: 'getRole', args: [(await owner.rpc.request('site.call', { key, method: 'info' })).identity] }), 'admin', 'an admin of the instance')
 })
 
-// spec 018 SC: A and B in a circle (B holds); A's private conversation with an outsider C, written while C was
+// A and B in a circle (B holds); A's private conversation with an outsider C, written while C was
 // away, is read by C while A is offline: B's copy serves it.
 test("circles: an outsider reads A's message while A is offline, from A's circle", async (t) => {
   t.timeout(300000)

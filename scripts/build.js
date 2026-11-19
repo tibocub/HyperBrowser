@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Builds the installable HyperBrowser for this machine's OS (spec 011). One command:
+// Builds the installable HyperBrowser for this machine's OS. One command:
 //   Windows: <out>/dist/win-unpacked (the HyperBrowser folder: what is released) and HyperBrowser.zip (it, to
 //            download); Linux: HyperBrowser.AppImage; macOS: HyperBrowser.zip (the .app, not tested).
 //
 //   npm run build [-- --version x.y.z] [-- --upgrade pear://...] [-- --out <dir>] [-- --apps-from <dir>]
 //
 // --apps-from: the owner's engine folder (the one `npm run apps:publish` publishes from): the preset apps'
-// own signed data is packed into <out>/app/apps (spec 015, scripts/bundle.js), so a new install opens them
+// own signed data is packed into <out>/app/apps (scripts/bundle.js), so a new install opens them
 // with nobody online and peers update them. No process may have that folder open. Without it: no apps.
 //
 // The app's files (shell/, engine/) go to <out>/app with a package.json of their own; the sibling repos this

@@ -1,4 +1,4 @@
-// The IDE's work on a project, with no page around it (spec 025): templates, HyperMD built here (D4), pages by title for
+// The IDE's work on a project, with no page around it: templates, HyperMD built here (D4), pages by title for
 // beginners, site.json changed and checked as the engine checks it (D7), Publish. `projects` is window.hyper.projects
 // (or the tests' copy of it). The page (app.js) only draws and calls these.
 import { parse, renderPage, applyLayout, siteMenu, pageHref, parseManifest, pageTitle, utf8 } from '../vendor/hmd.js'
@@ -85,7 +85,7 @@ export async function create (projects, name, template = 'hypermd') {
 export const paths = async (projects, key) => (await projects.files(key)).map((f) => f.path)
 export const read = async (projects, key, path) => text(await projects.read(key, path))
 
-// The HyperMD pages built again from their sources, into the project's built pages (spec 026: outside the project
+// The HyperMD pages built again from their sources, into the project's built pages (outside the project
 // folder, so they never sync, never reach git). A .html the IDE wrote beside its .hmd before (exactly what the build
 // makes now) is removed; any other .html of a page's name is the person's and wins over the built one.
 // → { built, hidden }: the built pages, and those a hand-written .html hides.
@@ -100,7 +100,7 @@ export async function build (projects, key) {
   const hidden = []
   for (const [p, html] of Object.entries(pages)) {
     if (!all.includes(p)) continue
-    if ((await read(projects, key, p)) === html) await projects.remove(key, p) // ours, from 025: never the person's
+    if ((await read(projects, key, p)) === html) await projects.remove(key, p) // ours, from an older IDE: never the person's
     else hidden.push(p)
   }
   return { built: Object.keys(pages), hidden }
@@ -178,7 +178,7 @@ export async function upload (projects, key, name, bytes, folder = '') {
   return path
 }
 
-// The preview (spec 026 B1): every HyperMD page built first, so site.json's entry (index.html) is there. `reset`: a new
+// The preview: every HyperMD page built first, so site.json's entry (index.html) is there. `reset`: a new
 // throwaway space.
 // → { key, hidden }: hidden, the pages a hand-written .html of the same name replaces.
 export async function preview (projects, key, reset = false) {
