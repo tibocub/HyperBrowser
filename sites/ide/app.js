@@ -257,7 +257,7 @@ function project () {
       h('button', { onclick: () => act(closeProject), 'aria-label': 'Back to your projects' }, '←'),
       h('h1', { style: 'margin:0; font-size:1.2em' }, cur.name),
       h('span', { style: 'flex:1' }),
-      h('button', { onclick: toggleTree, 'aria-pressed': String(treeShown), title: 'More room for the editor' }, treeShown ? 'Hide the list' : 'Show the list'),
+      h('button', { onclick: toggleTree, 'aria-pressed': String(treeShown), title: 'More room for the editor' }, treeShown ? 'Hide file explorer' : 'Show file explorer'),
       h('button', { onclick: () => act(async () => { await flush(); previewing = !previewing; if (previewing) return ide.preview(projects, cur.key); else await projects.closePreview() }, (r) => hiding(r?.hidden)), 'aria-pressed': String(previewing) }, 'Preview'),
       h('button', { onclick: () => act(async () => { await flush(); const r = await ide.publish(projects, cur.key); await reload(); return r }, (r) => `Published: version ${r.version}. Its address: ${r.site}` + hiding(r.hidden)) }, 'Publish'),
       more('project', [
