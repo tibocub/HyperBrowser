@@ -165,3 +165,16 @@ test('helper command: writes its config file, reads it again when it changes, st
     t.is(await within(exited, 15000), 0, 'stopped cleanly')
   }
 })
+
+test('the release seeder: its service reads the channel the installer writes, as the helper user', (t) => {
+  const scripts = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts')
+  const unit = fs.readFileSync(path.join(scripts, 'hyperbrowser-seed.service'), 'utf8')
+  const install = fs.readFileSync(path.join(scripts, 'helper-install.sh'), 'utf8')
+  t.ok(unit.includes('User=hyperbrowser'), 'runs as the helper user')
+  t.ok(unit.includes('EnvironmentFile=/etc/default/hyperbrowser-seed'), 'reads the env file')
+  t.ok(unit.includes('ExecStart=/usr/bin/env pear seed ${HB_RELEASE_LINK}'), 'seeds the channel as one argument')
+  t.ok(install.includes('echo "HB_RELEASE_LINK=$LINK" > /etc/default/hyperbrowser-seed'), 'the installer writes that file')
+  t.ok(install.includes('scripts/hyperbrowser-seed.service" /etc/systemd/system/hyperbrowser-seed.service'), 'and installs the service')
+  const ok = /\^pear:\/\/\[a-z0-9\]\+\$/.test(install)
+  t.ok(ok, 'only a pear:// link is accepted')
+})

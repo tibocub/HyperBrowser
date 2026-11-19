@@ -3,7 +3,8 @@
 #   sudo bash helper-install.sh
 # A `hyperbrowser` system user with no login, the code in /opt/hyperbrowser (HyperBrowser and the engine's
 # file: dependencies beside it, as on a developer's machine), `npm ci --omit=dev` in each (`npm install` without
-# a lockfile), and the systemd service enabled and (re)started. Run it again to update. HB_GITHUB: where the repos are cloned from.
+# a lockfile), and the systemd service enabled and (re)started. Once package.json has the release channel ("upgrade"),
+# also Pear and a second service seeding that channel. Run it again to update. HB_GITHUB: where the repos are cloned from.
 set -euo pipefail
 
 ROOT=/opt/hyperbrowser
@@ -41,6 +42,22 @@ install -m 644 "$ROOT/HyperBrowser/scripts/hyperbrowser-helper.service" /etc/sys
 systemctl daemon-reload
 systemctl enable hyperbrowser-helper
 systemctl restart hyperbrowser-helper
+
+LINK=$(cd "$ROOT/HyperBrowser" && node -p "require('./package.json').upgrade || ''")
+if [[ "$LINK" =~ ^pear://[a-z0-9]+$ ]]; then
+  command -v pear >/dev/null || npm i -g pear --no-audit --no-fund
+  as pear help >/dev/null || true # its first run downloads Pear itself into the user's home; seed's log shows a failure
+  echo "HB_RELEASE_LINK=$LINK" > /etc/default/hyperbrowser-seed
+  install -m 644 "$ROOT/HyperBrowser/scripts/hyperbrowser-seed.service" /etc/systemd/system/hyperbrowser-seed.service
+  systemctl daemon-reload
+  systemctl enable hyperbrowser-seed
+  systemctl restart hyperbrowser-seed
+  echo "The release seeder runs ($LINK). Its log: journalctl -u hyperbrowser-seed -f"
+elif [ -n "$LINK" ]; then
+  echo "package.json's \"upgrade\" is not a pear:// link ($LINK): the release seeder is not installed." >&2
+else
+  echo "No release channel yet (no \"upgrade\" in package.json): the release seeder is not installed."
+fi
 
 echo
 echo "The helper runs. Its log: journalctl -u hyperbrowser-helper -f"

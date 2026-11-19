@@ -143,6 +143,7 @@ From source, `npm start` uses **the same data folder** as an installed copy: `%A
 - Your PC, with `pear seed <link>` running. It holds every OS's build.
 - Installed HyperBrowsers only download releases. They don't serve them to others, even from the tray: each one has only its own OS's build. A later setting could make them help.
 - More seeders = releases reach people faster and while your PC is off. Any always-on machine with Pear can run `pear seed <link>`; it needs no key.
+- The helper's VPS can seed too: once `"upgrade"` is in `package.json` and pushed, run `helper-install.sh` there again and it installs `hyperbrowser-seed.service` ([helper.md](helper.md)). It seeds every later release with no further step.
 
 ## If an update doesn't come
 

@@ -30,6 +30,11 @@ dependencies, as on a developer's machine; `HB_GITHUB=<url>` clones from elsewhe
 each (no Electron), and installs, enables and starts `scripts/hyperbrowser-helper.service` (systemd: starts at boot,
 restarted on failure, stopped with SIGTERM, which closes the engine cleanly).
 
+Once `package.json` has the release channel (`"upgrade"`, see [packaging.md](packaging.md)), the script also installs
+Pear (`npm i -g pear`) and a second service, `scripts/hyperbrowser-seed.service`, which runs `pear seed <channel>` so
+new HyperBrowser versions stay downloadable while your PC is off. The channel is written to
+`/etc/default/hyperbrowser-seed`; it needs no key. Its log: `journalctl -u hyperbrowser-seed -f`.
+
 **Updating**: run the script again (it `git pull`s each repo, `npm ci`s and restarts the service). By hand:
 
 ```bash

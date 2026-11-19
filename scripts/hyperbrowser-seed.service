@@ -1,0 +1,21 @@
+# Seeds HyperBrowser's release channel (docs/packaging.md, "Who seeds"), installed by scripts/helper-install.sh.
+[Unit]
+Description=HyperBrowser release seeder: keeps new versions downloadable (pear seed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=hyperbrowser
+# HB_RELEASE_LINK, written by helper-install.sh from package.json's "upgrade"
+EnvironmentFile=/etc/default/hyperbrowser-seed
+ExecStart=/usr/bin/env pear seed ${HB_RELEASE_LINK}
+Restart=always
+RestartSec=30
+TimeoutStopSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hyperbrowser
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
