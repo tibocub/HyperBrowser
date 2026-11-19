@@ -1,302 +1,297 @@
-# The engine and the shell (spec 001)
+# The engine
 
-HyperBrowser has two parts:
+The engine (`engine/`) holds the person's identity, the network and every site's data, on hypergraph and
+SwarmFS. It runs as a Bare worker inside the app (`engine/worker.js`), or on Node or Bare without a window
+through the command line (`engine/cli.js`).
 
-- **the engine** (`engine/`): holds your identity, the network and every site's data (hypergraph + SwarmFS).
-  It runs on Bare in the app, or on Node/Bare without a window (the command line).
-- **the shell** (`shell/`): the window. Each site opens in its own sandboxed view; only the shell talks to the
-  engine for a site. Its interface (tabs, address bar, desktop): [shell.md](shell.md).
+The shell talks to it over one framed byte stream: requests with ids, replies and events
+(`engine/protocol.js`; the message list is in `specs/001-engine/contracts/protocol.md`). Sites never reach the
+engine directly: the shell checks every call first ([shell.md](shell.md)). What a site's page gets:
+[site-api.md](site-api.md).
 
-How they talk: `specs/001-engine/contracts/protocol.md`. What a site's page gets: [site-api.md](site-api.md).
+| File | What it does |
+|---|---|
+| `index.js` | `start(ipc)`: the message handlers, sites, hosting, devices, names, site calls |
+| `manifest.js` | reads and checks `site.json` |
+| `publish.js` | publishing a folder as a site |
+| `notifications.js` | watches app instances and keeps the notification list |
+| `circles.js` | circles and holding copies for them |
+| `contacts.js` | contacts, friend requests, contact links |
+| `projects.js` | projects: synced folders, Publish, versions, previews |
+| `helper.js`, `helper-config.js` | the always-on helper ([helper.md](helper.md)) |
+| `cli.js` | the command line |
 
-## Setup
+## Command line
 
-The repos sit side by side: `hypergraph`, `SwarmFS` and `HyperBrowser` in one folder (`E:\Code\P2P\` on
-Windows, `~/P2P/` on Linux). In each: `npm i` (hypergraph and SwarmFS first).
+```bash
+node engine/cli.js publish <folder> [--dir <engine folder>] [--invite member|admin] [--instance <name>] [--new]
+node engine/cli.js open <key>
+node engine/cli.js helper [--config <file>] [--dir <folder>] [--join hg:…]
+```
 
-## Publish a site (owner, no window)
+The same commands run on Bare: `bare engine/cli.js …` (`npx bare` from this repo). The engine folder defaults
+to `~/.hyperbrowser`.
 
-A site is a folder with a `site.json` and its pages:
+### publish
+
+A site is a folder with a `site.json` and its pages ([site-api.md](site-api.md) has every field):
 
 ```json
 { "title": "HyperBrowser", "entry": "index.html", "icon": "icon.png", "permissions": [] }
 ```
 
-`permissions: ["space"]` makes it a **dynamic** site (its scripts get the API for its own space); without it the
-site is **static** (scripts run, no API). Then:
+`publish` prints `key: …` and stays online: visitors read the site from you while it runs, and edits you make in
+the folder reach them. The same folder in the same engine folder always gets the same key, so keep both.
+
+- `--invite member|admin`: prints a one-use invite link (`hg:…`) after the key, for a dynamic site. Pasted into
+  HyperBrowser's address bar, it lets that HyperBrowser in with that role.
+- `--instance "<name>"`: also makes an instance of the app owned by the publisher (the first time; the same one
+  after), and prints its key. If the app declares an `official` type, the instance is recorded there.
+- `--new`: gives the folder a fresh site with a new key and leaves the old one.
+
+An invite-only site (`"public": false`) stays invite-only. If a folder first published with `"public": false`
+later drops that line, publishing refuses with `PRIVATE_SITE`: a space can't be made private again once public,
+and its records would become readable. Use `--new` for a public site.
+
+### open
+
+`open <key>` prints the site's title and its entry page's size, and stays online. `npm start -- --open <key>`
+opens it in a tab of the shell instead.
+
+## The official apps
 
 ```bash
-node engine/cli.js publish path/to/site
+npm run apps:publish -- --dir <owner engine folder>
+npm run apps:seed                   # the same from ../hyperbrowser-owner, staying online
 ```
 
-It prints `key: …` and stays online: visitors read the site from you while it runs, and edits you make in the
-folder reach them. The same folder always gets the same key (keep the engine folder: `~/.hyperbrowser` by
-default, `--dir` to choose another; the official site's and forum's keys live in Tibo's).
+`apps:publish` builds the home site, then publishes every app listed in `scripts/apps.js` (home, the forum with
+its "HyperBrowser" instance, Apps, Chat, Contacts, the IDE) from that engine folder. It then:
 
-An invite-only site (`"public": false`) is closed to anyone without an invite. `--invite member` or
-`--invite admin` prints a one-use invite link after the key (dynamic sites):
+- writes their keys into `shell/preset.json` (only the `key` fields; for the forum, its instance's key);
+- lists each app in the Apps store as an `app` record, from its `site.json` `title`, `description` and icon;
+- prints what changed, or "no change".
 
-```bash
-node engine/cli.js publish sites/forum --invite admin
-```
+A key already in `preset.json` that differs is never overwritten (it prints `KEPT`) unless you add `--replace`.
+`--stay` keeps every app and the forum online until Ctrl+C.
 
-Paste the `hg:` link into HyperBrowser's address field: that HyperBrowser is in, as an admin.
+Always publish from the same checkout: a folder's key is tied to its path, so another checkout (a worktree, for
+example) makes new sites.
 
-An invite-only site stays invite-only: if a folder first published with `"public": false` later drops that line,
-publishing refuses (`PRIVATE_SITE`), since public can't be undone and its records would become readable. `--new`
-gives the folder a fresh site with a new key (public unless `"public": false`) and leaves the old one.
+To add an app: a line in `scripts/apps.js` (`{ id: 'myapp', folder: 'sites/myapp' }`; an id not in
+`preset.json` is only listed in the store), a `"description"` in its `site.json`, then run the command again.
 
-### HyperBrowser's official apps, all at once (Tibo)
+### Bundled apps
 
-```bash
-npm run apps:publish -- --dir E:/Code/P2P/hyperbrowser-owner
-```
+`npm run build -- --apps-from <owner folder>` packs each preset app's data (`scripts/bundle.js`: the app's
+space, its pages and the files too big for a record, signed by the owner; no key, identity, personal space or
+setting) into the build's `apps/` folder, with a `bundle.json` (`{ id, apps: [{ id, key }] }`).
 
-Builds the home site, publishes every official app (`scripts/apps.js`: home, the forum with its "HyperBrowser"
-instance, Apps, Chat, Contacts) once from that engine folder, writes their keys into `shell/preset.json` (only the
-`key` fields; the forum's is its instance's), lists each app in the Apps store (spec 014: an `app` entry with its
-`site.json`'s `title`, `description` and icon; updated when they change) and prints what changed. A rerun prints
-"no change". **To add an app**: a line in `scripts/apps.js` (`{ id: 'myapp', folder: 'sites/myapp' }`; an id not
-in `preset.json` is listed in the store only), a `"description"` in its `site.json`, then the command again. Run it from the same
-checkout as before: a folder's key is tied to its path, so another checkout (a worktree) makes new sites. A key
-already in `preset.json` that differs is never overwritten (it says `KEPT`) unless you add `--replace`. It stops
-when done; `--stay` keeps every app and the forum online for other HyperBrowsers until Ctrl+C. Tibo's shortcut,
-publishing from `../hyperbrowser-owner` and staying online:
+The shell passes it to the engine as `init { bundle }`. At start, the engine imports it if this engine folder
+hasn't imported this bundle yet (`<dir>/bundled.json` holds the last id) or a bundled app isn't held here. Each
+app is imported as a visit of it: every block checked against its writer's signature and every file against its
+signed hash, so a changed snapshot is refused (logged and tried again at the next start; the start goes on).
+The shell then installs the preset apps with no peer needed. A newer version already held here is kept (a core
+is never taken back); later versions come from peers.
 
-```bash
-npm run apps:seed
-```
+The forum's preset key is its official instance, which is invite-only: the forum app is packed, the instance is
+not.
 
-### Bundled apps (spec 015)
+## Which sites this device serves
 
-`npm run build -- --apps-from <owner folder>` packs each preset app's own data (`scripts/bundle.js`, SwarmFS
-packs: the app's space, its pages and the files too big for a record, signed by the owner; no key, identity,
-personal space or setting) into the app's `apps/` folder with `bundle.json` (`{ id, apps: [{ id, key }] }`).
-The shell passes it as `init { bundle }`. At start the engine imports it when this engine folder hasn't imported
-this bundle yet (`<dir>/bundled.json` holds the id done), or a bundled app isn't held here: each app as a visit
-of it, every block checked against its writer's signature and every file against its signed hash, so a changed
-snapshot is refused (logged; tried again at the next start; the start goes on). Then the shell installs the
-preset apps as before, with no peer needed. A newer version held here stays (a core is never taken back);
-later versions come from peers. Bundled apps stay joined and served, installed or not. The forum's preset key
-is its official instance (invite-only): its app is packed, the instance is not.
+- **Installed** sites (`site.keep(true)`), **your own** sites (owner, or admin as a project's co-author) and
+  **bundled** apps: joined and served from engine start, with or without a tab.
+- **Any other site**: joined while a tab shows it (`site.open` … `site.close`), and for a grace period after its
+  last tab closes (5 minutes; `init { grace }`). Then the engine leaves its space (SwarmFS `leave`, hypergraph
+  `leaveSpace`): it is no longer announced or served, and its records go from this device. Its files stay in the
+  cache; opening it again joins it again (someone must be online) and reuses them.
+- **At start**, every site held here that is neither installed, yours nor bundled is left.
+- **Eviction** (the cache over its cap) deletes cached files whether the space is joined or not.
+- `hosting` → `{ sites, handles }`: how many sites are joined now (the tray's "hosting 3 sites"), and how many
+  app-instance handles are kept open.
 
-## Open a site
+## Devices: one identity on several computers
 
-```bash
-node engine/cli.js open <key>          # prints the title and the entry page's size, stays online
-npm start -- --open <key>              # the site in a tab of the shell
-```
+hypergraph pairs devices; the engine passes it through.
 
-The command line runs the same on Bare: `bare engine/cli.js …` (`npx bare` from this repo).
+- `devices.add` gives a code. The new computer starts its engine in an **empty folder** with
+  `init { joinCode, deviceName }`: it becomes a device of the same identity (same key) and receives the recovery
+  phrase over the pairing connection.
+- What follows the person on every device: the spaces any device created or joined, roles in them, and the
+  settings: answers to "use your identity?", sites' own data (`hyper.mine`), apps' instance lists, and the
+  installed sites (`hyperbrowser/installed/<key>`). SwarmFS's "kept" flag stays per device, so each device keeps
+  the files itself.
+- `devices.remove`: what that device does from then on counts for nobody (`DEVICE_REMOVED` on it). It needs the
+  recovery phrase: plain on this device until protected with `devices.protect`, then behind the password.
+- `devices.list` and the `devices` event: see the protocol.
 
-## Names (spec 022)
+Known issue: closing an engine within seconds of a join can hang in hypergraph (`specs/requests-to-hypergraph.md`
+B4), so the shell doesn't restart the engine after a join.
 
-The shell's `names.resolve { address, timeout? }` → `{ key, authority }`: `name@authority` resolved through
-HyperDNS (`file:../hyperDNS`, its library on the engine's own hypergraph), the first of its records that is a site
-key, `hyper://<key>` or an `hg:` link. The authority: one this engine holds (by its name), or any by its link
-(`name@hg:…`, joined read-only the first time). Errors: `UNKNOWN_AUTHORITY`, `AMBIGUOUS_AUTHORITY`, `UNKNOWN_NAME`,
-`UNAVAILABLE` (nobody holding it online; waits up to `timeout`, 10 s by default), `NOT_A_SITE`, `INVALID_PARAMS`.
-Pages can't call it (not one of a site's calls). Cost: `npm run perf:names` (the first lookup by link, which joins,
-then lookups by name). Creating authorities and publishing names: HyperDNS's own shell
-(`npm run shell` there) for now.
+## Names
 
-## The helper (spec 020)
+`names.resolve { address, timeout? }` → `{ key, authority }` resolves `name@authority` through HyperDNS
+(`file:../hyperDNS`, running on the engine's own hypergraph). The answer is the first of the name's records that
+is a site key, `hyper://<key>` or an `hg:` link. The authority is one this engine holds (by its name), or any
+authority by its link (`name@hg:…`, joined read-only the first time).
 
-`node engine/cli.js helper [--config <file>] [--dir <folder>] [--join hg:…]`: an always-on engine with its own
-identity that joins circles from its config file, holds always on, and keeps the official apps (and other keys)
-whole and up to date. Install, config and logs: [docs/helper.md](helper.md). It is `engine/helper.js`, driven
-through the engine's own calls as the shell is; `engine/helper-config.js` reads the file.
+Errors: `UNKNOWN_AUTHORITY`, `AMBIGUOUS_AUTHORITY`, `UNKNOWN_NAME`, `UNAVAILABLE` (nobody holding it is online;
+it waits up to `timeout`, 10 s by default), `NOT_A_SITE`, `INVALID_PARAMS`.
 
-## Which sites this device serves (spec 004)
+Only the shell calls it; pages can't. To create authorities and publish names, use HyperDNS's own shell
+(`npm run shell` in that repo). Cost: `npm run perf:names`.
 
-- **Installed** (`site.keep(true)`) and **your own** sites (owner, or admin: a project's co-author, spec 024): joined
-  and served from engine start, tab or not.
-- **Any other site**: joined while a tab shows it (`site.open` … `site.close`), and for a grace period after
-  its last tab closes (5 min: `init`'s `grace`). Then the engine leaves its space (SwarmFS `leave`, hypergraph
-  `leaveSpace`): it is no longer announced or served, and its records go from this device. Its files stay
-  in app storage; opening it again joins it again (someone must be online) and reuses them.
-- **Bundled apps** (spec 015): joined and served from engine start too, installed or not.
-- **At start**: before anything else, every site held here that is neither installed nor yours nor bundled is left
-  (sites joined by older versions, which never left one).
-- **Eviction** (app storage over its cap) deletes cached files whether the space is joined or not; a site
-  that isn't installed is left within the grace period of its last tab anyway.
-- **How many**: `hosting` → `{ sites }`, the sites joined here right now (the tray's "hosting 3 sites",
-  spec 010).
+## Notifications
 
-## Devices: one identity on several computers (spec 012)
+`engine/notifications.js`. An app's `site.json` `notifications` list (checked by `manifest.js`) is copied to the
+person's settings when they say yes (`site.permit { permission: 'notifications' }`) and refreshed at each open.
+The engine watches the app's instances with hypergraph's `space.since(cursor)`: one sequence number per log,
+never timestamps.
 
-hypergraph pairs devices; the engine passes it through:
-
-- **Add a device** (`devices.add`) gives a code. The new computer starts its engine in an **empty folder**
-  with `init { joinCode, deviceName }`: it becomes a device of the same identity (same key), and receives
-  the recovery phrase over the pairing connection.
-- **What follows the person** on every device: the spaces any of them created or joined (forums, sites,
-  instances), roles in them (each device records decisions as you), and the settings: answers to "use your
-  identity?", sites' own data (`hyper.mine`), apps' instance lists, and the installed sites
-  (`hyperbrowser/installed/<key>`; SwarmFS's own "kept" stays per device, so each device keeps the files
-  itself). A site installed on a device before 012 goes on that list at its next start.
-- **Remove a device** (`devices.remove`): what it does from then on counts for nobody (`DEVICE_REMOVED` on
-  that device). It needs the recovery phrase: plain on this device until protected (`devices.protect`), then
-  the password.
-- `devices.list`, the `devices` event: protocol.md. Test: `test/devices.test.js`.
-- **Known issue** (`specs/requests-to-hypergraph.md` B4): closing an engine within seconds of its join can
-  hang in hypergraph; the shell doesn't restart after a join for that reason.
-
-## Notifications (spec 016)
-
-`engine/notifications.js`: an app's `site.json` `notifications` (checked by `engine/manifest.js`) are copied to the
-person's settings when they say yes (`site.permit { permission: 'notifications' }`), and refreshed at each open.
-The engine watches the app's instances with hypergraph's `space.since(cursor)`: a seq per log, never stamps.
-
-- **Online**: Chat's conversations (the app `apps.set` names) held with `space.hold()`, up to 24; every other
-  watched place in turns, 2 at a time, 20 s each (`perf/turn.mjs` measures a turn: public DHT 9 to 22 s).
-- **This device**: `<engine dir>/notifications.json`: `cursors` (one per place) and `items` (the latest 200). Saved
-  only when something changed, atomically (temp file, rename), after the items were told: a crash may repeat
-  one, never lose one.
-- **The person's settings** (all their devices): `hyperbrowser/permissions` (the answer),
-  `hyperbrowser/notify/app/<app>` (`{ title, watches, hide }`), `notify/mute/<place>`, `notify/read/<place>`
-  (`{ [log, 16 hex]: next unread seq }`, 64 logs at most).
+- **What stays online**: the conversations of the app named by `apps.set` (Chat), held with `space.hold()`, up
+  to 24. Every other watched place is checked in turns, 2 at a time, 20 s each (`perf/turn.mjs` measures a
+  turn: 9 to 22 s on the public DHT).
 - **History isn't news**: a place's first look starts from now; a place still catching up stays silent (checked
-  every second) until it is complete once. At a launch, what is found in the first turn (20 s) is told at once,
-  as one summary.
-- **Messages** (shell only): `notify.state` → `{ items, unread: { total, byApp, byPlace }, apps }`;
-  `notify.set { app, allow?, hide? }` or `{ place, mute }`; `notify.read { place, app? }` (with `app`: refused
-  unless the place is that app's, for `hyper.notifications.viewing`). Event `notify`: `{ items, summary, unread }`.
-  `site.open` adds `notify: 'ask'` when the shell should ask.
+  every second) until it is complete once. What a launch finds in its first turn is told at once, as one
+  summary.
+- **This device**: `<engine dir>/notifications.json` holds `cursors` (one per place), `items` (the latest 200)
+  and `dots`. It is saved only when something changed, atomically (temp file, rename), after the items were
+  told: a crash may repeat one, never lose one.
+- **The person's settings** (all devices): `hyperbrowser/permissions` (the answer),
+  `hyperbrowser/notify/app/<app>` (`{ title, watches, hide }`), `notify/mute/<place>`, `notify/read/<place>`
+  (`{ [log, 16 hex]: next unread seq }`, 64 logs at most), and `hyperbrowser/notify/follow/<app>` (at most 100
+  per app).
+- **Dots**: a watch with `"show": "dot"` only sets the place's dot, cleared by `notify.read`.
+- **Follows**: watches added at runtime with a `place`, `where` and `by`, checked by `manifest.js`
+  `watch(w, types, true)`. Their items carry `follow` and `popup` and never count in `unread`.
+- **Handles**: an app instance's handle that no subscription uses is closed 30 s after its last call
+  (`init { idle }` in tests), so hypergraph can close its space once idle. A subscription keeps it open.
 - **Clean-up**: `instances.leave` and an uninstall (`site.keep false`) remove cursors, items, mute and read state.
-- **Spec 017**: a watch with `"show": "dot"` only sets the place's dot (`dots` in `notifications.json`, this
-  device's), cleared by `notify.read`. Follows: `hyperbrowser/notify/follow/<app>` (at most 100 per app), watches
-  with a `place`, `where` and `by`, checked by `manifest.js` `watch(w, types, true)`; their items carry `follow`
-  and `popup` and never count in `unread`. A page's own calls (`site.call`): `notifications.unread`, `.follow`,
-  `.unfollow`, `.follows`, and the `notifications` event (`site.on`): only the app's instance list, whatever
-  instance the page names. `since` is a site call too, at most 1000 records a call.
-- **Handles let go (spec 017 R1)**: an app instance's handle no subscription uses is closed 30 s after its last
-  call (`init { idle }` in tests), so its space can close once hypergraph finds it idle; a subscription keeps it,
-  and its end starts the 30 s again. `hosting` answers `handles` (those kept).
 
-`npm run perf` runs `perf/notifications.mjs` (SC-005: 50 watched places, nothing happening: memory and CPU over a
-few minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [runs] [--public]` measures a turn.
+Shell messages:
 
-## Circles (spec 018)
+- `notify.state` → `{ items, unread: { total, byApp, byPlace }, apps }`
+- `notify.set { app, allow?, hide? }` or `{ place, mute }`
+- `notify.read { place, app? }`; with `app`, refused unless the place is that app's (for
+  `hyper.notifications.viewing`)
+- event `notify`: `{ items, summary, unread }`
+- `site.open` answers `notify: 'ask'` when the shell should ask the question.
 
-`engine/circles.js`: hypergraph's circles (023, 5 copies 024) for the shell only; no page reaches `circles.*` or
-`holding.*` (`site.call` refuses them: `UNKNOWN_METHOD`).
+Site calls (`site.call`): `notifications.unread`, `.follow`, `.unfollow`, `.follows`, the `notifications` event
+(`site.on`), and `since` (at most 1000 records a call). All of them reach only the app's own instance list,
+whatever instance the page names.
 
-- **Messages**: `circles.list` → `[{ key, name, members, holders, total, role }]`; `circles.create { name }` and
-  `circles.join { link }` → `{ key, name, holding }`; `circles.invite { key }` → `{ link, expires }` (one use,
-  7 days; owner and admins; `CIRCLE_FULL` at 50); `circles.members { key }` → `[{ identity, name, role, you,
-  holds, share, used }]` (spec 021, hypergraph 026: `share`, `used` bytes across all their circles, null when not
-  holding or not reported; `total` the circle's shares ÷ 5, null while none is known; the frame adds `held` and
-  `totalLine`, the window's words: `storageText`, `totalText` in `shell/model.js`); `circles.rename { key, name }`, `circles.setRole { key, identity, role: 'admin' | 'member' }`,
-  `circles.remove { key, identity }`, `circles.leave { key }`; `holding.get` → `{ on, bytes, used, free }`;
-  `holding.set { on, bytes? }` (`bytes` at least 0.1 GB, at most the disk's free space + what is held − 2 GB, else
-  `TOO_BIG` "Only X GB free on this disk"). Event `circles` (300 ms after a change): read again.
-- **The list** is the person's setting `hyperbrowser/circles` (`{ [key]: true }`), written on create, join and
-  leave: `hg.spaces()` doesn't say which spaces are circles until they are open.
-- **Holding** runs while the engine runs. The first circle made or joined turns it on at 1 GB unless the person
-  set it before on this device (`<engine dir>/circles.json` `set`) or the disk lacks the room; `holding.set
-  { on: false }` deletes what is held (hypergraph).
-- **Who holds** (`holds`): from the circle's `hg/holder` records, the newest per device since the person's newest
-  `left` (as hypergraph reads them; `holdsFrom`).
-- **Rename**: hypergraph has no rename, so a `circle-name` record (`{ name }`, declared on the circle at create);
-  the latest by the owner or an admin wins, else the name it was made with.
-- **Share full**: checked every 30 s and after `holding.set`; told once when what is held reaches the share
-  (a HyperBrowser item, app and place `hyperbrowser`), again only after it went under 90% (`circles.json` `full`).
-- **The shell's contacts calls** (spec 019, besides `contacts.me`, `contacts.get { identity }` and
-  `contacts.request { identity, name }`): `contacts.list` → the list as `hyper.contacts.list()` gives it, and
-  `contacts.inviteToCircle { identity, circle }` → `true` (a friend only, else `NOT_FOUND`; owner and admins), for the
-  circles window's Invite contacts…; and (spec 020, the helper's name) `contacts.setMe { name?, findable? }` →
-  `true`, as `hyper.contacts.setMe`. Top-level messages: no page reaches them; a page still goes through `site.call`
-  and the `contacts` permission (`NOT_ALLOWED` without it).
-- **Site calls**: `copies` (on the page's handle, or a key: its own space, a sub-space, an app instance) and
-  `rotateKey` (on the handle, through `hg.space(key)`: the site handle has none); `site.on { event: 'copies' }`
-  tells that handle's copies when hypergraph's `copies` event changes them. Spec 023: `secure` and `trimHistory`
-  likewise (through `hg.space(key)`; hypergraph lets owners and admins only). A place renewed here or on another
-  device of the person: every app's instance list names its new key (on hypergraph's `spaces` event, one pass at a
-  time), and a call naming the old key reaches the new place.
+`npm run perf` runs `perf/notifications.mjs` (50 watched places, nothing happening: memory and CPU over a few
+minutes) and appends a line to `perf/history.jsonl`. `node perf/turn.mjs [runs] [--public]` measures a turn.
 
-`npm run perf:circles [-- --people 49 --friends 10 --minutes 1]` (`perf/circles.mjs`): 3 circles, Configuration's
-reads (`circles.list` + each `circles.members`) and the engine's idle CPU while holding, Tibo's engine alone; and
-(spec 019) Invite contacts… to `--friends` friends, one `contacts.inviteToCircle` after another (10: 133 ms in all,
-8 to 24 ms each, 2026-11-17).
+## Circles
 
-## Projects (spec 024)
+`engine/circles.js` wraps hypergraph's circles (5 copies of each space) for the shell only: `site.call` refuses
+`circles.*` and `holding.*` with `UNKNOWN_METHOD`.
 
-`engine/projects.js`: the `projects.*` site calls (docs/site-api.md), behind the `projects` permission
-(`site.permit { permission: 'projects' }`, as `contacts`). Facts and choices: `specs/024-site-files/plan.md`.
+| Message | Answer |
+|---|---|
+| `circles.list` | `[{ key, name, members, holders, total, role }]` |
+| `circles.create { name }`, `circles.join { link }` | `{ key, name, holding }` |
+| `circles.invite { key }` | `{ link, expires }`: one use, 7 days; owner and admins; `CIRCLE_FULL` at 50 |
+| `circles.members { key }` | `[{ identity, name, role, you, holds, share, used }]` |
+| `circles.rename { key, name }` | |
+| `circles.setRole { key, identity, role: 'admin' \| 'member' }` | |
+| `circles.remove { key, identity }`, `circles.leave { key }` | |
+| `holding.get` | `{ on, bytes, used, free }` |
+| `holding.set { on, bytes? }` | `bytes` at least 0.1 GB, at most free disk + held − 2 GB, else `TOO_BIG` |
 
-- **A project**: a private SwarmFS files space linked (both ways) to a folder under `init { projects }` (the shell
-  passes `Documents/HyperBrowser`; default `<engine dir>/projects`). The person's list is the setting
-  `hyperbrowser/projects` (`{ [space key]: { name } }`): each device links the projects it holds to a folder of its
-  own (on start, `spaces` and `settings`). `.swarmfsignore` gets `.git/` and `node_modules/` before every link.
-- **Built pages** (spec 026): `projects.build` writes them to `<engine dir>/builds/<project key>/`, never into the
-  project. A project's file of the same path wins in the preview and in Publish. `leave` removes them.
-- **Publish**: `site.json` checked, the files copied into `<engine dir>/versions/<site>/<n>/` (unchanged ones hard
-  links to the newest version; a copy where links fail), then copied over the site's pages folder
-  `<engine dir>/published/<site>/` (linked as `site.publish` links), changed files only. A device publishing a site
-  for the first time links that folder and waits up to 60 s for the pages already there (`BUSY` after). Roll back:
-  a version's files as a new version.
-- **Co-authors**: SwarmFS `editor`s of the project; the site owner's engine makes each one an `admin` of the site
-  (on the project's `members` event and after a Publish), and takes it back from those removed.
-- **Preview**: a private site never made public, its key in `<engine dir>/drafts.json` (`{ [project]: key }`);
-  `site.open` and `site.read` on it read the project folder, its calls need no consent. Reset: left, a new one.
-- `openFolder` takes a path: the shell fills it from the person's folder picker, never from the page.
-- Spec 025:
-  - `status` reads `.git/HEAD` and `.git/index` (v2, v3; size and mtime, as git's first check).
-  - `leave` writes `{ left: true }` into the list, so the person's other devices leave the project too.
-  - `site.on { event: 'projects' }` tells `{ project }` on SwarmFS's sync events.
-  - **Every** Publish waits until this device holds every page at its current version (a co-author's publish still
-    arriving would otherwise turn the new files into conflict copies). It reads SwarmFS's `held` records:
-    requests-to-swarmfs F9.
-- Paths: a page reaches only what the project syncs (`inside()`: never `.git`, `node_modules` or ignored paths, any
-  case; `.hyperbrowser.json` read-only). Short names (`GIT~1`) are refused, and the checks run again on the path as
-  the disk resolves it (native realpath: links and short names), so a link inside the project to `.git` is refused too. `remove` walks a folder itself: ignored paths stay, links are unlinked.
+The `circles` event fires 300 ms after a change: read the list again.
 
-`npm run perf:projects [-- --files 1000]`: two devices, 1000 files of 1 KB written into a project: on the other
-device in ~100 s (SwarmFS's pace); Publish: the first ~10 s, one file changed ~3.4 s (a visitor reads it ~6 s
-after the click; 2026-11-17, HDD).
+- `share` and `used` are a member's bytes across all their circles (null when not holding or not reported).
+  `total` is the circle's shares ÷ 5, null while none is known. The window's wording is in `shell/model.js`
+  (`storageText`, `totalText`).
+- **The list** is the setting `hyperbrowser/circles` (`{ [key]: true }`), written on create, join and leave,
+  because `hg.spaces()` can't tell which spaces are circles until they are open.
+- **Holding** runs while the engine runs. The first circle made or joined turns it on at 1 GB, unless the person
+  set it before on this device (`<engine dir>/circles.json` `set`) or the disk lacks room.
+  `holding.set { on: false }` deletes what is held.
+- **Who holds**: from the circle's `hg/holder` records, the newest per device since the person's newest `left`
+  (`holdsFrom`).
+- **Rename**: hypergraph has no rename, so a `circle-name` record (`{ name }`) declared on the circle at
+  create. The latest by a current owner or admin wins, else the name it was made with.
+- **Share full**: checked every 30 s and after `holding.set`. The person is told once when what is held reaches
+  the share (an item from app and place `hyperbrowser`), and again only after it went under 90%
+  (`circles.json` `full`).
 
-## Tests
+Site calls on a page's own space, sub-spaces and app instances (any other key is `NOT_ALLOWED`):
 
-```bash
-npm test               # Node: protocol, engine, sites, site API, hosting, two engines, the worker's heartbeat, the official site, the forum, bundled apps, notifications, circles (spec 018), names (spec 022), projects (spec 024)
-npm run test:bare      # the same on Bare (the worker test is Node only: it is skipped there)
-npm run test:sandbox   # the sandbox self-test, its control run (guards off, must fail), the frame check, the textures at 100/125/150 %, the tray (spec 010)
-npm run selftest       # the self-test alone, in a window: last line SELFTEST PASS
-npm run framecheck     # the frame alone (no OS frame, no app menu, sites under the bars): FRAMECHECK PASS
-```
+- `copies`, and `site.on { event: 'copies' }` when hypergraph's `copies` event changes them;
+- `rotateKey`, `secure`, `trimHistory`, through `hg.space(key)` (the site handle has none); hypergraph allows
+  owners and admins only.
 
-On Windows, put test temp folders on the SSD: `set HG_TEST_TMP=C:/Users/<you>/AppData/Local/Temp/hg-tests`
-(PowerShell: `$env:HG_TEST_TMP = '…'`). `HB_TEST_JOBS=2` runs two test files at a time.
+When a place is renewed (here or on another of the person's devices), every app's instance list is updated to
+its new key on hypergraph's `spaces` event, one pass at a time, and a call naming the old key reaches the new
+place.
 
-## Linux (not tested yet: Tibo)
+`npm run perf:circles [-- --people 49 --friends 10 --minutes 1]` measures 3 circles: the Configuration page's
+reads (`circles.list` and each `circles.members`), the engine's idle CPU while holding, and inviting `--friends`
+contacts one after another.
 
-The same commands. Expect from the spike:
+## Contacts
 
-```bash
-npm run test:sandbox    # both tests pass
-npm start -- --open <key>
-```
+`engine/contacts.js`; how Contacts and Chat use it: [chat.md](chat.md). The shell's own messages, which no page
+reaches: `contacts.me`, `contacts.get { identity }`, `contacts.request { identity, name }`, `contacts.list`,
+`contacts.inviteToCircle { identity, circle }` → `true` (a friend only, else `NOT_FOUND`; owner and admins of
+the circle), and `contacts.setMe { name?, findable? }` → `true`. A page goes through `site.call` and the
+`contacts` permission (`NOT_ALLOWED` without it).
 
-If Electron stops with "The SUID sandbox helper binary was found, but is not configured correctly", fix the
-helper; never use `--no-sandbox` (it turns off the OS sandbox the site views rely on):
+## Projects
 
-```bash
-sudo chown root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-```
+`engine/projects.js` implements the `projects.*` site calls ([site-api.md](site-api.md#projects)), behind the
+`projects` permission. Design: `specs/024-site-files/plan.md`.
+
+- **A project** is a private SwarmFS files space linked both ways to a folder under `init { projects }` (the
+  shell passes `Documents/HyperBrowser`; default `<engine dir>/projects`). The person's list is the setting
+  `hyperbrowser/projects` (`{ [space key]: { name } }`); each device links the projects it holds to a folder of
+  its own, on start and on `spaces` and `settings` events. `leave` writes `{ left: true }` there, so the
+  person's other devices leave too. `.swarmfsignore` gets `.git/` and `node_modules/` before every link.
+- **Paths**: a page reaches only what the project syncs (`inside()`): never `.git`, `node_modules` or ignored
+  paths, in any case; `.hyperbrowser.json` is read-only. Windows short names (`GIT~1`) are refused, and the
+  checks run again on the path as the disk resolves it (native realpath), so a link inside the project to `.git`
+  is refused too. `remove` walks a folder itself: ignored paths stay, links are unlinked, never followed.
+- **Built pages**: `projects.build` writes them to `<engine dir>/builds/<project key>/`, never into the project.
+  A project file with the same path wins in the preview and in Publish. `leave` removes them.
+- **Publish**: `site.json` is checked, then the files are copied into `<engine dir>/versions/<site>/<n>/`
+  (unchanged files are hard links to the newest version; copies where links fail), then copied over the site's
+  pages folder `<engine dir>/published/<site>/` (changed files only). Every Publish first waits until this
+  device holds every page at its current version (read from SwarmFS's `held` records): otherwise a co-author's
+  publish still arriving would turn the new files into conflict copies. A device publishing a site for the
+  first time links that folder and waits up to 60 s for the pages already there (`BUSY` after). A roll back
+  publishes an old version's files as a new version.
+- **Co-authors** are SwarmFS `editor`s of the project. The site owner's engine makes each one an `admin` of the
+  site (on the project's `members` event and after a Publish), and removes those taken off.
+- **Preview**: a private site, never made public, whose key is kept in `<engine dir>/drafts.json`
+  (`{ [project]: key }`). `site.open` and `site.read` on it read the project folder; its calls need no consent.
+  A reset leaves it and makes a new one.
+- **`openFolder`** takes a path, which the shell fills from the person's folder picker, never from the page.
+- **`status`** reads `.git/HEAD` and `.git/index` (versions 2 and 3; size and mtime, as git's first check). It
+  never runs git.
+- `site.on { event: 'projects' }` tells `{ project }` on SwarmFS's sync events.
+
+`npm run perf:projects [-- --files 1000]`: two devices, 1000 files of 1 KB written into a project, and the
+times to sync and to publish.
+
+## Errors that escape
+
+An error nobody caught in the engine (a bug) doesn't stop it. The engine logs it with its stack (in the shell's
+console as `engine: escaped error …`), tells the shell (`engine.error { message, code, method }`) and keeps
+running. Without this, Bare would abort the engine and the app would quit. The shell writes it to its log and
+tells the person once a session ([shell.md](shell.md)). The tests don't do this: there an escaped error fails
+the test (on Bare its exit code is 3221226505, which is not a native crash).
+
+## Heartbeat
+
+The engine stops by itself if the shell sends no heartbeat for 6 s: on Windows, a crashed or killed shell gives
+the engine no other sign.
 
 ## Notes
 
-- The engine stops by itself if the shell stops sending heartbeats for 6 s (a crashed or killed shell on
-  Windows gives the engine no other sign).
-- An error nobody caught in the engine (a bug) doesn't stop it: the engine logs it with its stack (the shell's
-  console, as `engine: escaped error …`), tells the shell (`engine.error` { message, code, method }), and keeps
-  running. The shell writes it to its log (`hyperbrowser.log` when installed) and shows "Something went wrong in
-  HyperBrowser's engine. It kept running." once a session. Without this, Bare would abort the engine and the app
-  would quit. The tests don't do this: there an escaped error fails the test (on Bare its exit code is
-  3221226505, which is not a native crash).
-- The first time the engine goes online on Windows, Windows Firewall may ask about `bare.exe`: allow it on
-  private networks, or other devices on your network can't reach it directly.
-- The sandbox: one view per site with its own storage, only `hyper://<its key>/` loads, no Node, no files, no
-  web, no pop-ups, no device permissions; the shell takes the site from the view, never from the page.
-  WebAssembly is allowed (CSP `'wasm-unsafe-eval'`, spec 008): it runs in that same sandbox.
+- The first time the engine goes online on Windows, Windows Firewall may ask about `bare.exe`. Allow it on
+  private networks, or other devices on the network can't reach it directly.
+- Tests: [CONTRIBUTING.md](../CONTRIBUTING.md#test).

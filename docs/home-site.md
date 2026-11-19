@@ -1,4 +1,4 @@
-# The official site (`sites/home`, spec 005)
+# The official site (`sites/home`)
 
 HyperBrowser's own site: user documentation and news. Written in [HyperMD](../../HyperMD), static (no
 hypergraph API, no script yet). One source, two outputs:
@@ -13,7 +13,7 @@ first, with `hypermd build`, for both.
 
 | | |
 |---|---|
-| `index.hmd`, `start.hmd`, `publish.hmd`, `news.hmd` | the pages; `::page{order=N}` sets their place in the menu |
+| `index.hmd`, `start.hmd`, `publish.hmd`, `forum.hmd`, `friends.hmd`, `news.hmd` | the pages; `::page{order=N}` sets their place in the menu |
 | `_layout.hmd` | the frame around every page: the menu (`::menu`), the page (`::content`), the footer |
 | `style.css` | the look (linked from every page by the builder) |
 | `fonts/` | Cozette (MIT, the same files as the shell's) and IBM Plex Mono, latin (SIL OFL 1.1); licences next to them |

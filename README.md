@@ -1,48 +1,80 @@
 # HyperBrowser
 
-A peer-to-peer browser: sites live with their owner and their visitors, not on a server.
+A peer-to-peer browser. A site lives with its owner and its visitors, not on a server: you open it by its key
+(or a name such as `blog@bobsDNS`), and every visitor helps serve it. HyperBrowser comes with its own apps,
+built as ordinary sites: a forum, Chat, Contacts, an app store and an IDE for making sites.
 
-- Built on [hypergraph](../hypergraph) (spaces, identity, roles), [SwarmFS](../SwarmFS) (a site's files)
-  and [HyperMD](../HyperMD) (pages), on the Holepunch stack.
-- Desktop shell on Pear (`pear-runtime`): Windows and Linux. Android and iOS later.
-- Milestone 1: the official HyperBrowser site and the official forum, opened by key.
-  Design: [docs/design-milestone-1.md](docs/design-milestone-1.md).
+<!-- TODO: screenshot of the desktop and a site open in a tab (docs/screenshot.png) -->
 
-Status: early work. Spec 001: the engine and serving sites; spec 002: the shell's interface; spec 003: install;
-spec 004: installing decides which sites this device serves; spec 005: the official site (`sites/home`); spec 006:
-the official forum (`sites/forum`); spec 022: names (`blog@bobsDNS`) in the address bar, through
-[HyperDNS](../hyperDNS) (a sibling checkout, `file:../hyperDNS`). Spec 024: projects (folders synced with your devices and
-co-authors, an explicit Publish with versions); spec 025: the IDE (`sites/ide`).
-Using the shell: [docs/shell.md](docs/shell.md); the engine and the command line: [docs/engine.md](docs/engine.md);
-writing a site: [docs/site-api.md](docs/site-api.md); the official site: [docs/home-site.md](docs/home-site.md);
-the forum: [docs/forum.md](docs/forum.md); contacts and chat (spec 013): [docs/chat.md](docs/chat.md); building, releasing and updates (spec 011):
-[docs/packaging.md](docs/packaging.md); the always-on helper for a server (spec 020): [docs/helper.md](docs/helper.md); the IDE (spec 025): [docs/ide.md](docs/ide.md).
+Status: early. Windows and Linux; macOS builds but is untested.
 
-## Launch
+## Quick start
+
+HyperBrowser depends on sibling checkouts (`file:` dependencies). Put them side by side in one folder:
+
+```
+P2P/
+  swarmwire/   hypergraph/   SwarmFS/   hyperDNS/   HyperMD/   HyperBrowser/
+```
+
+Run `npm install` in each, in that order (each one's `file:` dependencies first), then in `HyperBrowser`:
 
 ```bash
-npm i
 npm start
 ```
 
-`npm start` opens HyperBrowser on its desktop; paste a site key in the address field, or type a name (`name@authority`, see [docs/shell.md](docs/shell.md)). To have a site to open,
-publish the demo site in another terminal (it prints its key and stays online):
+To have a site to open, publish the demo site in another terminal. It prints a key and stays online; paste the
+key into the address bar.
 
 ```bash
 node engine/cli.js publish sites/demo
 ```
 
-`npm start -- --open <key>` opens that site in a tab at launch.
-
-## Install without git
-
-`npm run build` makes `out/dist/HyperBrowser.zip` (Windows: a folder to extract) or
-`out/dist/HyperBrowser.AppImage` (Linux). Either updates itself over P2P through Pear. Releasing: [docs/packaging.md](docs/packaging.md).
-
-## Tests
+Tests:
 
 ```bash
 npm test && npm run test:bare && npm run test:sandbox
 ```
+
+More on the tests, and on temp folders: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## How it is built
+
+```
+ ┌──────────────── shell (Electron, shell/) ────────────────┐
+ │  window, tabs, desktop, tray                             │
+ │  ┌──────────┐ ┌──────────┐ ┌──────────┐                  │
+ │  │ site view│ │ site view│ │ site view│  one sandboxed   │
+ │  │ (Chat)   │ │ (Forum)  │ │ (a site) │  view per site   │
+ │  └────┬─────┘ └────┬─────┘ └────┬─────┘                  │
+ │       └── window.hyper (preload) ── checked by the shell │
+ └───────────────────────────┬──────────────────────────────┘
+                             │ framed messages over one stream
+ ┌───────────────────────────┴──────────────────────────────┐
+ │ engine (Bare worker, engine/)                            │
+ │ identity, devices, sites, notifications, circles,        │
+ │ projects, contacts, names                                │
+ │      hypergraph (spaces, roles)   SwarmFS (files)        │
+ │      HyperDNS (names)             Hyperswarm (network)   │
+ └──────────────────────────────────────────────────────────┘
+```
+
+- **The shell** (`shell/`) is the Electron window. Each site runs in its own sandboxed view: it loads only
+  `hyper://<its key>/`, with no Node, no file system and no web. Only the shell talks to the engine, and it
+  names the site from the view, never from the page.
+- **The engine** (`engine/`) holds the identity, the network and every site's data. It runs as a Bare worker in
+  the app, or on Node or Bare from the command line (`engine/cli.js`), for example on a server
+  ([the helper](docs/helper.md)).
+- **Sites** (`sites/`) are folders with a `site.json`. A static site serves files; a dynamic site's pages get
+  `window.hyper`, the hypergraph API for the site's own space. The official apps live here: `home`, `forum`,
+  `chat`, `contacts`, `apps`, `ide`.
+- **SwarmFS** stores and syncs a site's files; **hypergraph** gives spaces, identities, roles and records.
+
+## Where next
+
+- [docs/](docs/README.md): how each part works, for developers.
+- [docs/site-api.md](docs/site-api.md): writing a site.
+- [CONTRIBUTING.md](CONTRIBUTING.md): setting up, testing and sending a change.
+- `specs/`: the design history of each feature.
 
 License: MIT.

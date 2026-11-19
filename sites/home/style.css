@@ -1,4 +1,4 @@
-/* HyperBrowser's look (docs/design-milestone-1.md, "Visual identity"): System 1's look, 1-bit black and white
+/* HyperBrowser's look (specs/design-milestone-1.md, "Visual identity"): System 1's look, 1-bit black and white
    plus one accent; Cozette for the interface and titles, IBM Plex Mono for the text. Dark = the same, inverted. */
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette.woff2) format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette-bold.woff2) format('woff2'); font-weight: 700; font-display: swap; }

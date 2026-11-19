@@ -1,4 +1,4 @@
-# The helper (spec 020)
+# The helper
 
 An always-on HyperBrowser engine for a server (a VPS): it joins your circles like a person and holds their spaces,
 so two people who are never online together still get each other's messages, and it keeps the official apps online
@@ -75,7 +75,7 @@ two helpers in a circle of two people may keep every copy on servers.
 
 ## Apps
 
-Each app is kept whole (every file, not only what a page read) and followed live: when Tibo runs
+Each app is kept whole (every file, not only what a page read) and followed live: when the owner runs
 `npm run apps:seed`, the new version reaches the helper while both are online (seconds; a test checks under 30 s),
 with no restart, and the helper serves it. An app not reachable yet (nobody serving it) is tried again every minute.
 The **official forum** is an invite-only instance (docs/forum.md): a stranger can't open it by its key, the helper
@@ -91,10 +91,10 @@ sizes.
 An error nobody caught (a bug) is one line, `escaped error <code> in <method>: <message>` (code and method when
 it has them), and the helper keeps running: no restart, nothing re-joined.
 
-## Not in v1
+## Not yet
 
 A helper built into HyperBrowser (pairing code), answering invites, a status command, Docker, Windows or ARM
 service files (ARM may just work: untested).
 
 `npm run perf:helper [-- --people 3 --minutes 1]` (`perf/helper.mjs`): the helper alone in a fresh process, joined
-to a circle of 4 and keeping the official apps: idle CPU and memory (0.3 % of a core, 113 MB resident, 2026-11-17).
+to a circle of 4 and keeping the official apps: idle CPU and memory (about 0.3 % of a core and 113 MB resident when last measured).
