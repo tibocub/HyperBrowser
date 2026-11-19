@@ -1,5 +1,3 @@
-// The Chat app (sites/chat): its lib on the site API as its page sees it, engines on a local DHT.
-// Friends by contact link (no DHT wait); a group whose owner hands out rights.
 import test from 'brittle'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -20,7 +18,6 @@ async function person (t, key, name) {
   return { e, hyper, c: chat(hyper), id: (await hyper.contacts.me()).identity }
 }
 
-// a and b friends through a contact link: b's contact entry for a
 async function befriend (a, b) {
   const { link } = await a.hyper.contacts.link()
   await b.hyper.contacts.add(link)
@@ -30,7 +27,6 @@ async function befriend (a, b) {
 const contactOf = async (p, other) => (await p.hyper.contacts.list()).find((x) => x.identity === other.id)
 const texts = async (p, key) => (await p.hyper.instance(key).query('message').latest(50)).items.map((m) => m.text)
 
-// b joins the group from the invite a sent in their direct conversation
 async function joinFromInvite (b, a) {
   const direct = (await contactOf(b, a)).chat
   let invite = null
@@ -67,7 +63,6 @@ test('a direct conversation and a group where the owner hands out rights', async
   const { key } = await owner.rpc.request('site.publish', { folder: FOLDER })
   const [ann, bob, cleo, dan] = [await person(t, key, 'Ann'), await person(t, key, 'Bob'), await person(t, key, 'Cleo'), await person(t, key, 'Dan')]
 
-  // direct: listed with the friend, private, messages both ways
   await befriend(ann, bob)
   const direct = (await ann.c.conversations()).find((x) => x.direct?.identity === bob.id)
   t.ok(direct, 'the direct conversation, named by the contact')
@@ -75,7 +70,6 @@ test('a direct conversation and a group where the owner hands out rights', async
   t.ok(await eventually(async () => (await texts(bob, direct.key)).includes('hi Bob'), 15000), 'Bob reads it')
   t.is(await codeOf(ann.c.send(direct.key, '  ')), 'INVALID_INPUT')
 
-  // a group: Ann owns it; Bob comes in through the invite in their direct conversation
   await befriend(ann, cleo)
   const g = await ann.c.group('Climbing')
   t.is((await ann.c.conversations()).find((x) => x.key === g.key).role, 'owner')
@@ -85,7 +79,6 @@ test('a direct conversation and a group where the owner hands out rights', async
   await joinFromInvite(cleo, ann)
   t.ok(await eventually(async () => (await ann.c.names(g.key)).get(bob.id) === 'Bob', 15000), 'names in the group')
 
-  // a member can't add people; once Ann grants it, Bob adds his friend Dan
   await befriend(bob, dan)
   t.is(await codeOf(bob.c.add(g.key, 'Climbing', await contactOf(bob, dan))), 'NOT_ALLOWED', 'members don\'t add people')
   await ann.c.grant(g.key, bob.id, 'inviter')
@@ -94,7 +87,6 @@ test('a direct conversation and a group where the owner hands out rights', async
   await joinFromInvite(dan, bob)
   t.is(await codeOf(bob.c.grant(g.key, dan.id, 'moderator')), 'NOT_ALLOWED', 'an inviter gives no rights')
 
-  // Cleo, moderator: removes Bob's message, bans Dan; Dan reads nothing written after
   await ann.c.grant(g.key, cleo.id, 'moderator')
   const m = await bob.c.send(g.key, 'rude')
   t.ok(await eventually(async () => (await texts(cleo, g.key)).includes('rude'), 15000))
@@ -111,7 +103,6 @@ test('a direct conversation and a group where the owner hands out rights', async
   t.absent((await texts(dan, g.key)).includes('after Dan'), 'Dan, banned, doesn\'t')
 })
 
-// a conversation's copies line, and a circle's invite as a message
 test('copies: "Kept by N of 5 copies, M online", a warning under 2 online, nothing without a circle', (t) => {
   t.is(copiesLine({ wanted: 0, kept: 0, online: 0 }), null, 'nothing handed: no line')
   t.alike(copiesLine({ wanted: 5, kept: 4, online: 3 }), { text: 'Kept by 4 of 5 copies, 3 online', warn: null })
@@ -146,8 +137,6 @@ test("a circle's invite from Contacts: a message in the friends' conversation, w
   t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).length === 2, 30000), 'Bob is in')
 })
 
-// the circles window's Invite contacts… (the shell's own contacts.list and
-// contacts.inviteToCircle: no page reaches them) and Join with a link… (circles.join with the pasted link)
 test("the shell invites two friends to a circle: each finds it in Chat; a pasted link joins", async (t) => {
   t.timeout(300000)
   const owner = await engine(t)
@@ -171,7 +160,7 @@ test("the shell invites two friends to a circle: each finds it in Chat; a pasted
   const mc = await got(c, fromC.chat)
   t.ok(mb && mc, 'each finds the invite in their conversation with Ann')
   t.not(mb.circle, mc.circle, 'one link per friend')
-  await b.e.rpc.request('circles.join', { link: mb.circle }) // Join with a link…: the pasted link
+  await b.e.rpc.request('circles.join', { link: mb.circle })
   t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).some((m) => m.identity === b.id), 30000), 'Bob is in')
   t.is(await codeOf(c.e.rpc.request('circles.join', { link: mb.circle })), 'INVITE_USED_UP', "Bob's link is spent: Cid can't use it")
 })

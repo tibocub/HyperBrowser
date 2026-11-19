@@ -1,20 +1,4 @@
-// A file tree: folders that open and close, icons, one selection, rename in place, a context menu (right
-// click, the Menu key, Shift+F10). No framework and nothing of the IDE's: HyperBrowser's file manager reuses it (a site
-// loads only its own files, so it takes a copy of this file). It draws and asks; the caller does the work.
-//
-//   const tree = fileTree(element, {
-//     label: 'Files',                         // the tree's accessible name
-//     open (path) {},                         // a file chosen (click, Enter)
-//     rename (from, to) {},                   // F2 or the menu's "Rename" (`rename: true` below): may throw, the name is kept
-//     menu (path, kind) { return [[label, fn] | null, ...] },  // the context menu for a row (null path: the empty area);
-//                                             // null draws a separator; fn() runs once the menu has closed
-//     mark (path) { return '' }               // a short mark after a name (a changed file: '•')
-//   })
-//   tree.set(items)        // [{ path, folder? }]: files, and folders (empty ones too); a file's folders are implied
-//   tree.select(path)      // the selected row (an open file); its folders opened
-//   tree.rename(path)      // the row becomes a text field: Enter renames, Escape cancels
-//   tree.selected          // the selected path, or null
-//   tree.expanded          // Set of the open folders' paths (kept by the caller across reloads if it wants)
+// No framework and nothing of the IDE's: the file manager will take a copy (a site loads only its own files).
 
 const ICON = {
   folder: '<path d="M1 3h4l1 1h5v7H1z" fill="var(--paper, Canvas)" stroke="currentColor"/>',
@@ -22,7 +6,6 @@ const ICON = {
   file: '<path d="M2.5 1.5h5l3 3v8h-8z" fill="var(--paper, Canvas)" stroke="currentColor"/><path d="M7.5 1.5v3h3" fill="none" stroke="currentColor"/>'
 }
 
-// [{ path, folder? }] → the tree's nodes: { name, path, folder, children } sorted folders first, then by name.
 export function nest (items) {
   const root = { path: '', folder: true, children: new Map() }
   const at = (path, folder) => {
@@ -63,7 +46,6 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
     showMenu(row ? row.dataset.path : null, row ? row.dataset.kind : null, e.clientX, e.clientY)
   })
 
-  // The rows shown: open folders' children, in order.
   function visible (list = nodes, level = 1, out = []) {
     for (const n of list) {
       out.push({ ...n, level })
@@ -131,7 +113,7 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
     } else {
       const name = document.createElement('span')
       name.textContent = r.name
-      name.style.cssText = 'flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis' // cut at the end, the whole name in the tooltip
+      name.style.cssText = 'flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis'
       li.title = r.path
       li.append(name)
       const m = mark(r.path)
@@ -187,7 +169,6 @@ export function fileTree (el, { label = 'Files', open = () => {}, rename = null,
     draw()
   }
 
-  // The context menu: floats at (x, y) over everything, moves nothing; arrow keys, Escape, a click outside close it.
   function showMenu (path, kind, x, y) {
     const items = menu(path, kind)
     if (!items.length) return

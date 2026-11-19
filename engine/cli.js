@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-// The engine without a window (specs/001-engine/contracts/cli.md): the same start() as the shell's
-// worker, on one end of an in-process stream. Node or Bare:
-//   node engine/cli.js publish <folder> [--dir d] [--bootstrap host:port,...] [--instance name] [--invite member|admin] [--once]
-//   node engine/cli.js open <key> [--dir d] [--bootstrap host:port,...] [--once]
-//   node engine/cli.js helper [--config file] [--dir d] [--join hg:...] [--bootstrap host:port,...]
 import process from 'process'
 import fs from 'fs'
 import os from 'os'
@@ -84,8 +79,7 @@ async function run (rpc) {
   console.log(`entry bytes: ${bytes.byteLength}`)
 }
 
-// The helper: the config file read at start and again when it changes (the folder watched: editors
-// replace the file), `dir` only at start. SIGINT and SIGTERM close it.
+// Watch the folder, not the file: editors replace the file on save.
 async function runHelper () {
   const file = opts.config || configFile()
   const preset = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'shell', 'preset.json')

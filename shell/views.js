@@ -1,7 +1,4 @@
-// The one interface a site's view sits behind (desktop: an Electron WebContentsView; mobile later: a native
-// WebView with the same rules). Each site: its own session (cookies, storage, cache), hyper://<its key>/
-// only, nothing else loads, no pop-ups, no navigation away, no device permissions. A static site gets no
-// preload, so no API at all. `guards: false` is the self-test's control run only.
+// A static site gets no preload, so no API at all. `guards: false` is the self-test's control run only.
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -15,11 +12,10 @@ const CSP = "default-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' data: blob:"
 const THEME = fs.readFileSync(path.join(HERE, 'ui', 'theme.css'), 'utf-8')
   .replace(/url\(fonts\/([\w.-]+)\)/g, (m, f) => 'url(data:font/woff2;base64,' + fs.readFileSync(path.join(HERE, 'ui', 'fonts', f)).toString('base64') + ')')
 
-// serve(key, path) → { bytes, type } or throws with a code; returns { view, webContents, close }.
 export function createSiteView (key, { dynamic, serve, guards = true, persist = true, query = '' }) {
   const ses = session.fromPartition((persist ? 'persist:' : '') + 'site-' + key)
   const origin = 'hyper://' + key + '/'
-  if (ses.protocol.isProtocolHandled('hyper')) ses.protocol.unhandle('hyper') // the site opened again
+  if (ses.protocol.isProtocolHandled('hyper')) ses.protocol.unhandle('hyper')
   ses.protocol.handle('hyper', async (req) => {
     const url = new URL(req.url)
     if (guards && url.host !== key) return new Response('not this site', { status: 404 })

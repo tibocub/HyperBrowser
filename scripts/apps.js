@@ -1,14 +1,10 @@
-// HyperBrowser's official apps (`npm run apps:publish`): each published from its folder on the owner's engine,
-// its key written in shell/preset.json, and listed in the Apps store with its site.json's title,
-// `description` and icon. A folder keeps its key, so a rerun changes nothing.
 import fs from 'fs'
 import path from 'path'
 import b4a from 'b4a'
 import { publish } from '../engine/publish.js'
 
 // id: the preset entry (an id not in preset.json: listed in the store only); store: the Apps site itself.
-// The forum's key is its official instance's (docs/forum.md). To add an app: a line here, a description in its
-// site.json, then npm run apps:publish.
+// To add an app: a line here, a description in its site.json, then npm run apps:publish.
 export const APPS = [
   { id: 'preset:hb', folder: 'out/home' },
   { id: 'preset:forum', folder: 'sites/forum', instance: 'HyperBrowser' },
@@ -20,9 +16,7 @@ export const APPS = [
 const ICON_MAX = 16 * 1024
 const MIME = { svg: 'image/svg+xml', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }
 
-// Publishes `apps` (folders relative to `root`) on `rpc` (an init'ed engine) and writes their keys into the
-// preset file. A different key already there stays unless `replace` (another folder path, or another engine
-// folder, makes new sites: installs point at the old key). → [{ id, key, was, kept }] (was: null for a new one).
+// Another folder path or engine folder makes new sites, so a different key already there stays unless `replace`.
 export async function publishApps (rpc, { root, preset, apps = APPS, replace = false, log = () => {} }) {
   const keys = {}
   for (const app of apps) {
@@ -53,7 +47,6 @@ export async function publishApps (rpc, { root, preset, apps = APPS, replace = f
 // one entry a line, as preset.json is written by hand: { "id": "…", "key": "…" }
 const line = (p) => '  { ' + Object.entries(p).map(([k, v]) => JSON.stringify(k) + ': ' + JSON.stringify(v)).join(', ') + ' }'
 
-// The store's entry for an app's folder: its site.json's title, description and icon (a data: URL, ≤ 16 KB).
 function entry (folder, key, order) {
   const m = JSON.parse(fs.readFileSync(path.join(folder, 'site.json'), 'utf-8'))
   const type = MIME[String(m.icon).split('.').pop().toLowerCase()]
@@ -62,7 +55,6 @@ function entry (folder, key, order) {
   return { key, title: m.title, about: m.description || '', icon, order }
 }
 
-// Puts the entries missing from the store, edits the ones that differ (matched by key). → [{ title, how }]
 async function list (rpc, store, entries) {
   // the owner's own engine: running the command is the owner saying yes
   await rpc.request('site.open', { key: store })

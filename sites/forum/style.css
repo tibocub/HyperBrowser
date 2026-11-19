@@ -1,5 +1,3 @@
-/* The forum's look (mockup/): sites/home's tokens and fonts. System 1's look, 1-bit black and
-   white plus one accent; Cozette for the interface and the tree, IBM Plex Mono for post text. Dark = inverted. */
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette.woff2) format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette-bold.woff2) format('woff2'); font-weight: 700; font-display: swap; }
 @font-face { font-family: 'Plex Mono'; src: url(fonts/plex-mono-400-normal.woff2) format('woff2'); font-weight: 400; font-display: swap; }
@@ -21,7 +19,6 @@
 /* the dithered desk, fixed to the window: it never moves when the page scrolls (no moiré) */
 html { background-color: var(--paper); background-image: repeating-conic-gradient(var(--ink) 0 25%, var(--paper) 0 50%);
   background-size: calc(2 * var(--px)) calc(2 * var(--px)); background-attachment: fixed; }
-/* an app fits the window; its columns and its desk scroll, never the page */
 html { overflow: hidden; }
 /* a long word (an hg: link) in a post, a title or a name wraps anywhere rather than widen the page */
 body { margin: 0; height: 100vh; overflow: hidden; overflow-wrap: anywhere; font: 13px/1.6 'Cozette', 'Plex Mono', ui-monospace, monospace; color: var(--ink); }
@@ -34,7 +31,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .pad-x { padding: 0 24px; }
 .loading { margin: 32px; background: var(--paper); display: inline-block; padding: 4px 10px; border: 1px solid var(--ink); }
 
-/* the forum's own bar (not a copied menu bar: its places) */
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; padding: 3px 16px; background: var(--paper); border-bottom: 1px solid var(--ink); font-weight: 700; }
 .bar a { text-decoration: none; display: flex; align-items: center; gap: 6px; }
 .bar a[aria-current="page"] { text-decoration: underline; }
@@ -45,7 +41,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .banner, .notice { box-sizing: border-box; width: calc(100% - 32px); }
 
-/* a window: striped title bar, panes, a status line */
 .desk { padding-bottom: 40px; height: 100vh; overflow-y: auto; box-sizing: border-box; }
 .window { max-width: 1128px; margin: 32px auto 0; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); box-sizing: border-box; width: calc(100% - 32px); }
 .title { display: flex; align-items: center; height: 22px; padding: 4px 8px; border-bottom: 1px solid var(--ink); }
@@ -54,7 +49,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .status { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 4px 12px; border-top: 1px solid var(--ink); }
 .rule { white-space: pre; overflow: hidden; }
 
-/* two columns on the left, like a chat app's: your forums, then this forum's boards; each scrolls */
 .layout { display: flex; align-items: flex-start; }
 .layout > .desk { flex: 1 1 auto; min-width: 0; }
 .forums, .boards { height: 100vh; overflow-y: auto; box-sizing: border-box; flex: 0 0 auto; background: var(--paper); border-right: 1px solid var(--ink); padding: 0 0 16px; }
@@ -93,7 +87,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .head h2, .big { margin: 0; font-size: 26px; line-height: 1.3; font-weight: 700; flex: 1 1 auto; }
 .about { margin: 6px 0 0; }
-/* a button that stands out: square, whole pixels, the windows' 2px hard shadow; pressed, it sinks */
 .btn { display: inline-block; padding: 6px 16px; min-height: 36px; box-sizing: border-box; border: 1px solid var(--ink); background: var(--paper); box-shadow: 2px 2px 0 var(--ink); font-weight: 700; cursor: pointer; text-decoration: none; }
 .btn:active { transform: translate(2px, 2px); box-shadow: none; background: var(--ink); color: var(--paper); }
 .link { min-height: 32px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; text-decoration: underline; }
@@ -120,7 +113,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .vote[aria-pressed="true"] { color: var(--accent); }
 .score { min-width: 3ch; text-align: center; }
 
-/* a thread */
 .thread { padding: 20px 24px 8px; }
 .op { margin-top: 14px; }
 .op .meta { margin-top: 8px; }
@@ -138,7 +130,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .fold { min-width: 28px; min-height: 28px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .new { color: var(--accent); }
 
-/* post text: Plex Mono */
 .text, textarea.text, .snippet { font-family: 'Plex Mono', ui-monospace, monospace; font-size: 14px; line-height: 1.6; max-width: 72ch; }
 .text p { margin: 2px 0 8px; }
 .text blockquote { margin: 4px 0 6px; padding: 2px 10px; border-left: 1px solid var(--ink); font-size: 13px; }
@@ -150,7 +141,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .mention { text-decoration: underline dotted; }
 .snippet { margin: 4px 0 0; }
 
-/* writing */
 .composer { margin: 0 24px 24px; padding: 14px 16px 16px; border: 1px solid var(--ink); }
 .reply .composer { margin: 8px 0 0; }
 .op .composer { margin: 0; }
@@ -165,7 +155,6 @@ input, select { padding: 4px 8px; border: 1px solid var(--ink); background: var(
 .suggest .link { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
 .invite { padding: 0 0 12px; border-bottom: 1px solid var(--ink); }
 
-/* the icon editor: 16×16 */
 .icon-edit { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
 .grid { display: grid; grid-template-columns: repeat(16, 16px); border: 1px solid var(--ink); }
 .px { width: 16px; height: 16px; padding: 0; border: 0; border-right: 1px dotted var(--hover); border-bottom: 1px dotted var(--hover); background: var(--paper); cursor: pointer; }

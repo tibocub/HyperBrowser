@@ -1,5 +1,3 @@
-// Federated apps: an app's instances, owned by whoever made them, reached by that app only.
-// Through the site API as a page sees it (siteApi() is window.hyper), engines on a local DHT.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -8,7 +6,6 @@ import { engine, siteFolder, siteApi, codeOf, eventually, sleep, text } from './
 const NOTE = { note: { fields: { text: 'string' } } }
 const APP = { manifest: { title: 'Forums', permissions: ['space'], types: NOTE }, files: { 'index.html': '<h1>v1</h1>' } }
 
-// The author publishes the app; `people` engines open it and allow it. → { author, key, folder, apis: [hyper of each] }
 async function app (t, people, opts = APP) {
   const author = await engine(t)
   const folder = siteFolder(t, opts)
@@ -39,7 +36,6 @@ test('two people each create an instance: each owns theirs, neither has authorit
   t.is((await ia.info()).app, key, 'an instance names its app')
   t.is((await ia.put('note', { text: 'hi from A' })).text, 'hi from A', 'the app\'s types work in it')
 
-  // B joins A's forum as a member: no authority there
   const link = await ia.createInvite({ role: 'member' })
   const joined = await b.hyper.instances.join(link)
   t.is(joined.key, fa.key)
@@ -51,7 +47,6 @@ test('two people each create an instance: each owns theirs, neither has authorit
   t.is(await codeOf(ba.moderateAction('hide', (await ia.query('note').latest(1)).items[0].id, { reason: 'x' })), 'NOT_ALLOWED', 'nor hide A\'s post')
   t.is(await ia.getRole(b.me), 'member')
 
-  // the app's author: no role in either
   const authorHyper = (await opened(t, key, author)).hyper
   t.is(await codeOf(authorHyper.instance(fa.key).info()), 'NOT_ALLOWED', 'the app\'s author doesn\'t reach A\'s forum')
   t.is(await ia.getRole((await authorHyper.info()).identity), null, 'and has no role in it')
@@ -148,7 +143,6 @@ test('an app reaches only its own instances (guards)', async (t) => {
   const { key, people: [a] } = await app(t, 1)
   const other = await app(t, 1)
   const fa = await a.hyper.instances.create('A forum')
-  // the other app, on A's engine
   const ao = (await opened(t, other.key, a.e)).hyper
   const fo = await ao.instances.create('Other app\'s forum')
 
@@ -159,7 +153,6 @@ test('an app reaches only its own instances (guards)', async (t) => {
   t.is(await codeOf(a.hyper.instance('nope').info()), 'INVALID_KEY')
   t.is(await codeOf(a.hyper.instance(key).info()), 'NOT_ALLOWED', 'the app\'s own key is not an instance')
 
-  // joining what isn't one of its instances
   const pubSite = await engine(t)
   const s = await pubSite.rpc.request('site.publish', { folder: siteFolder(t, { manifest: { title: 'Public site', permissions: ['space'] } }) })
   t.is(await codeOf(a.hyper.instances.join('hg:' + s.key)), 'NOT_ALLOWED', 'a site\'s public link')
@@ -170,12 +163,10 @@ test('an app reaches only its own instances (guards)', async (t) => {
   t.is(await codeOf(a.hyper.instances.join('not a link')), 'INVALID_PARAMS')
   t.alike((await a.hyper.instances.list()).map((i) => i.key), [fa.key], 'nothing added')
 
-  // consent taken back: none of its instances
   await a.e.rpc.request('site.consent', { key, allow: false })
   t.is(await codeOf(a.hyper.instance(fa.key).info()), 'NOT_ALLOWED', 'no consent, no instance')
   t.is(await codeOf(a.hyper.instances.list()), 'NOT_ALLOWED')
 
-  // a static site has no instances
   const st = await a.e.rpc.request('site.publish', { folder: siteFolder(t) })
   await a.e.rpc.request('site.open', { key: st.key })
   t.is(await codeOf(a.e.rpc.request('site.call', { key: st.key, method: 'instances.create', args: ['x'] })), 'NOT_ALLOWED')
@@ -203,7 +194,6 @@ test('joined instances stay joined: no tab, past the grace period, after a resta
   t.alike(await notes(h.instance(fa.key)), ['kept'], 'and held here: read with its owner offline')
 })
 
-// a forum switched away from is let go (its space may then close), never one a page still uses.
 test('an instance\'s handle is let go once no page uses it, kept while one does', async (t) => {
   t.timeout(180000)
   const IDLE = 800

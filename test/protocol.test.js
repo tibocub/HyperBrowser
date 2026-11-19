@@ -1,4 +1,3 @@
-// The message protocol (contracts/protocol.md), on its own: framing, versions, ids, errors, bytes.
 import test from 'brittle'
 import b4a from 'b4a'
 import FramedStream from 'framed-stream'

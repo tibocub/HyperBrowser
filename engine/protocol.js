@@ -1,9 +1,4 @@
-// The engine's message protocol (specs/001-engine/contracts/protocol.md): one JSON message per frame
-// (framed-stream: a length prefix), every message stamped with the protocol version.
-//   request: { v, id, method, params }   reply: { v, id, result } or { v, id, error: { code, message } }
-//   event:   { v, event, data }
-// Bytes travel as { $bytes: base64 }. Pure JS on Node and Bare: the shell, the engine and later
-// react-native-bare-kit use this same file.
+// Pure JS on Node and Bare: the shell, the engine and later react-native-bare-kit share this file.
 import FramedStream from 'framed-stream'
 import b4a from 'b4a'
 import { Duplex } from 'streamx'
@@ -50,7 +45,7 @@ export function connect (stream, { handle = null, onEvent = null, onmessage = nu
     waiting.clear()
     if (onclose) onclose()
   })
-  framed.on('end', () => framed.destroy()) // the other side ended: nothing more will answer
+  framed.on('end', () => framed.destroy())
   framed.on('error', () => {})
 
   function send (m) {
@@ -95,7 +90,6 @@ export function fromWire (value) {
   return value
 }
 
-// Two connected duplex streams: the CLI and the tests run start() on one end, exactly as the worker does.
 export function pair () {
   const a = new Duplex({ write (data, cb) { b.push(data); cb() }, final (cb) { b.push(null); cb() }, predestroy () { b.destroy() } })
   const b = new Duplex({ write (data, cb) { a.push(data); cb() }, final (cb) { a.push(null); cb() }, predestroy () { a.destroy() } })

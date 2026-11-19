@@ -1,8 +1,6 @@
-// The frame page: draws the state main sends (contracts/frame.md) and sends the person's actions.
-// Plain DOM, no framework; built with DOM calls, never from HTML strings (titles come from sites).
+// Built with DOM calls, never from HTML strings: titles come from sites.
 /* global frame */
 
-// pixel icons: shell/icons/<name>.png (8×8, the window buttons 5×5), sent by main as paths; crisp at 2px a pixel
 let GLYPHS = {}
 const DARK_ACCENT = { '#1f4fd1': '#8fb0ff', '#c2410c': '#ff9a5c', '#0b7a52': '#4fd1a0' }
 const SVG = 'http://www.w3.org/2000/svg'
@@ -36,9 +34,9 @@ function picture (src, name) {
   return img
 }
 
-let S = null // the last state from main
-let selected = null // the selected desktop icon
-let note = null // a message shown in place of the state for a moment
+let S = null
+let selected = null
+let note = null
 const send = async (op, args) => {
   const r = await frame.send(op, args)
   if (r?.error) say(r.error.message)
@@ -61,8 +59,6 @@ function say (text) {
   render()
 }
 
-// --- the look ---
-
 function look () {
   const dark = S.settings.theme === 'dark' || (S.settings.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', dark)
@@ -73,15 +69,12 @@ function look () {
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => S && look())
 
-// --- render ---
-
 function render () {
   if (!S) return
   look()
   const tab = currentTab()
   const site = tab.id !== 0
 
-  // taskbar
   $('tabs').replaceChildren(...S.tabs.map((t) => {
     const b = el('button', 'tab' + (t.status === 'opening' || t.loading ? ' busy' : ''))
     if (t.id === S.current) b.setAttribute('aria-current', 'page')
@@ -103,12 +96,11 @@ function render () {
   $('w-max').setAttribute('aria-label', S.maximized ? 'Restore' : 'Maximize')
   setGlyph($('w-max').firstElementChild, S.maximized ? 'restore' : 'max')
 
-  // toolbar
   $('back').disabled = !tab.canBack
   $('forward').disabled = !tab.canForward
   $('reload').disabled = !site || tab.status !== 'ready'
   const addr = $('address')
-  if (document.activeElement !== addr) addr.value = !site ? '' : tab.name || tab.title + ' · ' + tab.short // a site opened by name shows its name
+  if (document.activeElement !== addr) addr.value = !site ? '' : tab.name || tab.title + ' · ' + tab.short
   const star = $('star')
   star.disabled = !site || tab.status !== 'ready' || tab.kind === 'installed'
   star.setAttribute('aria-pressed', String(!!tab.kind))
@@ -127,7 +119,6 @@ function render () {
       tab.held ? ' · ' + size(tab.held.bytes) + (tab.held.kept ? ' kept' : '') : '')
   }
 
-  // the area under the bars: the desktop, or the panel of a tab without a page yet
   $('desktop').hidden = site
   $('panel').hidden = !site || tab.status === 'ready'
   if (site && tab.status !== 'ready') {
@@ -150,7 +141,7 @@ function drawDesktop () {
     b.title = i.key ? i.title + ' · ' + i.key : i.title + ' (not published yet)'
     const box = el('span', 'box')
     box.append(picture(i.icon, i.glyph || 'site'))
-    const n = unreadOf(i) // its app's unread notifications, or its conversation's
+    const n = unreadOf(i)
     if (n) {
       const badge = el('span', 'badge', cap(n))
       badge.setAttribute('aria-label', n + ' new')
@@ -178,8 +169,6 @@ $('desktop').ondrop = (e) => {
   send('icon.move', { id, col: Math.floor((e.clientX - r.left) / 112), row: Math.max(0, Math.floor((e.clientY - r.top) / 112)) })
 }
 $('desktop').onclick = (e) => { if (e.target === $('desktop') || e.target === grid) { selected = null; drawDesktop() } }
-
-// --- menus: while one is open, the frame covers the window (over the site too) ---
 
 let menuOpen = null
 function showMenu (which, x, y) {
@@ -220,7 +209,7 @@ function drawMenu () {
       return b
     })
     : [el('div', 'empty', 'Nothing installed yet')]))
-  $('m-update').hidden = !S.update // an update is installed: it starts at the next launch, or now
+  $('m-update').hidden = !S.update
   $('m-update').textContent = S.update ? 'Update ready (' + S.update + '): restart' : ''
   for (const b of document.querySelectorAll('[data-theme]')) b.setAttribute('aria-pressed', String(b.dataset.theme === S.settings.theme))
   for (const b of document.querySelectorAll('[data-tray]')) b.setAttribute('aria-pressed', String((b.dataset.tray === 'on') === S.settings.tray))
@@ -253,8 +242,6 @@ $('ctx').onclick = (e) => {
   if (act === 'remove') send('icon.remove', { id })
 }
 
-// --- notifications: the counter, its list, icon counts; the Configuration window ---
-
 const cap = (n) => n > 99 ? '99+' : String(n)
 const unreadOf = (icon) => !icon.key ? 0 : S.notes.unread.byPlace[icon.key] || S.notes.unread.byApp[icon.site || icon.key] || 0
 const titleOf = (app) => S.notes.apps.find((a) => a.key === app)?.title || 'HyperBrowser'
@@ -262,7 +249,6 @@ const placeName = (x) => S.notes.apps.find((a) => a.key === x.app)?.places.find(
 
 $('bell').onclick = () => menuOpen === $('notes') ? closeMenus() : (showMenu($('notes')), $('bell').setAttribute('aria-expanded', 'true'))
 
-// One row a conversation, newest first: the latest of its notifications, and how many are unread.
 function drawNotes () {
   const n = S.notes.unread.total
   $('bell-n').textContent = cap(n)
@@ -304,8 +290,6 @@ function toggle (label, on, fn) {
   b.onclick = fn
   return b
 }
-// Per app: allowed or blocked, its text shown or hidden; per conversation: muted. The person's settings, on all
-// their devices (the engine's notify.set).
 function drawConfig () {
   if ($('config').hidden) return
   const apps = S.notes.apps
@@ -333,9 +317,7 @@ function drawConfig () {
   }))
 }
 
-// --- the Devices window: one identity on several computers ---
-
-let D = null // the last devices.list: { identity, devices, removed, phrase, owns }
+let D = null
 const out = $('dv-out')
 const show = (...nodes) => out.replaceChildren(...nodes)
 const line = (text, cls) => el('p', cls, text)
@@ -424,13 +406,11 @@ $('dv-phrase').onclick = async () => {
   show(...nodes)
 }
 
-// --- circles: Configuration's Circles section and the circles window ---
-
 const gbs = (b) => (Math.round(b / 1e8) / 10) + ' GB' // hypergraph's GB: 1e9 bytes
-let H = null // the last holding.get: { on, bytes, used, free }
+let H = null
 const holdOut = $('cf-hold-out')
 
-// Holding runs while HyperBrowser runs: its switch, its share, what is held. Off deletes what is held: asked.
+// No pause: Off deletes what is held, so it asks first.
 async function drawHolding () {
   const r = await frame.send('holding.get')
   if (r?.error) return
@@ -477,14 +457,12 @@ function closeCircles () {
   if (!menuOpen) frame.send('cover', { full: false })
 }
 $('cl-close').onclick = closeCircles
-// the engine's 'circles' event, or main after a join from Chat ({ open, note })
 frame.onCircles((d) => {
   if (d?.open) return openCircles(d.note || null)
   if (!$('circles').hidden) drawCircles()
   if (!$('config').hidden) drawHolding()
 })
 
-// A "…" menu: a <details>, opened with Enter or Space.
 function more (label, items) {
   const d = el('details')
   const sum = el('summary', '', '…')
@@ -524,7 +502,7 @@ $('cl-create').onclick = async () => {
   if (!name) return clShow(line('Give the circle a name first.'))
   const r = await frame.send('circles.create', { name })
   if (r?.error) return clShow(line(r.error.message))
-  if (!r.result) return // Not now: nothing made
+  if (!r.result) return
   $('cl-name').value = ''
   clShow(line('"' + name + '" made.' + (r.result.holding.on ? '' : ' Your computer keeps no copies yet: turn it on in Configuration.')))
   drawCircles()
@@ -549,7 +527,6 @@ $('cl-join').onclick = () => {
   box.focus()
 }
 
-// the person's friends, a box each; those already in greyed. Each ticked one gets their own invite in Chat.
 async function inviteContacts (c) {
   const r = await frame.send('circles.invitees', { key: c.key })
   if (r?.error) return clShow(line(r.error.message))
@@ -622,7 +599,7 @@ async function members (c) {
   for (const m of r.result) {
     const who = m.name || short(m.identity)
     const li = el('li')
-    const held = m.held // e.g. '0.8/3 GB' (frame.js)
+    const held = m.held
     const nums = el('span', 'dim', m.role + (m.holds ? ' · holds' : '') + (held ? ' · ' + held : ''))
     if (held) nums.title = 'What they hold out of their share, across all their circles'
     li.append(el('span', 'grow', who + (m.you ? ' (you)' : '')), nums)
@@ -638,7 +615,7 @@ async function members (c) {
     }
     ul.append(li)
   }
-  const total = l?.result?.find((x) => x.key === c.key)?.totalLine // e.g. 'TOTAL ≈ 4.2 GB' (frame.js), now
+  const total = l?.result?.find((x) => x.key === c.key)?.totalLine
   const room = total && line(total, 'dim')
   if (room) room.title = "Everyone's shares ÷ 5 copies; approximate: shares also serve other circles"
   clShow(line('Members of "' + (c.name || 'this circle') + '" (' + r.result.length + ' of 50):'), ul, ...(room ? [room] : []))
@@ -648,8 +625,6 @@ async function setRole (c, m, role) {
   if (x?.error) return clShow(line(x.error.message))
   members(c)
 }
-
-// --- toolbar ---
 
 $('back').onclick = () => send('back')
 $('forward').onclick = () => send('forward')
@@ -663,7 +638,7 @@ const addr = $('address')
 function toAddress () { addr.focus(); addr.select() }
 addr.onfocus = () => {
   const t = currentTab()
-  addr.value = t.id === 0 ? '' : t.name || t.key // the full key (or the name) while editing
+  addr.value = t.id === 0 ? '' : t.name || t.key
   addr.select()
 }
 addr.onblur = () => render()
@@ -695,7 +670,6 @@ document.addEventListener('keydown', (e) => {
 })
 
 // Tabs share the room left in the bar, each a whole number of pixels wide (crisp glyphs), at most 240.
-// Narrow ones show their icon only (close: Ctrl+W or the middle button).
 // shortcut: past ~35 tabs on a 1280 px window the last ones are cut off; a tab list menu if that matters.
 function sizeTabs () {
   const tabs = $('tabs').children
@@ -729,7 +703,6 @@ frame.onState((s) => {
   S = s
   render()
   drawConfig()
-  // a join ended: main now runs the engine of whichever identity is in place
   if (S.joined && S.joined.n !== joinedSeen) {
     joinedSeen = S.joined.n
     openDevices(S.joined.said === 'joined' ? 'This computer is now a device of your identity.' : 'Could not join: ' + S.joined.said + '. This computer is as it was.')

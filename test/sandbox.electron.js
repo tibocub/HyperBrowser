@@ -1,8 +1,4 @@
-// The sandbox self-test and its control run, as a test, then the frame check,
-// then the textures check at 100, 125, 150 %, then the tray
-// (close to the tray, one HyperBrowser a data folder, Quit, the setting). Node only (it starts
-// Electron): `npm run test:sandbox`. The guarded run must pass every check; the control run (--no-guards)
-// must fail, and fail exactly where a guard of ours does the work.
+// The guarded run must pass every check; the control run (--no-guards) must fail, exactly where a guard does the work.
 import test from 'brittle'
 import fs from 'fs'
 import os from 'os'
@@ -12,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const ELECTRON = createRequire(import.meta.url)('electron') // the binary's path, from Node
+const ELECTRON = createRequire(import.meta.url)('electron')
 
 function selftest (...args) {
   return run(['.', ...(args.includes('--framecheck') ? [] : ['--selftest']), ...args])
@@ -20,7 +16,6 @@ function selftest (...args) {
 
 const run = (args) => launch(args).done
 
-// → { done: Promise<{ code, out }>, saw(text): resolves once the output has it (or the process ended) }
 function launch (args) {
   const p = spawn(ELECTRON, args, { cwd: ROOT })
   let out = ''

@@ -1,5 +1,3 @@
-// The official site: sites/home, written in HyperMD, builds to plain HTML where every page, link
-// and file resolves; that built folder, published, loads page by page on a second engine.
 import test from 'brittle'
 import fs from 'fs'
 import b4a from 'b4a'
@@ -10,7 +8,6 @@ import { engine, tmpDir, text } from './helpers.js'
 
 const HOME = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'home')
 
-// Site-relative paths of every file under dir, with '/'.
 function files (dir, rel = '') {
   return fs.readdirSync(path.join(dir, rel), { withFileTypes: true }).flatMap((e) => {
     const child = rel ? rel + '/' + e.name : e.name
@@ -18,7 +15,6 @@ function files (dir, rel = '') {
   })
 }
 
-// A reference from `from` (a site path) to `ref`, as the site path it points at, or null when it leaves the site.
 function target (from, ref) {
   if (/^[a-z][a-z0-9+.-]*:/i.test(ref) || ref.startsWith('//')) return null
   const [file] = ref.split(/[?#]/)

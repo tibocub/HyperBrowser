@@ -1,32 +1,27 @@
-// The helper: an engine with its own identity that joins circles from its config, holds always on,
-// and keeps apps online. Driven through the engine's own calls on `rpc`, like the shell; engine/cli.js reads the
-// config file and gives it here (apply), again on each change. Logs one line per change, a summary every hour.
 import fs from 'fs'
 import path from 'path'
 import { GB } from './circles.js'
 
-const SPARE = 2 * GB // left free on the disk, as holding.set checks it
+const SPARE = 2 * GB
 const DEFAULT_MAX = 100 * GB
 const MIN = 0.1 * GB
-const TICK = 60000 // apps not reached yet tried again, links nobody answered, new versions looked for
+const TICK = 60000
 const HOUR = 3600000
-const OPEN = 30000 // an app's first fetch: its owner or another holder online
+const OPEN = 30000
 
 const gb = (b) => Math.floor(b / GB * 10) / 10
 // shortcut: hypergraph says "nobody answered" only in INVITE_INVALID's message; a code of its own would be cleaner
 const unanswered = (err) => err.code === 'INVITE_INVALID' && /answered within/.test(err.message)
 
-// rpc: an init'ed engine's; dir: its folder (helper.json: links used, the first share, apps kept);
-// preset: shell/preset.json (apps = official). Returns { apply(config), report(), close() }.
 export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summary = HOUR }) {
   const FILE = path.join(dir, 'helper.json')
-  let state = { links: {}, share: null, kept: {} } // kept: wanted key -> { app, title, bytes } as last seen
+  let state = { links: {}, share: null, kept: {} }
   try { state = { ...state, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) } } catch {}
   const save = () => fs.promises.writeFile(FILE, JSON.stringify(state, null, 2))
   let config = null
   let running = Promise.resolve()
   let closed = false
-  const told = new Set() // retries logged once
+  const told = new Set()
   const once = (id, line) => { if (!told.has(id)) { told.add(id); log(line) } }
   const fail = (err) => log(`error: ${err.code || 'ERROR'} ${err.message}`)
   const pass = () => (running = running.then(() => closed || run()).catch(fail))
@@ -48,8 +43,6 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
     log(`name: ${config.name}`)
   }
 
-  // GB from the file, else half the free disk at first start (remembered), at most 100; then at most what
-  // holding.set allows (free + held - 2 GB): above that, the most allowed, logged.
   async function share () {
     const h = await rpc.request('holding.get')
     if (!config.share && !state.share) {
@@ -65,7 +58,6 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
     log(bytes < want ? `share: ${gb(bytes)} GB (capped: ${gb(want)} GB asked, the disk keeps 2 GB free)` : `share: ${gb(bytes)} GB`)
   }
 
-  // Each link once: joined or refused, remembered; one nobody answered (they may be offline) is tried again.
   async function joins () {
     for (const link of config.join) {
       if (state.links[link]) continue
@@ -92,8 +84,6 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
     return keys
   }
 
-  // Each wanted key kept whole (site.keep: every file, followed live while the engine runs); an instance's app
-  // kept (the instance stays joined: the engine's own). Keys no longer wanted handed back.
   async function apps () {
     const want = wanted()
     await Promise.all([...want].map(async (key) => {
@@ -133,7 +123,7 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
   }
 
   return {
-    apply (next) { // resolves when this pass and the apps' are done
+    apply (next) {
       config = next
       return pass().then(() => fetching)
     },

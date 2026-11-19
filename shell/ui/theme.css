@@ -25,12 +25,10 @@
   background-size: calc(2 * var(--px)) calc(2 * var(--px));
   background-attachment: fixed;
 
-  /* a plain page: the body is a window on the desk */
   /* 1140px (760px left half a full-screen window unused) */
   & body { box-sizing: border-box; width: min(1140px, calc(100% - 32px)); margin: 28px auto; padding: 4px 28px 20px;
     background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
     font: 15px/1.6 'HB Plex Mono', ui-monospace, monospace; color: var(--ink); }
-  /* a HyperMD page (header, main, footer): sites/home's layout, main is the window */
   & body:has(> main) { width: auto; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     margin: 0; padding: 0 16px 24px; background: none; border: 0; box-shadow: none; }
   /* an app (<body class="hb-app">): the window fills the browser's and the page never scrolls as a whole;
@@ -51,7 +49,6 @@
   & body > header a:hover, & body > header a[aria-current="page"] { background: var(--ink); color: var(--paper); }
 
   & main { width: min(1140px, 100%); box-sizing: border-box; margin: 28px 0 0; padding: 0 28px 20px; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
-  /* the first heading: the window's striped title bar */
   & main > h1:first-child, & body:not(:has(> main)) > h1:first-child { display: flex; align-items: center; gap: 10px; margin: 0 -28px 20px; padding: 3px 4px;
     border-bottom: 1px solid var(--ink); font: 700 13px/1.6 'HB Cozette', ui-monospace, monospace; white-space: nowrap; }
   & body:not(:has(> main)) > h1:first-child { margin-top: -4px; }

@@ -1,23 +1,14 @@
-// Chat's data, through the site API only (`hyper`: the page's window.hyper, or the tests' engine
-// adapter). Every conversation is a private instance of this app: a direct one (made by HyperBrowser when two
-// people become friends: the contacts list names it) or a group (made here, owned by its maker). Rights in a
-// group are hypergraph roles: member (writes), inviter (also adds people), moderator (deletes, bans), admin
-// (all but ownership).
-
 export const ROLES = { member: 'Member', inviter: 'Can add people', moderator: 'Moderator', admin: 'Admin' }
 export const MODERATORS = new Set(['owner', 'admin', 'moderator'])
 export const INVITERS = new Set(['owner', 'admin', 'inviter'])
 export const LIMIT = 300 // shortcut: a conversation shows its latest messages only; page back with `until` when needed
 
-// "Kept by N of 5 copies, M online" from hyper.copies(), and the warning under 2 online; null when nothing
-// is handed (no circle holding).
 export function copiesLine ({ wanted, kept, online }) {
   if (!wanted) return null
   return { text: `Kept by ${kept} of ${wanted} copies, ${online} online`, warn: online < 2 ? "Few copies online: people may not get this while you're offline" : null }
 }
 export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspected leak'
 
-// Secure this place and Trim history in a group's "…" (the same texts as the Forum's)
 export const SECURE_TEXT = 'New keys now, and a new address its members follow by themselves: the people removed or banned can no longer see who joins, who writes or when. What they could read before, they keep.'
 export const FORGET_TEXT = "Also delete everything written before now, on every member's device. Copies others already took can't be recalled."
 export const TRIM_TEXT = "Older messages are deleted on every member's device and every copy your circles keep. Copies others already took can't be recalled."
@@ -35,10 +26,8 @@ export function renewError (err, nameOf = () => null) {
   return err.message
 }
 
-// a circle's invite in a message (docs/chat.md: `circle`, `circleName`), or null
 export const circleOf = (m) => typeof m.circle === 'string' && m.circle.startsWith('hg:') ? { link: m.circle, name: m.circleName || 'a circle' } : null
 
-// the invite's button, naming who invites (as Chat shows them) and to what
 export const acceptLabel = (who, circle) => `Accept ${who}'s invitation to "${circle}"`
 
 const need = (ok, message) => { if (!ok) throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }) }
@@ -51,7 +40,6 @@ export function chat (hyper) {
   }
 
   return {
-    // [{ key, name, role, direct: contact | null }]: groups and direct conversations
     async conversations () {
       const [list, contacts] = await Promise.all([hyper.instances.list(), hyper.contacts.list()])
       const byChat = new Map(contacts.filter((c) => c.chat && c.state !== 'incoming').map((c) => [c.chat, c]))
@@ -73,7 +61,6 @@ export function chat (hyper) {
       return at(key).put('message', { text: String(text) })
     },
     edit: (key, id, text) => at(key).edit(id, { text: String(text) }),
-    // one's own: deleted; someone else's (a moderator): removed for everyone
     remove: (key, message, mine) => mine ? at(key).del(message.id) : at(key).moderateAction('remove', message.id),
 
     messages: (key, fn) => at(key).query('message').live(fn, { limit: LIMIT }),
@@ -100,11 +87,9 @@ export function chat (hyper) {
     removeMember: (key, identity) => at(key).removeRole(identity),
     leave: (key) => hyper.instances.leave(key),
 
-    // copies and key rotation
     copies: (key) => at(key).copies(),
     onCopies: (key, fn) => at(key).on('copies', fn),
     changeKey: (key) => at(key).rotateKey(),
-    // a group's owner and admins
     secure: (key, { forgetHistory = false } = {}) => at(key).secure({ forget: forgetHistory }),
     trimHistory: (key, before) => at(key).trimHistory({ before }),
     info: (key) => at(key).info(),

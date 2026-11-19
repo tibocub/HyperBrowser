@@ -1,4 +1,3 @@
-// Publishing a folder and opening it by key.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -58,7 +57,6 @@ test('publish, publish again: same key; a second engine opens it from the key al
     t.is(await codeOf(visitor.rpc.request('site.read', { key: first.key, path: p, timeout: 500 })), 'NOT_FOUND', p)
   }
 
-  // the owner's edit reaches the visitor (SwarmFS's linked folder, synced by the engine)
   fs.writeFileSync(path.join(folder, 'style.css'), 'h1{color:red}')
   t.ok(await eventually(async () => text((await visitor.rpc.request('site.read', { key: first.key, path: 'style.css' })).bytes) === 'h1{color:red}', 20000, 250))
 })

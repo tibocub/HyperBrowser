@@ -1,7 +1,4 @@
-// Projects: a folder on disk backed by a private SwarmFS files space, read by its members only (the
-// person's devices, co-authors). Saving syncs, never publishes; Publish copies the project into its site's pages
-// as one version, kept on this device (specs/024-site-files/plan.md). A page reaches it with the `projects`
-// permission only; every path stays inside the project folder.
+// A page reaches projects only with the `projects` permission; every path stays inside the project folder.
 import fs from 'fs'
 import path from 'path'
 import b4a from 'b4a'
@@ -9,16 +6,16 @@ import { compile, ignored } from 'swarmfs/lib/ignore.js'
 import { rootOf, BIN } from 'swarmfs/lib/types.js'
 import { parseManifest, readManifest, sitePath } from './manifest.js'
 
-const LIST = 'hyperbrowser/projects' // setting: { [space key]: { name } }, on every device of the person
-const PROJECT = '.hyperbrowser.json' // in the project: { site }, synced, never published
-const IGNORE = '.swarmfsignore' // SwarmFS's ignore file, also what Publish skips
+const LIST = 'hyperbrowser/projects'
+const PROJECT = '.hyperbrowser.json'
+const IGNORE = '.swarmfsignore'
 const ALWAYS = ['.git/', 'node_modules/'] // each device keeps its own
 const NAME_MAX = 64
-const WRITE_MAX = 32 * 1024 * 1024 // one write crossing from a page
-const BUILD_MAX = 64 * 1024 * 1024 // a project's built pages, all together
-const CATCH_UP = 60000 // a publish waits this long for the pages already there to be held here
+const WRITE_MAX = 32 * 1024 * 1024
+const BUILD_MAX = 64 * 1024 * 1024
+const CATCH_UP = 60000
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
-const GIT_MAX = 500 // changed files listed
+const GIT_MAX = 500
 const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i // Windows device names
 
 const error = (code, message) => Object.assign(new Error(message), { code })
@@ -32,15 +29,13 @@ export async function linkOrCopy (from, to, link = fs.promises.link) {
   }
 }
 
-// sfs: the engine's SwarmFS; dir: its folder; root: where new projects go; visit(key): a site held or visited;
-// tell(identity, text): a message to a friend (contacts); forget(key): the engine drops an open site (a draft reset).
 export function projects ({ sfs, dir, root, visit, tell, forget }) {
   const hg = sfs.hg
   const me = hg.identity.publicKey
-  const DRAFTS = path.join(dir, 'drafts.json') // this device's: { [project]: draft site key }
+  const DRAFTS = path.join(dir, 'drafts.json')
   let drafts = {}
-  const folders = new Map() // draft key -> the project it shows
-  const watched = new Set() // projects whose members this device follows (site owner: grants admin)
+  const folders = new Map()
+  const watched = new Set()
   let queue = Promise.resolve() // list writes, links and publishes, one at a time
   let following = Promise.resolve()
   let closed = false
@@ -61,12 +56,11 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     await follow()
   }
 
-  // Every project of the person held here: linked to a folder of this device, and its members followed.
   function follow () {
     following = following.then(async () => {
       for (const [key, { name, left }] of Object.entries(await all())) {
         if (closed || !held(key)) continue
-        if (left) { // left on another device of the person: left here too, its folder kept
+        if (left) {
           await one(() => sfs.leave(key)).catch(() => {})
           continue
         }
@@ -89,7 +83,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return (await sfs.links()).find((l) => l.space === key && l.folder === key)?.path || null
   }
 
-  // The project's space linked to a new folder under `root` (its name, made unique).
   async function attach (key, name) {
     if (await folderOf(key)) return
     const base = path.join(root, safe(name))
@@ -119,8 +112,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     const list = await all()
     await hg.setSetting(LIST, { ...list, [key]: { name } })
   }
-
-  // --- the page's calls ---
 
   async function call (method, [a, b, c]) {
     switch (method) {
@@ -169,7 +160,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return (await list()).find((p) => p.key === key)
   }
 
-  // A project of the person's, on this device: its folder.
   async function project (key) {
     const known = typeof key === 'string' && KEY.test(key) ? (await all())[key] : null
     if (!known || known.left) throw error('NOT_FOUND', 'not one of your projects')
@@ -195,12 +185,11 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     const name = path.basename(full).slice(0, NAME_MAX) || 'Project'
     const drive = await sfs.createSpace(name)
     await ensureIgnore(full)
-    await drive.link(drive.key, full) // its files are added as they are
+    await drive.link(drive.key, full)
     await remember(drive.key, name)
     return view(drive.key)
   }
 
-  // A site's published files as a new project (no data, no site key: publishing it makes a new site).
   async function openCopy (key) {
     if (typeof key !== 'string' || !KEY.test(key)) throw error('INVALID_KEY', 'not a site key')
     const site = await visit(key)
@@ -247,12 +236,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return { link: await sfs.space(key).invite({ role: 'editor' }) }
   }
 
-  // --- files: every path checked ---
-
-  // `p` inside `folder`: a clean relative path (no '..', no absolute path, no Windows short name like GIT~1, nothing
-  // Windows reads otherwise), one the project syncs (never .git: git runs its hooks outside the sandbox; nor
-  // node_modules or what the ignore file lists), and no link on the way out of the folder. Checked again on the path
-  // as the disk resolves it (a link inside the project to its .git). `write`: not .hyperbrowser.json either.
+  // Synced paths only: never .git (git runs its hooks outside the sandbox), node_modules or ignored paths. No link
+  // out of the folder: checked again on the path as the disk resolves it (a link to .git, a short name like GIT~1).
   async function inside (folder, p, write = false) {
     const clean = typeof p === 'string' && !p.startsWith('/') ? sitePath(p) : null
     if (!clean || clean.split('/').some((s) => s === '.' || s.includes(':') || RESERVED.test(s) || /[. ]$/.test(s) || /~\d/.test(s))) throw error('INVALID_PATH', 'not a path inside the project: ' + JSON.stringify(p))
@@ -262,7 +247,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     let probe = full
     let r
     for (;;) {
-      try { r = await realpath(probe); break } catch {} // not there yet: its parent
+      try { r = await realpath(probe); break } catch {}
       probe = path.dirname(probe)
     }
     if (r !== real && !r.startsWith(real + path.sep)) throw error('NOT_ALLOWED', 'that path leads out of the project')
@@ -271,7 +256,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return full
   }
 
-  // NOT_ALLOWED unless the project syncs `rel` (and, `write`, it isn't .hyperbrowser.json).
   async function syncs (folder, rel, write) {
     const lower = rel.toLowerCase() // Windows and macOS: .GIT is .git
     const rules = await rulesOf(folder)
@@ -290,7 +274,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     if (paths.some((p) => p.toLowerCase() === IGNORE)) await ensureIgnore(folder)
   }
 
-  // [{ path, size, mtime }]; `folders` (a file tree): the folders too, as { path, folder: true }.
   async function files (folder, folders = false) {
     const rules = await rulesOf(folder)
     const out = []
@@ -327,7 +310,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
-  // A new empty folder; its parents too. EXISTS if something is there.
   async function mkdir (folder, p) {
     const full = await inside(folder, p, true)
     if (await fs.promises.lstat(full).catch(() => null)) throw error('EXISTS', p + ' is there already')
@@ -346,8 +328,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
-  // A file, or a folder with what the project syncs in it (what it ignores stays, e.g. a nested .git). A link is
-  // unlinked, never followed.
+  // Links are unlinked, never followed; what the project ignores stays (a nested .git).
   async function remove (folder, p) {
     const full = await inside(folder, p, true)
     if (!(await fs.promises.lstat(full).catch(() => null))) throw error('NOT_FOUND', 'no file ' + p)
@@ -356,7 +337,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
-  // `at` and what the project syncs under it; what it ignores stays (and so its folders). Links unlinked, not followed.
   async function rmSynced (folder, at) {
     const rules = await rulesOf(folder)
     const rm = async (at) => {
@@ -374,9 +354,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
     await rm(at)
   }
-
-  // --- leaving: off the person's list on every device, the space left; `deleteFiles`: this device's synced
-  // files deleted too (what it ignores, .git included, stays). Its site and versions stay.
 
   async function leave (key, opts) {
     const folder = await project(key)
@@ -398,8 +375,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
-  // --- status: who is online, and the folder's git state (read only: branch, changed files) ---
-
   async function status (key) {
     const folder = await project(key)
     const peers = hg.space(key).peers()
@@ -410,8 +385,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
-  // { branch, changed: [{ path, state: 'modified' | 'new' | 'deleted' }] } from .git/HEAD and .git/index (v2, v3), the
-  // way git first checks (size and mtime: a file touched but the same reads as modified); null without a .git folder.
+  // As git's first check (size and mtime): a file touched but unchanged reads as modified.
   // shortcut: an index v4 (path-compressed) or a worktree's .git file gives changed: null; read them if anyone uses them.
   async function gitState (folder) {
     const git = path.join(folder, '.git')
@@ -433,8 +407,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return { branch, changed: changed.sort((a, b) => (a.path < b.path ? -1 : 1)).slice(0, GIT_MAX) }
   }
 
-  // --- publish and versions ---
-
   async function siteKeyOf (folder) {
     try {
       const key = JSON.parse(await fs.promises.readFile(path.join(folder, PROJECT), 'utf-8')).site
@@ -442,17 +414,15 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     } catch { return null }
   }
 
-  // What Publish takes from the project: everything synced, but the project's own files.
   async function publishable (folder) {
     return (await files(folder)).map((f) => f.path).filter((p) => p !== IGNORE && p !== PROJECT)
   }
 
-  // --- built pages: outside the project, so they never sync, never reach git, never meet a co-author's ---
+  // Built pages live outside the project: they never sync, never reach git, never meet a co-author's.
 
   const builtDir = (key) => path.join(dir, 'builds', key)
   const slash = (p) => p.split(path.sep).join('/')
 
-  // `pages` ({ 'x.html': html }, the IDE's HyperMD build) replace the project's built pages, all at once.
   async function build (key, pages) {
     if (!pages || typeof pages !== 'object' || Array.isArray(pages)) throw error('INVALID_PARAMS', 'build takes { path: html }')
     let size = 0
@@ -480,7 +450,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return (await walkFiles(builtDir(key)).catch(() => [])).map(slash)
   }
 
-  // A file of the project, else its built page: what the person wrote always wins.
   async function readSite (key, folder, p) {
     try {
       return await readFile(folder, p)
@@ -496,7 +465,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     const known = await siteKeyOf(folder)
     const mine = await publishable(folder)
     const have = new Set(mine)
-    const built = new Set((await builtPages(key)).filter((p) => !have.has(p))) // a hand-written page wins
+    const built = new Set((await builtPages(key)).filter((p) => !have.has(p)))
     const src = (p) => path.join(built.has(p) ? builtDir(key) : folder, ...p.split('/'))
     const tmp = await snapshot(src, [...mine, ...built], false, known && await newest(known))
     try {
@@ -510,7 +479,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
-  // The project's site, made on its first Publish; the person must be its owner or an admin (a co-author).
   async function siteFor (folder, manifest) {
     const known = await siteKeyOf(folder)
     if (!known) {
@@ -527,9 +495,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return { site, created: false }
   }
 
-  // `list` files of `from` in a new folder: copied, or hard links (`link`: `from` is a version, never changed; or
-  // equal to the file of the newest version `last`).
-  // `from`: a folder, or p → the file's path.
   async function snapshot (from, list, link, last) {
     const tmp = path.join(dir, 'versions', '.new')
     await fs.promises.rm(tmp, { recursive: true, force: true })
@@ -546,7 +511,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return tmp
   }
 
-  // The snapshot as the site's next version.
   async function keep (site, tmp) {
     const base = path.join(dir, 'versions', site)
     await fs.promises.mkdir(base, { recursive: true })
@@ -555,7 +519,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return n
   }
 
-  // The newest version's folder here, or null.
   async function newest (site) {
     const base = path.join(dir, 'versions', site)
     const n = (await numbers(base))[0]
@@ -583,9 +546,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return b4a.equals(p, q)
   }
 
-  // The version's files become the site's pages: copied over this device's linked pages folder (changed files
-  // only, removed ones deleted); SwarmFS publishes them as edits. A device publishing for the first time links the
-  // folder and waits for the pages already there, so its files replace them (never conflict copies).
+  // A first publish here waits for the pages already there, so its files replace them instead of making conflict copies.
   async function toPages (site, created, version) {
     const live = path.join(dir, 'published', site.key)
     const linked = (await sfs.links()).some((l) => l.path === live)
@@ -595,7 +556,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       return site.publish(live)
     }
     if (!linked) await site.publish(live)
-    await caughtUp(site) // a first publish here, or a co-author's publish still arriving
+    await caughtUp(site)
     await mirror(version, live)
   }
 
@@ -621,9 +582,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
-  // Every page the site lists is here in its current version (a co-author's publish fully arrived), so the files
-  // written next replace them (never conflict copies). BUSY after CATCH_UP. One query of the pages' file records, one
-  // of this device's `held` records (a listing with holders costs seconds for 1000 pages).
+  // Wait until every page is here at its current version, else the files written next become conflict copies.
+  // One query of file records and one of `held` records: a listing with holders costs seconds for 1000 pages.
   // shortcut: reads SwarmFS's own records (requests-to-swarmfs F9: a linked folder's "in step" wanted).
   async function caughtUp (site) {
     for (const until = Date.now() + CATCH_UP; ; await sleep(250)) {
@@ -642,7 +602,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     if (d !== top && !(await fs.promises.readdir(d)).length) await fs.promises.rmdir(d)
   }
 
-  // This device's versions of the project's site, newest first.
   async function versions (folder) {
     const site = await siteKeyOf(folder)
     if (!site) return []
@@ -652,7 +611,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return out
   }
 
-  // Version n's files published again, as a new version (hard links: no copy). The project's files stay.
   async function rollBack (key, n) {
     const folder = await project(key)
     const site = await siteKeyOf(folder)
@@ -669,8 +627,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
-  // --- the site owner's device: the project's members are the site's admins ---
-
   async function grant (key) {
     const folder = await folderOf(key)
     const siteKey = folder && await siteKeyOf(folder)
@@ -685,8 +641,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       if (!want && has === 'admin') await site.space.removeRole(m.identity)
     }
   }
-
-  // --- preview: the project's files as a draft site on this device, its data in a throwaway space ---
 
   async function preview (key, reset = false) {
     const folder = await project(key)
@@ -708,13 +662,11 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return { key: site.key }
   }
 
-  // The folder a draft key shows, or null (sync: the engine asks on every open and read).
-  // The project a draft key shows, or null (sync: the engine asks on every open and read).
+  // Synchronous: the engine asks on every open and read.
   function draft (key) {
     return folders.get(key) || null
   }
 
-  // A draft's site.json and pages: the project's files, then its built pages.
   async function draftManifest (key) {
     const p = folders.get(key)
     return readManifest(await project(p), builtDir(p))
@@ -731,7 +683,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     hg.off('spaces', onChange)
   }
 
-  // fn({ project }): a project's files changed here (a save, a co-author's edit or another device's arriving).
   function watchFiles (fn) {
     const each = async (e) => {
       const p = e.space && (await all())[e.space]
@@ -745,7 +696,6 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   return { start, call, draft, draftManifest, readDraft, onChange: watchFiles, close }
 }
 
-// A git index (v2, v3) → Map(path → { size, mtime (s) }); null for another version.
 function readIndex (bytes) {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (bytes.byteLength < 12 || v.getUint32(0) !== 0x44495243) return null // 'DIRC'
@@ -772,6 +722,5 @@ function safe (name) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-// The path as the disk names it: links resolved, and on Windows short names (GIT~1) made long (Node's native
-// realpath; Bare's realpath is the native one).
+// Node's realpath resolves links and Windows short names (GIT~1); Bare's is the native one.
 const realpath = (p) => new Promise((resolve, reject) => (fs.realpath.native || fs.realpath)(p, (err, r) => err ? reject(err) : resolve(r)))

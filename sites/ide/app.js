@@ -1,7 +1,4 @@
-// HyperBrowser's IDE: make sites and apps. Beginners see pages by their titles and a toolbar;
-// developers see files, code (CodeMirror, loaded when first needed) and the site's setup. The project's
-// preview sits beside the page (HyperBrowser docks it: hyper.projects.preview), reloaded on save. No stylesheet:
-// HyperBrowser's default theme (CodeMirror's styles are adopted sheets, so it stays). The work itself: lib/site.js.
+// No stylesheet: the default theme stays because CodeMirror's styles are adopted sheets.
 import * as ide from './lib/site.js'
 import { fileTree } from './lib/tree.js'
 
@@ -14,30 +11,29 @@ const PERMISSIONS = ['space', 'contacts', 'notifications', 'projects']
 const KINDS = ['string', 'text', 'number', 'boolean']
 
 let list = []
-let cur = null // the open project (from list)
-let mode = 'pages' // 'pages' (beginners) or 'files' (developers)
+let cur = null
+let mode = 'pages'
 let files = []
 let pageList = []
-let open = null // the open file's path
-let panel = null // null (the editor), 'settings', 'versions', 'people'
+let open = null
+let panel = null
 let notice = ''
-let menu = null // the "…" menu open (its id)
+let menu = null
 let previewing = false
 let status = null
-let editor = null // CodeMirror's, once loaded
-let area = null // the beginners' text area
+let editor = null
+let area = null
 let dirty = false
 let saving = null
 let timer = null
 let lastText = ''
-let image = null // the open picture's blob URL
+let image = null
 let box = null // the editor's place, kept across redraws (its undo history with it)
-let folders = [] // the project's folders (empty ones too), for the tree
-let tree = null // the file tree (lib/tree.js), and its place: kept across redraws
+let folders = []
+let tree = null
 let treeBox = null
-let treeShown = true // the list beside the editor shown (hyper.mine 'tree')
-let clip = null // cut or copied: { op: 'cut' | 'copy', path, kind }
-// the editor's settings (hyper.mine 'editor'), per person
+let treeShown = true
+let clip = null
 const DEFAULTS = { wrap: false, tabSize: 2, fontSize: 14, lineNumbers: true }
 let prefs = { ...DEFAULTS }
 
@@ -68,8 +64,6 @@ async function start () {
   draw()
 }
 
-// --- acting, with what went wrong said in words ---
-
 async function act (fn, done) {
   notice = ''
   try {
@@ -80,8 +74,6 @@ async function act (fn, done) {
   }
   draw()
 }
-
-// --- projects ---
 
 async function openProject (p) {
   await flush()
@@ -109,7 +101,6 @@ async function reload () {
   status = await projects.status(cur.key).catch(() => null)
 }
 
-// A co-author's edit, another device's, or our own save arrived: the lists again; the open file too if untouched.
 let changing = null
 function changed () {
   clearTimeout(changing)
@@ -136,8 +127,6 @@ async function closeProject () {
   draw()
 }
 
-// --- the open file ---
-
 const current = () => (editor ? editor.get() : area ? area.value : lastText)
 
 async function load () {
@@ -161,7 +150,6 @@ function newBox () {
   return h('div', { id: 'editor', style: `flex:1; min-height:0; overflow:auto; border:1px solid; font-size:${prefs.fontSize}px` })
 }
 
-// The editor made again with the settings (its text and its "not saved" kept).
 function remount () {
   lastText = current()
   editor?.destroy()
@@ -181,11 +169,10 @@ function setText (text) {
 function edited () {
   dirty = true
   clearTimeout(timer)
-  if (open?.endsWith('.hmd')) timer = setTimeout(save, 700) // HyperMD: as you type
+  if (open?.endsWith('.hmd')) timer = setTimeout(save, 700)
   drawState()
 }
 
-// Saved now (HyperMD pages built again); the preview reloaded.
 function save () {
   clearTimeout(timer)
   if (!cur || !open || !dirty) return saving
@@ -217,11 +204,9 @@ async function choose (path) {
 // A hand-written x.html wins over the page x.hmd: said, so the person knows why an edit doesn't show.
 const hiding = (hidden) => hidden?.length ? ` ${hidden.join(', ')} ${hidden.length > 1 ? 'are' : 'is'} your own, so used instead of the page${hidden.length > 1 ? 's' : ''} built from .hmd.` : ''
 
-// --- drawing ---
-
 function draw () {
   const inMenu = document.activeElement?.closest?.('[data-menu]')?.dataset.menu
-  const typing = !!box && (box.contains(document.activeElement) || document.activeElement === box) // a redraw keeps the writer's place
+  const typing = !!box && (box.contains(document.activeElement) || document.activeElement === box)
   root.replaceChildren(cur ? project() : home())
   if (inMenu) root.querySelector('[data-menu="' + inMenu + '"] > button')?.focus()
   if (typing) (area || editor)?.focus()
@@ -253,7 +238,7 @@ function home () {
 }
 
 function project () {
-  return h('div', { style: 'display:grid; grid-template-rows:auto auto 1fr; flex:1; min-height:0; gap:6px' }, // fits the window (body.hb-app)
+  return h('div', { style: 'display:grid; grid-template-rows:auto auto 1fr; flex:1; min-height:0; gap:6px' },
     h('header', { style: 'display:flex; gap:8px; align-items:center; flex-wrap:wrap' },
       h('button', { onclick: () => act(closeProject), 'aria-label': 'Back to your projects' }, '←'),
       h('h1', { style: 'margin:0; font-size:1.2em' }, cur.name),
@@ -316,13 +301,12 @@ let manifestCache = { key: null, at: 0, m: {} }
 function manifestOf () {
   const f = files.find((x) => x.path === 'site.json')
   if (manifestCache.key !== cur.key || manifestCache.at !== f?.mtime) {
-    manifestCache = { key: cur.key, at: f?.mtime, m: manifestCache.key === cur.key ? manifestCache.m : {} } // another project: nothing of the last one shown
+    manifestCache = { key: cur.key, at: f?.mtime, m: manifestCache.key === cur.key ? manifestCache.m : {} }
     ide.manifest(projects, cur.key).then((m) => { if (JSON.stringify(m) !== JSON.stringify(manifestCache.m)) { manifestCache.m = m; draw() } }, () => {})
   }
   return manifestCache.m
 }
 
-// the files as a tree (lib/tree.js): right-click (or the Menu key, Shift+F10) for its actions.
 function filesNav () {
   return [
     h('div', { style: 'display:flex; flex-wrap:wrap; gap:2px; padding:2px 0 4px' },
@@ -336,10 +320,8 @@ function filesNav () {
 const parentOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
 const nameOf = (p) => p.slice(p.lastIndexOf('/') + 1)
 const join = (dir, name) => (dir ? dir + '/' + name : name)
-// A new file goes into the selected folder, or beside the selected file.
 const dirOf = (p) => (!p ? '' : folders.some((f) => f.path === p) ? p : parentOf(p))
 
-// The tree's context menu for a row (or the empty area): its actions, then the clipboard's, then new ones.
 function treeMenu (path, kind) {
   const dir = !path ? '' : kind === 'folder' ? path : parentOf(path)
   const items = []
@@ -383,7 +365,6 @@ async function newFolder (dir) {
   if (name) act(async () => { const p = join(dir, name.trim()); await projects.mkdir(cur.key, p); tree.expanded.add(p); await reload() })
 }
 
-// The clipboard's file or folder into `dir`: moved (cut) or copied, under a free name.
 async function paste (dir) {
   const { op, path } = clip
   if (op === 'cut' && (dir === path || dir.startsWith(path + '/'))) throw Object.assign(new Error('a folder can’t go inside itself'), { code: 'INVALID_PATH' })
@@ -411,7 +392,6 @@ function toggleTree () {
   draw()
 }
 
-// A button that picks a file from the computer, then `fn(name, bytes)`.
 function pick (label, accept, fn) {
   const input = h('input', { type: 'file', accept, style: 'display:none', onchange: () => {
     const f = input.files[0]
@@ -433,7 +413,6 @@ function fileView () {
   ]
 }
 
-// What a page needs, in plain words; images picked from the computer.
 function toolbar () {
   const wrap = (before, after = before, empty = '') => () => {
     const { selectionStart: s, selectionEnd: e, value } = area
@@ -464,16 +443,14 @@ function toolbar () {
     h('button', { onclick: line('> ') }, 'Quote'))
 }
 
-// A page's title → its file (beginners never type one); anything else as typed.
 function linkTo (what) {
   const page = pageList.find((p) => p.title.toLowerCase() === what.trim().toLowerCase())
   return page ? page.path : what.trim()
 }
 
-// The editor in #editor: a text area for a beginner's page; CodeMirror (loaded the first time) for code.
 async function mountEditor () {
   const slot = box
-  if (!slot || !root.contains(slot) || slot.firstChild || slot.shadowRoot?.firstChild) return // there already: kept as it is
+  if (!slot || !root.contains(slot) || slot.firstChild || slot.shadowRoot?.firstChild) return
   const text = current()
   if (mode === 'pages' && open?.endsWith('.hmd')) {
     editor?.destroy()
@@ -489,8 +466,6 @@ async function mountEditor () {
   editor?.destroy()
   editor = make(slot, { name: open, doc: text, label: open, onChange: edited, wrap: prefs.wrap, tabSize: prefs.tabSize, lineNumbers: prefs.lineNumbers })
 }
-
-// --- panels ---
 
 let versions = []
 let people = { members: [], friends: null, link: null }
@@ -509,7 +484,6 @@ function panelView () {
   return [back, setupView()]
 }
 
-// a small first set, saved per person (on every device of theirs).
 function editorSettings () {
   const set = (change) => {
     prefs = { ...prefs, ...change }
@@ -546,7 +520,6 @@ function peopleView () {
       : h('p', {}, 'No friends yet: add some in Contacts.')) : null)
 }
 
-// site.json as a form, or as JSON; checked as the engine checks it before it is written.
 let raw = null
 function setupView () {
   const m = manifestOf()
@@ -578,9 +551,7 @@ function setupView () {
     ])
 }
 
-// --- small helpers ---
-
-// A question in a modal dialog (Electron has no prompt()): the text typed, or one of `choices`; null if cancelled.
+// Electron has no prompt(): a modal dialog instead.
 function ask (label, value = '', choices = null) {
   const field = choices
     ? h('select', { name: 'v' }, choices.map((c) => h('option', { value: c, selected: c === value ? '' : null }, c)))
@@ -588,7 +559,6 @@ function ask (label, value = '', choices = null) {
   return modal(h('label', {}, label, h('br'), field), 'OK', () => field.value)
 }
 
-// Yes or no, in a modal dialog: true for `yes`.
 function sure (text, yes) {
   return modal(h('p', {}, text), yes, () => true).then((r) => r === true)
 }
@@ -596,7 +566,7 @@ function sure (text, yes) {
 function modal (body, yes, value) {
   return new Promise((resolve) => {
     const done = (answer) => { d.close(); d.remove(); resolve(answer) }
-    const d = h('dialog', { 'aria-label': yes, style: 'max-width:480px', oncancel: (e) => { e.preventDefault(); done(null) } }, // Escape
+    const d = h('dialog', { 'aria-label': yes, style: 'max-width:480px', oncancel: (e) => { e.preventDefault(); done(null) } },
       h('form', { onsubmit: (e) => { e.preventDefault(); done(value()) } }, body,
         h('p', {}, h('button', {}, yes), ' ', h('button', { type: 'button', onclick: () => done(null) }, 'Cancel'))))
     document.body.append(d)
@@ -604,7 +574,6 @@ function modal (body, yes, value) {
   })
 }
 
-// A "…" button and its menu, floating under it (moves nothing): [[label, fn]].
 function more (id, items) {
   const isOpen = menu === id
   return h('span', { 'data-menu': id, style: 'position:relative; display:inline-block' },
@@ -615,7 +584,6 @@ function more (id, items) {
       : null)
 }
 
-// an open "…" menu stays inside the window: under its button, flipped right, left or up where it would not fit.
 function fitMenu () {
   const m = root.querySelector('[data-menu] [role=menu]')
   if (!m) return

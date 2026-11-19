@@ -1,6 +1,5 @@
-// The engine as the shell runs it: a Bare process from pear-runtime. The shell
-// stops sending heartbeats but keeps the pipe open (what a killed shell looks like on Windows: no pipe
-// event): the worker must exit by itself. Node only (pear-runtime runs in the shell's Node side).
+// The shell stops heartbeats but keeps the pipe open (a killed shell on Windows gives no pipe event): the worker must exit.
+// Node only: pear-runtime runs in the shell's Node side.
 import test from 'brittle'
 import { fileURLToPath } from 'url'
 import { engine, tmpDir, within, eventually } from './helpers.js'

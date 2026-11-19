@@ -1,6 +1,3 @@
-// Chat's page: conversations on the left, the open one on the right, redrawn from live views. No
-// stylesheet: HyperBrowser's default theme, with a few inline layout rules. Data: lib/chat.js.
-// unread numbers in the list (HyperBrowser's counts), a "New messages" line, a "…" menu per message.
 import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/chat.js'
 import { keepScroll, newLine } from './lib/scroll.js'
 
@@ -11,11 +8,11 @@ let me = null
 let contacts = []
 let convs = []
 let current = new URLSearchParams(location.search).get('instance')
-let view = null // the open conversation: { key, messages, invites, names, members, role, editing }
+let view = null
 let stops = []
-let joined = {} // invite ids answered here (hyper.mine)
+let joined = {}
 let notice = ''
-let counts = {} // { [conversation]: { count, dot } }: unread, from HyperBrowser
+let counts = {}
 
 start().catch((err) => {
   root.replaceChildren(h('p', {}, err.code === 'NOT_ALLOWED' ? 'Chat needs your identity and your contacts. Reload the page to be asked again.' : 'Chat could not start: ' + err.message))
@@ -28,7 +25,6 @@ async function start () {
   counts = (await hyper.notifications?.unread?.().catch(() => null)) || {}
   hyper.notifications?.on?.((u) => { counts = u; draw() })
   hyper.contacts.on(() => refresh().catch(() => {}))
-  // an open "…" floats over the page; a click outside it or Escape closes it
   const shut = () => { if (view?.menu) { view.menu = null; draw() } }
   document.addEventListener('click', (e) => { if (!e.target.closest('details')) shut() })
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut() })
@@ -55,7 +51,6 @@ function open (key) {
   current = key
   history.replaceState(null, '', '?instance=' + key)
   hyper.notifications?.viewing(key).catch(() => {}) // shown here, so not notified
-  // unread: the count when it opened (read once shown); line: where "New messages" goes, once the messages are in
   view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null, gone: false, waiting: false, confirm: null, forget: false, trimN: 6, trimUnit: 'months' }
   const v = view
   // secured without this person (no new address), or secured here (waiting for another admin's device)
@@ -81,15 +76,12 @@ function open (key) {
   draw()
 }
 
-// --- drawing ---
-
 function draw () {
   const conv = convs.find((x) => x.key === current)
   // a redraw (a message arriving) keeps the writer's caret and the reader's place
   const typing = document.activeElement?.name === 'text' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null
   const top = keepScroll(root.querySelector('[data-key]'), view?.key, view?.toEnd)
   if (view) view.toEnd = false
-  // Chat fits the window (body.hb-app); the conversations and the messages scroll, never the page
   // overflow-wrap: a long word (an hg: link) wraps anywhere rather than widen the page
   root.replaceChildren(h('div', { style: 'display:flex; gap:16px; flex:1; min-height:0; padding:4px; overflow-wrap:anywhere' },
     h('nav', { style: 'width:220px; flex:none; display:flex; flex-direction:column; min-height:0' },
@@ -107,7 +99,7 @@ function draw () {
   const list = root.querySelector('[data-key]')
   if (list) list.scrollTop = top ?? list.scrollHeight
   const line = list?.querySelector('.new-line')
-  if (line && !view.placed) { // opened with unread messages: the line near the top, the first of them below it
+  if (line && !view.placed) {
     view.placed = true
     list.scrollTop = Math.max(0, line.offsetTop - 8)
   }
@@ -135,11 +127,11 @@ function conversation (conv) {
   out.push(h('form', { onsubmit: send },
     h('textarea', { name: 'text', rows: 3, style: 'width:100%', placeholder: view.editing ? 'Edit your message' : 'Write a message (Enter sends, Shift+Enter: new line)', onkeydown: enter, oninput: (e) => { view.draft = e.target.value }, value: view.draft ?? view.editing?.text ?? '' }),
     h('button', {}, view.editing ? 'Save' : 'Send'), view.editing ? h('button', { type: 'button', onclick: () => { view.editing = view.draft = null; draw() } }, 'Cancel') : null))
-  if (!conv.direct) out.push(h('div', { style: 'flex:none; max-height:35%; overflow:auto' }, group(conv))) // a group's members: scroll on their own
+  if (!conv.direct) out.push(h('div', { style: 'flex:none; max-height:35%; overflow:auto' }, group(conv)))
   return out
 }
 
-// A message's text, or a circle's invite: an Accept button for its receiver, which only asks HyperBrowser.
+// An Accept button only asks HyperBrowser: the page never joins a circle itself.
 function body (m) {
   const inv = circleOf(m)
   if (!inv) return h('span', { style: 'white-space:pre-wrap' }, m.text)
@@ -151,11 +143,10 @@ function body (m) {
 const MENU = 'display:inline-block; position:relative; text-indent:0'
 const DROP = 'position:absolute; top:100%; left:0; z-index:10; display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:4px 8px; white-space:nowrap; background:var(--paper, Canvas); color:var(--ink, CanvasText); border:1px solid; box-shadow:2px 2px 0 var(--ink, CanvasText)'
 
-// The conversation's "…": its copies ("Kept by N of 5 copies"), and Change key for its owner.
 function info () {
   const line = view.copies && copiesLine(view.copies)
   const owner = view.role === 'owner'
-  const admin = !convs.find((x) => x.key === view.key)?.direct && (owner || view.role === 'admin') // groups only
+  const admin = !convs.find((x) => x.key === view.key)?.direct && (owner || view.role === 'admin')
   if (!line && !owner && !admin && !view.waiting) return null
   return h('details', { style: MENU + '; font-size:initial; font-weight:normal', open: view.menu === 'info' ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = 'info'; else if (view.menu === 'info') view.menu = null } },
     h('summary', { 'aria-label': 'About this conversation', style: 'display:inline; cursor:pointer; list-style:none' }, '…'),
@@ -177,7 +168,6 @@ function info () {
         h('button', { onclick: trim }, 'Trim'), ' ', h('button', { onclick: () => { view.confirm = null; draw() } }, 'Cancel')) : null))
 }
 
-// a short progress line, then the group at its new address (or the error in plain words)
 async function secure () {
   const forget = view.forget
   view.confirm = null
@@ -209,7 +199,6 @@ async function trim () {
   draw()
 }
 
-// One discreet "…" per message: its Edit and Delete (a <details>: Enter or Space opens it). Kept open across redraws.
 function menu (m, mod) {
   const mine = m.author === me.identity
   if (!mine && !mod) return null
@@ -242,9 +231,6 @@ function group (conv) {
     h('p', {}, h('button', { onclick: () => act(async () => { await c.leave(view.key); view = null; current = null; await refresh() }) }, 'Leave the group')))
 }
 
-// --- actions ---
-
-// after a removal or a ban in a group, Secure this place is suggested once (its owner, admins)
 const suggested = new Set()
 function suggest () {
   if (suggested.has(view.key) || !['owner', 'admin'].includes(view.role) || convs.find((x) => x.key === view.key)?.direct) return

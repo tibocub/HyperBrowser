@@ -103,6 +103,8 @@ compiler.
   - `fileTree(element, { label, open(path), rename(from, to), menu(path, kind) → [[label, fn] | null], mark(path) })`
     returns `{ set(items), select(path), rename(path), selected, expanded }`.
   - `items` are `[{ path, folder? }]`; a file's folders are implied, and empty folders are listed as folders.
+  - `rename` may throw: the old name is kept. A `menu` item's `fn` runs once the menu has closed; `null` draws a
+    separator.
   - `nest(items)` is the pure part (tested).
   - The menu floats at the click and moves nothing. It also opens with the Menu key and Shift+F10; Escape closes it
     and the focus goes back to the row.

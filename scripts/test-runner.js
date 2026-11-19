@@ -1,18 +1,6 @@
 #!/usr/bin/env node
-// Runs test files in parallel, one process per file, and reports how long
-// each took. Same idea as hypergraph's scripts/test-runner.js.
-//
-//   node scripts/test-runner.js [--jobs N] [--bare] [file ...]
-//
-// Default files: test/*.test.js. --bare runs them on Bare instead of Node.
-// --jobs defaults to the number of CPU cores minus two (HB_TEST_JOBS overrides);
-// test processes run at below-normal priority. Files start longest first (by
-// their last run, kept in the gitignored .test-times.json). Every file must
-// print its own "# tests = n/n" line to count as passed.
-// HG_TEST_TMP (the same setting as hypergraph's) puts the files' temp folders
-// there: on an SSD. Six files at once on a spinning disk run ~10x slower and
-// time out.
-//
+// One process per file, longest first; every file must print its own "# tests = n/n" line to pass.
+// HG_TEST_TMP puts temp folders on an SSD: six files at once on a spinning disk run ~10x slower and time out.
 // Files run as plain scripts (`node file`, `bare file`), not through brittle's
 // CLI, whose glob walks the whole cwd (node_modules, .claude/worktrees...)
 // before each file: ~4 s per file on this machine (measured).
@@ -66,7 +54,7 @@ function run (file) {
 let times = {}
 try { times = JSON.parse(fs.readFileSync(TIMES, 'utf-8')) } catch {}
 const key = (f) => (opts.bare ? `bare:${f}` : f)
-const order = (f) => (key(f) in times ? times[key(f)] : Infinity) // unknown files first
+const order = (f) => (key(f) in times ? times[key(f)] : Infinity)
 const queue = [...files].sort((a, b) => order(b) - order(a))
 const started = Date.now()
 const results = []
@@ -89,7 +77,7 @@ for (const r of failed) {
   if (opts.bare && r.code === 3221226505 && /^Uncaught/m.test(r.out)) process.stdout.write('(uncaught error: Bare aborts on one, not a native crash)\n')
   let uncaught = false
   process.stdout.write(r.out.split('\n').filter(l => {
-    if (/^(Uncaught|\w*Error: )/.test(l)) uncaught = true // Bare's form, Node's
+    if (/^(Uncaught|\w*Error: )/.test(l)) uncaught = true
     else if (uncaught && !l.trim()) uncaught = false
     return uncaught || /not ok|Error|error|# tests|# asserts/.test(l)
   }).slice(0, 40).join('\n') + '\n')

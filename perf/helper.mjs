@@ -1,8 +1,4 @@
-// the helper's idle CPU and memory while it holds for a circle and keeps the official apps. The owner's engine
-// publishes the apps (scripts/apps.js, into a copy of preset.json) and makes a circle; `--people` others join it and
-// stay online in this process; the helper then runs alone in a fresh process, joins from its config, keeps the apps,
-// and is measured for `--minutes`.
-//   node --expose-gc perf/helper.mjs [-- --people 3 --minutes 1]   (appends to perf/history.jsonl)
+// The helper's idle CPU and memory, alone in a fresh process, after joining a circle and keeping the official apps.
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -91,7 +87,6 @@ async function measure () {
 
 function stats (l) { const s = l.slice().sort((a, b) => a - b); return { median: Math.round(s[s.length >> 1] * 10) / 10, min: Math.round(s[0] * 10) / 10, max: Math.round(s.at(-1) * 10) / 10 } }
 
-// [scenario, unit, { median, min, max }, n, size] → perf/history.jsonl (as perf/circles.mjs)
 function record (rows) {
   const git = (c) => { try { return execSync('git ' + c, { cwd: HERE }).toString().trim() } catch { return null } }
   const now = new Date().toISOString()

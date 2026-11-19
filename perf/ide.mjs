@@ -1,6 +1,4 @@
-// what the IDE costs. Runs the self-test (its IDE check prints PERF lines: the IDE's start, CodeMirror's first
-// load, the page's memory before and after it, a preview's reload) and the size of the two bundles (sites/ide/vendor).
-//   npm run perf:ide   (appends to perf/history.jsonl)
+// Runs the self-test, whose IDE check prints PERF lines, and measures the bundles in sites/ide/vendor.
 import fs from 'fs'
 import os from 'os'
 import path from 'path'

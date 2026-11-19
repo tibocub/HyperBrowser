@@ -1,8 +1,7 @@
-// The frame's pure logic (data-model.md): the address and the desktop's cells.
 import test from 'brittle'
 import { parseAddress, shortKey, place, upsert, move, remove, COLUMNS, checkShare, gb, inviteRows, invitedLine, joinError, storageText, totalText, nameError } from '../shell/model.js'
 
-const KEY = 'yb'.repeat(26) // 52 z32 letters
+const KEY = 'yb'.repeat(26)
 
 test('the address: a full key or an hg: link opens, anything else is refused', (t) => {
   t.alike(parseAddress(KEY), { key: KEY })
@@ -71,7 +70,6 @@ test('the desktop: first free cell, swap on move, a preset gets its key and keep
   t.is(icons.length, 2)
 })
 
-// the circles' share, a number of GB typed by the person; the engine checks the disk again.
 test('the share: GB with decimals, 0.1 at least, at most free + held - 2 GB; lowering it says what goes', (t) => {
   const disk = { used: 0.4e9, free: 10e9 }
   t.alike(checkShare('1', disk), { bytes: 1e9, drop: 0 })
@@ -88,7 +86,6 @@ test('the share: GB with decimals, 0.1 at least, at most free + held - 2 GB; low
   t.is(gb(0), '0 GB')
 })
 
-// Invite contacts…: who can be ticked, and what Send says
 test('invite contacts: friends only, those already in the circle marked; the result line names failures', (t) => {
   const z = (c) => c.repeat(52)
   const contacts = [
@@ -108,7 +105,6 @@ test('invite contacts: friends only, those already in the circle marked; the res
   t.is(invitedLine([{ name: 'Ann' }, { name: 'Bob', error: 'not a friend' }]), 'Invites sent to 1 friend in Chat. Not sent to Bob (not a friend)')
 })
 
-// Why a circle's invite didn't join
 test('joining errors: used or expired, full, not a circle invite', (t) => {
   for (const code of ['INVITE_EXPIRED', 'INVITE_USED_UP', 'INVITE_REVOKED']) t.is(joinError({ code }), 'This invite was already used or has expired', code)
   t.is(joinError({ code: 'CIRCLE_FULL' }), 'This circle is full (50)')

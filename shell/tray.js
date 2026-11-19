@@ -1,6 +1,3 @@
-// The tray: closing the window keeps HyperBrowser running here, so its engine keeps hosting the
-// installed sites, the person's own and the joined forums. The menu: open the window, how many sites this
-// device hosts, Quit. frame.js decides when there is one (the setting in "HyperBrowser ▾", hasTray()).
 import { Tray, Menu, Notification, nativeImage } from 'electron'
 import { execFileSync } from 'child_process'
 import path from 'path'
@@ -21,7 +18,6 @@ export function hasTray () {
   }
 }
 
-// The icon with a mark (something unread): a red square in its lower right corner.
 function withMark (image) {
   const { width, height } = image.getSize()
   const px = Buffer.from(image.toBitmap()) // BGRA
@@ -32,7 +28,6 @@ function withMark (image) {
   return nativeImage.createFromBitmap(px, { width, height })
 }
 
-// show() brings the window back, quit() ends HyperBrowser. → { status, item(label), notice(text), mark(n), destroy }
 export function startTray ({ rpc, show, quit }) {
   const image = nativeImage.createFromPath(ICON)
   const marked = withMark(image)
@@ -61,7 +56,7 @@ export function startTray ({ rpc, show, quit }) {
   return {
     status: () => status,
     marked: () => unread > 0,
-    mark (n) { // n unread notifications
+    mark (n) {
       if ((n > 0) !== (unread > 0)) tray.setImage(n > 0 ? marked : image)
       unread = n
       tray.setToolTip(n > 0 ? `HyperBrowser: ${n} new` : 'HyperBrowser')

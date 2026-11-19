@@ -1,8 +1,4 @@
-// Contacts: the person's contact list, in their settings (on every device of theirs). A friend
-// request is a private conversation of the Chat app (an instance) made by the sender, with a one-use
-// invite to it; the invite reaches the other person over the DHT (a topic derived from their identity, while
-// both are online) or as a contact link sent by any channel. The invite is signed by its maker: the receiver
-// reads the sender from it, never from the message. Accepting joins the conversation.
+// Who sent a request is read from the invite's signature, never from the message.
 import Hyperswarm from 'hyperswarm'
 import crypto from 'hypercore-crypto'
 import FramedStream from 'framed-stream'
@@ -11,34 +7,31 @@ import z32 from 'z32'
 import invites from 'hypergraph/lib/invites.js'
 import { parseManifest } from './manifest.js'
 
-const CONTACTS = 'hyperbrowser/contacts' // { [identity]: { name, state, chat, link?, delivered?, named?, at } }
-const LINKS = 'hyperbrowser/contact-links' // { [conversation key]: at }: contact links nobody opened yet
-const FINDABLE = 'hyperbrowser/findable' // false: this person's devices don't answer under their key
-const NAME = 'name' // SwarmFS's name of the person, shared by every app
+const CONTACTS = 'hyperbrowser/contacts'
+const LINKS = 'hyperbrowser/contact-links'
+const FINDABLE = 'hyperbrowser/findable'
+const NAME = 'name'
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 const CONTACTS_MAX = 1000
 const INCOMING_MAX = 100 // requests anyone can send: the rest are dropped until some are answered
 const FRAME_MAX = 4096
-const WATCH = 2000 // pending conversations checked this often
-const LOOKUP = 15000 // an undelivered request's person looked up again this often (they may have come online)
+const WATCH = 2000
+const LOOKUP = 15000
 
 const error = (code, message) => Object.assign(new Error(message), { code })
 const validName = (n) => typeof n === 'string' && n.length > 0 && n.length <= 64 && !/[\x00-\x1f\x7f]/.test(n) // eslint-disable-line no-control-regex
 const topicOf = (identity) => crypto.hash(b4a.from('hyperbrowser/contacts/1/' + identity))
 const noop = () => {}
 
-// sfs: the engine's SwarmFS. joinInstance(app, link) → the site, an instance of `app` (else NOT_ALLOWED);
-// listInstance(app, key, on); leaveInstance(app, key). bootstrap: the DHT's (tests). circles(method, params): the
-// engine's circles.*.
 export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveInstance, circles }) {
-  let chat = null // the Chat app's key (apps.set): direct conversations are its instances
-  let types = null // its record types, for the conversations made here
+  let chat = null
+  let types = null
   let writing = Promise.resolve()
   let swarm = null
   let announced = false
-  const wanted = new Map() // topic hex -> identity: requests not delivered yet
-  const lookups = new Map() // topic hex -> Hyperswarm's discovery
-  const sent = new Map() // connection -> Set of identities whose request went on it
+  const wanted = new Map()
+  const lookups = new Map()
+  const sent = new Map()
   let watching = false
   let closed = false
   const me = sfs.hg.identity.publicKey
@@ -51,7 +44,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   const settings = () => sfs.hg.settings()
   const all = async () => (await settings())[CONTACTS] || {}
 
-  // One read-and-write of the list at a time: fn(list) changes it in place.
+  // One read-and-write at a time: concurrent writers would drop each other's changes.
   function update (fn) {
     const write = writing.then(async () => {
       const list = await all()
@@ -79,7 +72,6 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     return validName(n) ? n : ''
   }
 
-  // A new direct conversation, owned here, reachable by the Chat app, with this person's name in it.
   async function conversation () {
     needChat()
     if (!types) {
@@ -104,8 +96,6 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       return validName(items[0]?.name) ? items[0].name : null
     } catch { return null }
   }
-
-  // --- the calls (contract: specs/013-contacts-chat/contracts/site-api.md) ---
 
   async function call (method, args) {
     const [a, b] = args
@@ -135,7 +125,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
         const c = (await all())[a]
         if (!c) throw error('NOT_FOUND', 'not a contact')
         await update((list) => { delete list[a] })
-        if (c.chat && c.state !== 'incoming') await leaveInstance(chat, c.chat).catch(noop) // gone already: fine
+        if (c.chat && c.state !== 'incoming') await leaveInstance(chat, c.chat).catch(noop)
         return true
       }
       case 'rename':
@@ -153,7 +143,6 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
         return { link }
       }
       case 'add': return add(a)
-      // the circles the person may invite to ({ key, name }), and an invite to one in a friend's conversation
       case 'circles': return (await circles('circles.list')).filter((x) => x.role === 'owner' || x.role === 'admin').map((x) => ({ key: x.key, name: x.name }))
       case 'inviteToCircle': return inviteToCircle(a, b)
       case 'tell': return tell(a, b) // the engine's own (a project's invite), never a page's
@@ -183,7 +172,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     try {
       site = await joinInstance(chat, c.link)
     } catch (err) {
-      if (err.code === 'NOT_ALLOWED' || err.code?.startsWith('INVITE_') && err.code !== 'INVITE_INVALID') await update((list) => { delete list[identity] }) // never usable
+      if (err.code === 'NOT_ALLOWED' || err.code?.startsWith('INVITE_') && err.code !== 'INVITE_INVALID') await update((list) => { delete list[identity] })
       throw err
     }
     await putName(site.space).catch(noop)
@@ -193,8 +182,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     })
   }
 
-  // A one-use invite to `circle`, as a message in the direct conversation with friend `identity`: its text keeps the
-  // plain link (an older Chat shows it), `circle` and `circleName` make Chat's Join button (docs/chat.md).
+  // The text keeps the plain link for older Chats; `circle` and `circleName` make the current Chat's button.
   async function inviteToCircle (identity, circle) {
     const c = (await all())[identity]
     if (c?.state !== 'friend' || !c.chat) throw error('NOT_FOUND', 'not a friend')
@@ -212,7 +200,6 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     return true
   }
 
-  // A message from the person into their chat with a friend.
   async function tell (identity, text) {
     const c = (await all())[identity]
     if (c?.state !== 'friend' || !c.chat) throw error('NOT_FOUND', 'not a friend')
@@ -227,7 +214,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     const maker = inv.public ? null : z32.encode(inv.maker)
     if (maker === me) throw error('ALREADY', 'your own link')
     if ((await all())[maker]?.state === 'friend') throw error('ALREADY', 'already a friend')
-    const site = await joinInstance(chat, link) // NOT_ALLOWED: not a Chat conversation
+    const site = await joinInstance(chat, link)
     if (!maker) {
       await leaveInstance(chat, site.key).catch(noop)
       throw error('NOT_ALLOWED', 'a contact link is an invite, not a public link')
@@ -239,8 +226,6 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       return view(maker, list[maker])
     })
   }
-
-  // --- the watch: pending conversations someone joined, names not known yet ---
 
   async function watch () {
     if (watching || closed) return
@@ -260,8 +245,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     }
   }
 
-  // Who joined conversation `key`: `expected` becomes a friend, anyone else is banned (they got hold of the
-  // invite: answered under the person's DHT name, B5). A contact link (expected null): its first joiner.
+  // Anyone but `expected` got hold of the invite (an impostor under the person's DHT topic, B5): banned.
   async function joined (key, expected) {
     let others
     try {
@@ -286,8 +270,6 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     }
   }
 
-  // --- presence on the DHT ---
-
   async function refresh () {
     const s = await settings()
     const list = s[CONTACTS] || {}
@@ -307,7 +289,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     for (const [hex, id] of want) {
       if (!lookups.has(hex)) lookups.set(hex, swarm.join(b4a.from(hex, 'hex'), { server: false, client: true }))
       wanted.set(hex, id)
-      for (const [conn, done] of sent) if (!done.has(id) && topicsOf(conn).includes(hex)) send(conn, id) // a peer met before
+      for (const [conn, done] of sent) if (!done.has(id) && topicsOf(conn).includes(hex)) send(conn, id)
     }
     for (const hex of [...wanted.keys()]) {
       if (want.has(hex)) continue

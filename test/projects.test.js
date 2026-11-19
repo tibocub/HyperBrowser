@@ -1,5 +1,3 @@
-// Projects: folders backed by a private SwarmFS space, edited by the person's devices and co-authors,
-// published explicitly with versions, previewed on a throwaway space. Through the site API, as the IDE sees it.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -12,7 +10,6 @@ import { linkOrCopy } from '../engine/projects.js'
 const IDE = { title: 'IDE', permissions: ['space', 'projects'] }
 const SITE = JSON.stringify({ title: 'My page' })
 
-// An engine with its projects folder, the IDE published by someone and opened, allowed (identity, projects).
 async function ide (t, opts = {}) {
   const e = await engine(t, { projects: tmpDir(t, 'projects'), ...opts })
   const { key } = await e.rpc.request('site.publish', { folder: siteFolder(t, { manifest: IDE }) })

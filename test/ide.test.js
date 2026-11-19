@@ -1,5 +1,3 @@
-// The IDE through its own code (sites/ide/lib/site.js) on window.hyper as the page gets it: a beginner's
-// HyperMD site, a developer's copy of Chat, two co-authors.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -10,7 +8,6 @@ import { nest } from '../sites/ide/lib/tree.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-// An engine with the IDE (sites/ide) published and allowed: { e, hyper, projects }.
 async function withIde (t, opts = {}) {
   const e = await engine(t, { projects: tmpDir(t, 'projects'), ...opts })
   const { key } = await e.rpc.request('site.publish', { folder: path.join(ROOT, 'sites', 'ide') })

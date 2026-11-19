@@ -1,7 +1,4 @@
-// what projects cost. Two devices of one person on a local DHT: `--files` small files (1 KB) written into a
-// project on the PC, the time until all are on the laptop; then Publish: the first (the site made, every file copied),
-// and a next one with one file changed, each until a visitor reads it.
-//   npm run perf:projects [-- --files 1000]   (appends to perf/history.jsonl)
+// Two devices of one person: `--files` small files synced, then a first Publish and one with a file changed.
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -61,7 +58,7 @@ for (let i = 0; i < FILES; i++) {
   fs.writeFileSync(path.join(dir, i + '.txt'), page)
 }
 const count = (d) => fs.readdirSync(d, { withFileTypes: true }).reduce((n, e) => n + (e.isDirectory() ? (e.name === '.swarmfs-trash' ? 0 : count(path.join(d, e.name))) : 1), 0)
-await until(() => count(there) >= FILES + 3) // + site.json, index.html, .swarmfsignore
+await until(() => count(there) >= FILES + 3)
 const sync = Math.round(performance.now() - t)
 
 const visitor = engine('visitor')
@@ -95,7 +92,6 @@ for (const e of [visitor, laptop, pc]) await e.rpc.request('close').catch(() => 
 await testnet.destroy()
 try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 }) } catch {}
 
-// [scenario, unit, { median, min, max }, n, size] → perf/history.jsonl
 function record (rows) {
   const git = (c) => { try { return execSync('git ' + c, { cwd: HERE }).toString().trim() } catch { return null } }
   const now = new Date().toISOString()

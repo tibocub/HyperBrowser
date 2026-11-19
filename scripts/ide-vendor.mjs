@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-// the IDE's two bundles, made once and committed (the IDE is a site: it loads nothing from outside its
-// folder, and HyperBrowser gains no dependency):
-//   sites/ide/vendor/editor.js  CodeMirror 6, only JS, HTML, CSS, JSON, Markdown, search and undo (loaded lazily)
-//   sites/ide/vendor/hmd.js     HyperMD's parser and renderer, and the engine's site.json check (engine/manifest.js)
-// CodeMirror and esbuild are installed into a temp folder at the versions below. Run: node scripts/ide-vendor.mjs
+// Bundles made once and committed: the IDE is a site and loads nothing from outside its folder.
+// Installs CodeMirror and esbuild into a temp folder at the versions below. Run: node scripts/ide-vendor.mjs
 import fs from 'fs'
 import os from 'os'
 import path from 'path'

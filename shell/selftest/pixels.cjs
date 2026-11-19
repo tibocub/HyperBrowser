@@ -1,7 +1,5 @@
-// The textures check, an Electron app of its own: run with --force-device-scale-factor=1.25 (or 1,
-// 1.5…). Each dithered background (the shell's desktop, sites/home, sites/forum, the default theme for sites)
-// must be a clean checkerboard of whole device pixels (no gray from scaling) and must not move when the page scrolls.
-// Prints PASS/FAIL lines, then PIXELS PASS or PIXELS FAIL. Used by test/sandbox.electron.js.
+// Each dithered background must be a clean checkerboard of whole device pixels and must not move on scroll.
+// Run with --force-device-scale-factor=1.25 (or 1, 1.5…); used by test/sandbox.electron.js.
 const { app, BrowserWindow } = require('electron')
 const fs = require('fs')
 const path = require('path')
@@ -10,7 +8,7 @@ const ROOT = path.join(__dirname, '..', '..')
 const css = (p) => fs.readFileSync(path.join(ROOT, p), 'utf-8')
 const TALL = '<div style="height:3000px"></div>'
 const AREA = { x: 40, y: 120, width: 40, height: 40 }
-const PAGES = [ // [name, page, user stylesheet, the area to look at (on the dither)]
+const PAGES = [
   ['the shell desktop', `<style>${css('shell/ui/ui.css')}</style><main id="desktop">${TALL}</main>`, null, AREA],
   ['sites/home', `<style>${css('sites/home/style.css')}</style>${TALL}`, null, AREA],
   ['sites/forum', `<style>${css('sites/forum/style.css')}</style>${TALL}`, null, AREA],
@@ -27,7 +25,7 @@ async function grab (w, area, cell) {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const v = px[(y * width + x) * 4]
-      const want = px[0] ^ ((Math.floor(x / cell) + Math.floor(y / cell)) & 1 ? 255 : 0) // whichever dot starts it
+      const want = px[0] ^ ((Math.floor(x / cell) + Math.floor(y / cell)) & 1 ? 255 : 0)
       if (Math.abs(v - want) > 8) bad++
     }
   }

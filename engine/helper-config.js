@@ -1,14 +1,11 @@
-// The helper's config file: `key = value` lines, `#` comments, `join` and `seed`
-// repeated for lists. Pure: parse, the defaults, the file written when there is none, and the merge.
 import os from 'os'
 import path from 'path'
 
-const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // a site or space key, as engine/index.js
+const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 const LISTS = new Set(['join', 'seed'])
 const validName = (n) => n.length > 0 && n.length <= 64 && !/[\x00-\x1f\x7f]/.test(n) // eslint-disable-line no-control-regex
 const home = (p) => (p === '~' || p.startsWith('~/') ? path.join(os.homedir(), p.slice(1)) : p)
 
-// Each setting's check: the value kept, or undefined (logged and ignored).
 const CHECK = {
   dir: (v) => (v ? home(v) : undefined),
   name: (v) => (validName(v) ? v : undefined),
@@ -24,7 +21,6 @@ export function defaults (hostname = os.hostname()) {
   return { dir: path.join(os.homedir(), '.local', 'share', 'hyperbrowser-helper'), name: `Helper (${hostname})`, share: null, apps: 'official', seed: [], join: [] }
 }
 
-// text → { values: the settings the file sets, errors: ['line 3: …'] }
 export function parse (text) {
   const values = {}
   const errors = []
@@ -43,7 +39,6 @@ export function parse (text) {
   return { values, errors }
 }
 
-// Command line, then file, then defaults; the lists add up (a --join is one more link).
 export function merge (cli, file, base = defaults()) {
   const out = { ...base, ...file }
   for (const [k, v] of Object.entries(cli)) {
@@ -53,7 +48,6 @@ export function merge (cli, file, base = defaults()) {
   return out
 }
 
-// The file written when there is none: every setting commented out, its default shown.
 export function template (base = defaults()) {
   return `# HyperBrowser helper (docs/helper.md). Read again when it changes, except dir (restart).
 # Uncomment a line to change a setting. join and seed may be repeated.

@@ -1,13 +1,6 @@
 #!/usr/bin/env node
-// The release folder `pear stage` takes, from what npm run build made on each OS:
-//
-//   npm run release -- <build> [<build> ...] [--out <dir>] [--mac-arch arm64|x64]
-//   e.g. npm run release -- out/dist/win-unpacked ../HyperBrowser.AppImage
-//
-// → <out>/hyperbrowser-<version>/package.json (name, productName, version, upgrade: what the updater reads)
-//   and by-arch/<platform>-<arch>/app/<HyperBrowser...>, the layout pear-runtime's updater looks for (what
-//   `pear build` makes; done here because Windows ships a folder). Which OS, from the build:
-//   a folder (win-unpacked) win32-x64, as app/HyperBrowser/; .AppImage linux-x64; -mac.zip darwin (the .app).
+// npm run release -- <build> [<build> ...] [--out <dir>] [--mac-arch arm64|x64]
+// by-arch/<platform>-<arch>/app is the layout pear-runtime's updater looks for (`pear build` makes it; done here because Windows ships a folder).
 
 import fs from 'fs'
 import path from 'path'

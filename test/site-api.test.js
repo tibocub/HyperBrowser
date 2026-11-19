@@ -1,6 +1,4 @@
-// The site API through the engine: hypergraph's site handle for the
-// site's own space, asked once per site, live views across the boundary. The types used are those a
-// SwarmFS site space has (profile, site, file), except the last tests: a site's own types.
+// The types used are a SwarmFS site space's (profile, site, file), except the last tests: a site's own types.
 import test from 'brittle'
 import b4a from 'b4a'
 import fs from 'fs'
@@ -63,7 +61,6 @@ test('after yes: calls, query chains, info; the answer is remembered after a res
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'query', args: ['profile'], chain: [['latest', [1]], ['latest', [1]]] })), 'INVALID_PARAMS')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'query', args: ['profile'], chain: [['constructor', []], ['latest', [1]]] })), 'INVALID_PARAMS')
 
-  // another site's space as a sub-space: refused; its own pages sub-space: allowed, bytes cross as bytes
   const other = await owner.rpc.request('site.publish', { folder: siteFolder(t, DYNAMIC) })
   t.is(await codeOf(owner.rpc.request('site.call', { key, sub: other.key, method: 'info' })), 'NOT_ALLOWED')
   const site = (await owner.rpc.request('site.call', { key, method: 'query', args: ['site'], chain: [['latest', [1]]] })).items[0]
@@ -72,7 +69,6 @@ test('after yes: calls, query chains, info; the answer is remembered after a res
   t.ok(index.data instanceof Uint8Array, 'a bytes field arrives as bytes')
   t.is(b4a.toString(index.data), '<h1>hi</h1>')
 
-  // restart: same folder, the answer is still there
   await owner.rpc.request('close')
   const again = await engine(t, { dir: owner.dir })
   await again.rpc.request('site.open', { key })
@@ -101,7 +97,6 @@ test('live views and events cross the boundary, from another engine', async (t) 
   t.ok(await eventually(() => owner.events.some((ev) => ev.event === 'event' && ev.data.id === changes && ev.data.data.records.some((r) => r.id === bob.id)), 15000), 'and a change event')
   t.is(await codeOf(owner.rpc.request('site.on', { key, event: 'logs' })), 'NOT_ALLOWED', 'events a site may not hear')
 
-  // off stops one; site.close stops the rest
   await visitor.rpc.request('site.off', { id })
   const before = liveEvents(visitor, id).length
   await visitor.rpc.request('site.call', { key, method: 'edit', args: [bob.id, { name: 'bobby' }] })
@@ -122,7 +117,6 @@ test('a type the space never had: INVALID_TYPE once complete, not before', async
   t.ok(await eventually(async () => (await read()).code === 'INVALID_TYPE', 15000), 'then INVALID_TYPE')
 })
 
-// a site's own types (site.json), invite-only sites, and the person's own data for a site (mine).
 const OWN = {
   manifest: {
     title: 'Own types',
@@ -158,7 +152,6 @@ test('a site with its own types, invite-only: strangers stay out, an invite lets
   const theirs = await member.rpc.request('site.call', { key, method: 'put', args: ['note', { text: 'from a member' }] })
   t.ok(await eventually(async () => (await owner.rpc.request('site.call', { key, method: 'get', args: [theirs.id] })).record?.text === 'from a member', 15000), 'and writes one the owner gets')
 
-  // published again with one more type: added, the first one kept
   fs.writeFileSync(path.join(folder, 'site.json'), JSON.stringify({ ...OWN.manifest, types: { ...OWN.manifest.types, tag2: { fields: { name: 'string' } } } }))
   await owner.rpc.request('site.publish', { folder })
   t.is((await owner.rpc.request('site.call', { key, method: 'put', args: ['tag2', { name: 'x' }] })).name, 'x', 'a type added by publishing again')
@@ -176,7 +169,6 @@ test('mine: the person\'s own data for a site, on their settings, asked first li
   t.alike(await owner.rpc.request('site.call', { key, method: 'mine.all' }), { 'read/abc': 42 }, 'null removes')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['', 1] })), 'INVALID_PARAMS')
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['x'.repeat(201), 1] })), 'INVALID_PARAMS')
-  // capped: a value, and the site's whole share (every device of the person replicates it)
   t.is(await codeOf(owner.rpc.request('site.call', { key, method: 'mine.set', args: ['big', 'x'.repeat(64 * 1024)] })), 'TOO_BIG', 'one value over 64 KB')
   const chunk = 'x'.repeat(60 * 1024)
   for (let i = 0; i < 17; i++) await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c' + i, chunk] })
@@ -185,7 +177,6 @@ test('mine: the person\'s own data for a site, on their settings, asked first li
   t.ok(await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c17', 'x'.repeat(50 * 1024)] }), 'room again once a value shrinks')
   for (let i = 0; i <= 17; i++) await owner.rpc.request('site.call', { key, method: 'mine.set', args: ['c' + i, null] })
 
-  // another site sees none of it
   const other = await owner.rpc.request('site.publish', { folder: siteFolder(t, DYNAMIC) })
   await owner.rpc.request('site.open', { key: other.key })
   await owner.rpc.request('site.consent', { key: other.key, allow: true })

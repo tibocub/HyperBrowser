@@ -1,4 +1,4 @@
-// The frame page's only door to the shell (contracts/frame.md). Site views never get this preload.
+// Site views never get this preload.
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('frame', {

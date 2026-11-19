@@ -1,9 +1,4 @@
-// what opening Configuration's circles costs (circles.list, then each circle's members), and the engine's
-// idle CPU while holding (a 1 GB share) for its circles. One person (the owner) makes 3 circles; `--people` others join all three
-// and hold, staying online in this process; the owner's engine is then measured alone in a fresh process.
-// the circles window's Invite contacts… for `--friends` friends of the owner's (Chat conversations, not in the
-// circle): each their own invite, one after another as the shell sends them.
-//   npm run perf:circles [-- --people 49 --friends 10 --minutes 1]   (49: circles of 50; appends to perf/history.jsonl)
+// The circles' read cost and idle CPU while holding; the engine is measured alone in a fresh process.
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -42,7 +37,7 @@ const started = Date.now()
 const keys = []
 for (let i = 0; i < CIRCLES; i++) keys.push((await owner.request('circles.create', { name: 'C' + i })).key)
 const others = []
-const pals = [] // the owner's friends
+const pals = []
 for (let p = 0; p < people; p++) {
   const e = await engine('p' + p)
   for (const key of keys) await e.request('circles.join', { link: (await owner.request('circles.invite', { key })).link })
@@ -58,7 +53,6 @@ await testnet.destroy()
 fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 })
 process.exit(code)
 
-// the owner's friends by contact link (Chat published by the owner, a copy of sites/chat), then Invite contacts… to circle C0
 async function invites () {
   const folder = path.join(tmp, 'chat-site')
   fs.cpSync(path.join(HERE, '..', 'sites', 'chat'), folder, { recursive: true })
@@ -93,7 +87,6 @@ async function invites () {
 
 function stats (l) { const s = l.slice().sort((a, b) => a - b); return { median: Math.round(s[s.length >> 1] * 10) / 10, min: Math.round(s[0] * 10) / 10, max: Math.round(s.at(-1) * 10) / 10 } }
 
-// [scenario, unit, { median, min, max }, n, size] → perf/history.jsonl
 function record (rows) {
   const git = (c) => { try { return execSync('git ' + c, { cwd: HERE }).toString().trim() } catch { return null } }
   const now = new Date().toISOString()
@@ -107,7 +100,7 @@ function record (rows) {
 
 async function measure () {
   const owner = await engine('owner')
-  await wait(10000) // its circles open, holders found
+  await wait(10000)
   const open = []
   for (let i = 0; i < 5; i++) {
     const t = Date.now()

@@ -1,14 +1,9 @@
-// The forum's page: one page, hash routes, redrawn from live views. The data: lib/forum.js; what is
-// derived: lib/view.js; post text: lib/text.js; icons: lib/icon.js. The shell draws the frame; this, the content.
-// on the left, your forums (dots, numbers, join, leave), then this forum's boards (dots).
 import { forum, watch, people, LIMITS, MODERATORS, ADMINS, copiesLine, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/forum.js'
 import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, ago, boardTree, SORTS, addNew, pruneUnread, without } from './lib/view.js'
 import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/text.js'
 import * as icon from './lib/icon.js'
 
 const app = document.getElementById('app')
-// The forum app: each forum is an instance of it, owned by whoever made it; ?instance=<key> says which.
-// With none, the start page: your forums, the official one, make one, join one.
 const at = new URLSearchParams(location.search).get('instance')
 const hyper = window.hyper && at ? window.hyper.instance(at) : null
 const SORT_LABELS = { activity: 'Activity', newest: 'Newest', top: 'Top', lively: 'Lively' }
@@ -20,20 +15,19 @@ let data = { complete: {}, boards: [], threads: [], comments: [], votes: [], pro
 let names = new Map()
 let peers = 0
 let notice = ''
-let title = 'Forum' // the forum's name, once known
-const drafts = {} // form key → { text, title, picks }
+let title = 'Forum'
+const drafts = {}
 const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null, joining: null, leaveWarning: null, forget: false, trimN: 6, trimUnit: 'months', suggest: null, suggested: new Set() }
-const opened = {} // thread id → the ids of its replies new when it was opened ("new" marks)
-let news = { cursor: null, unread: {} } // what is new, found with since() (lib/forum.js catchUp)
-let forums = [] // the person's forums (this app's instances)
-let counts = {} // { [forum]: { count, dot } }: the forums' numbers and dots
-let follows = [] // this app's follows (boards, people)
-let collapsed = false // the forums column
+const opened = {}
+let news = { cursor: null, unread: {} }
+let forums = []
+let counts = {}
+let follows = []
+let collapsed = false
 let threadView = { id: null, stop: null, items: [], complete: false }
 let mentionView = { items: [], complete: false, seenAtOpen: null }
-const about = {} // { [forum]: { copies, private } }, read when its "…" opens
+const about = {}
 
-// --- start ---
 
 start().catch((err) => {
   app.replaceChildren(h('div', { class: 'desk' }, windowBox('HyperBrowser Forum', h('p', { class: 'pad' },
@@ -47,12 +41,12 @@ async function start () {
   }
   if (!hyper) return startPage()
   f = forum(hyper)
-  me = await f.me() // the identity question, once per site
+  me = await f.me()
   if (me.moved && !me.movedTo) { // secured without this person (removed or banned): no new address
     app.replaceChildren(windowBox(me.name || 'Forum', h('p', { class: 'pad' }, 'You no longer have access to this forum: it was secured, and you were not taken along.')))
     return
   }
-  if (me.key !== at) history.replaceState(null, '', '?instance=' + me.key + location.hash) // secured: its new address
+  if (me.key !== at) history.replaceState(null, '', '?instance=' + me.key + location.hash)
   title = (await hyper.info()).name || title
   document.title = title
   mine = await f.mine()
@@ -82,7 +76,7 @@ async function start () {
   schedule()
 }
 
-// --- what is new: since() from the cursor kept in mine, by message numbers, never by dates ---
+// What is new: since() by message numbers, never by dates.
 
 let catching = null
 function catchUpSoon () {
@@ -99,15 +93,13 @@ function catchUpSoon () {
   }, 300)
 }
 
-// --- the left columns: your forums, with HyperBrowser's numbers and dots; join, make, leave ---
-
 async function panel () {
   const root = window.hyper
   const saved = (await root.mine.all().catch(() => ({}))).panel
   collapsed = saved ? saved === 'collapsed' : innerWidth < 700 // narrow: collapsed unless chosen
   await loadForums()
   root.notifications?.on?.((u) => {
-    if (Object.keys(u).sort().join() !== forums.map((x) => x.key).sort().join()) loadForums().catch(() => {}) // joined or left elsewhere
+    if (Object.keys(u).sort().join() !== forums.map((x) => x.key).sort().join()) loadForums().catch(() => {})
     counts = u
     schedule()
   })
@@ -155,8 +147,6 @@ function forumsColumn () {
     h('button', { class: 'link add', 'aria-label': 'Join or make a forum', onclick: () => { ui.joining = { name: '', public: false, link: '', error: '', busy: false }; schedule() } }, collapsed ? '+' : '+ Join or make'))
 }
 
-// a forum's copies ("Kept by N of 5 copies", a warning under 2 online), and Change key on a private one
-// its owner has. Read when its "…" opens.
 async function readAbout (i) {
   const x = window.hyper.instance(i.key)
   const [copies, info, st] = await Promise.all([x.copies().catch(() => null), x.info().catch(() => null), x.status().catch(() => null)])
@@ -173,15 +163,12 @@ function aboutLines (i) {
     a?.private && i.role === 'owner'
       ? h('p', { class: 'small' }, h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.instance(i.key).rotateKey(); notice = 'Key changed.' }) }, 'Change key'), ' ', CHANGE_KEY)
       : null,
-    // owners and admins; Secure on a private forum, Trim on any
     a?.private && ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'secure' + i.key; ui.forget = false; schedule() } }, 'Secure this place…') : null,
     ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'trim' + i.key; schedule() } }, 'Trim history…') : null,
     a?.waiting ? h('p', { class: 'small', role: 'note' }, RENEW_WAITING) : null
   ]
 }
 
-// "Secure this place" (new keys now, a new address members follow; optionally the history before now
-// deleted) and "Trim history" (keep the last N days/weeks/months/years), each confirmed with its warning.
 function secureBox (i) {
   return h('div', { class: 'confirm-box small', role: 'alert' },
     h('p', {}, SECURE_TEXT),
@@ -230,7 +217,6 @@ async function trim (i) {
   schedule()
 }
 
-// after a ban, Secure this place is suggested once (a private forum, its owner or an admin).
 async function suggestSecure () {
   if (!ADMINS.has(me.role) || ui.suggested.has(at)) return
   const info = await hyper.info().catch(() => null)
@@ -247,8 +233,7 @@ function suggestion () {
     h('button', { class: 'link', onclick: () => { ui.suggest = null; schedule() } }, 'Dismiss'))
 }
 
-// An owner may leave, warned: the forum lives on while members keep it; without an admin, nobody can make boards
-// or moderators any more.
+// An owner may leave, warned: without an admin, nobody can make boards or moderators any more.
 async function askLeave (i) {
   ui.leaveWarning = null
   if (i.role === 'owner') {
@@ -286,7 +271,6 @@ function joinBox () {
       h('div', { class: 'row-end' }, h('button', { class: 'link', onclick: () => { ui.joining = null; schedule() } }, 'Close'))))
 }
 
-// The make and join forms: the start page's and the "+" box's.
 function joinForms (s, run, open) {
   const root = window.hyper
   return [s.error ? h('p', { class: 'notice', role: 'alert' }, s.error) : null,
@@ -302,7 +286,6 @@ function joinForms (s, run, open) {
       h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Join'))]
 }
 
-// The open forum's boards, each with a dot when a thread in it has something new.
 function boardsColumn (r) {
   const boards = boardTree(data.boards)
   const current = currentBoard(r)
@@ -318,14 +301,11 @@ function boardsColumn (r) {
     ADMINS.has(me.role) ? h('p', { class: 'pad' }, h('a', { href: '#/board/new' }, '+ New board')) : null)
 }
 
-// The board a route is in: the board page's, a thread's or a new thread's; else the first.
 function currentBoard (r) {
   const flat = boardTree(data.boards).flatMap((b) => [b.board, ...b.subs])
   const id = r.page === 't' ? (data.threads.find((x) => x.id === r.id) || threadView.thread)?.board : ['b', 'new'].includes(r.page) ? r.id : null
   return flat.find((b) => b.id === id) || (r.page === 'b' ? flat[0] : null) || null
 }
-
-// --- follows: a board's new threads, a person's posts; a dot, a popup only if asked ---
 
 const followOf = (match) => follows.find((x) => x.place === at && match(x))
 
@@ -349,9 +329,6 @@ async function refreshRole () {
   schedule()
 }
 
-// --- routes: #/b/<board>, #/t/<thread>, #/new/<board>, #/mentions, #/you, #/members, #/mod, #/board/<id|new>,
-// #/r/<record>: a thread or a comment (a notification's link), opened as its thread ---
-
 function route () {
   const [page = '', id = null] = location.hash.replace(/^#\/?/, '').split('/')
   return { page: page || 'b', id }
@@ -360,7 +337,7 @@ function route () {
 function enter () {
   const r = route()
   if (r.page === 'r') return toThread(r.id)
-  if (r.page === 't') opened[r.id] = new Set(news.unread[r.id] || []) // its replies new at this opening are marked
+  if (r.page === 't') opened[r.id] = new Set(news.unread[r.id] || [])
   if (r.page === 't' && threadView.id !== r.id) {
     threadView.stop?.()
     threadView = { id: r.id, stop: null, items: [], complete: false }
@@ -396,8 +373,6 @@ async function loadModeration () {
   ui.hidden = [...ht.items, ...hc.items].sort((a, b) => b.stamp - a.stamp)
   schedule()
 }
-
-// --- drawing ---
 
 let pending = false
 function schedule () {
@@ -455,8 +430,6 @@ function status (left, right) {
 }
 
 const online = () => (peers === 1 ? '1 peer online' : peers + ' peers online') + (Object.values(data.complete).every(Boolean) ? ' · complete' : ' · loading…')
-
-// --- the front page: boards, then the chosen board's threads ---
 
 function frontPage (boardId) {
   const current = currentBoard({ page: 'b', id: boardId })
@@ -518,8 +491,6 @@ function votes (id, tallied) {
     h('span', { class: 'score' }, String(score(tallied, id))),
     h('button', { class: 'vote', 'aria-label': 'Vote down', 'aria-pressed': String(v === -1), onclick: () => cast(-1) }, '▼'))
 }
-
-// --- a thread ---
 
 function threadPage (id) {
   const t = data.threads.find((x) => x.id === id) || threadView.thread
@@ -591,7 +562,6 @@ function actions (rec, tallied) {
     MODERATORS.has(me.role) ? confirmButton(key + 'hide', 'Hide', () => act(() => f.hide(rec.id))) : null)
 }
 
-// A button asking "sure?" in place before it acts (no dialog).
 function confirmButton (key, label, run) {
   if (ui.confirm !== key) return h('button', { class: 'link', onclick: () => { ui.confirm = key; schedule() } }, label)
   return h('span', { class: 'confirm' }, label + '? ',
@@ -612,7 +582,6 @@ function draft (k) {
   return drafts[k]
 }
 
-// The text box for replies and threads: @name suggestions from the members' names.
 function textBox (k, d, label, rows = 5) {
   const at = /@([^\s@]*)$/.exec(d.text.slice(0, d.caret ?? d.text.length))
   const matches = at ? [...names.entries()].filter(([key, p]) => p.name && key !== me.identity && p.name.toLowerCase().startsWith(at[1].toLowerCase())).slice(0, 6) : []
@@ -666,14 +635,11 @@ function editForm (rec, isThread) {
   h('div', { class: 'row-end' }, h('button', { type: 'button', class: 'link', onclick: () => { ui.editing = null; schedule() } }, 'Cancel'), h('button', { class: 'btn' }, 'Save')))
 }
 
-// Opened: read (its new replies stay marked while it is shown, from `opened`).
 function markThreadRead (id) {
   if (!(id in news.unread)) return
   news = { ...news, unread: without(news.unread, id) }
   f.saveUnread(news).catch(say)
 }
-
-// --- new thread, boards ---
 
 function newThreadPage (boardId) {
   const board = data.boards.find((b) => b.id === boardId)
@@ -724,8 +690,6 @@ function boardPage (id) {
     h('div', { class: 'row-end' }, board ? confirmButton('rmb' + board.id, 'Remove board', () => act(async () => { await f.removeBoard(board.id); location.hash = '#/' })) : null, h('button', { class: 'btn' }, board ? 'Save' : 'Make board'))))
 }
 
-// --- mentions: a list you open yourself (no badge, no counter) ---
-
 function mentionsPage () {
   const seen = mentionView.seenAtOpen ?? 0
   const items = mentionView.items
@@ -755,8 +719,6 @@ function markMentionsSeen () {
     f.markMentionsSeen(latest).catch(say)
   }
 }
-
-// --- you: name and icon ---
 
 function youPage () {
   const p = names.get(me.identity) || {}
@@ -788,7 +750,6 @@ function youPage () {
     status('Read state, sort, follows and mentions seen stay on your devices', online()))
 }
 
-// What you follow here: a dot when something comes, a popup only if switched on.
 function followsList () {
   const mineHere = follows.filter((x) => x.place === at)
   const label = (x) => x.where?.board ? 'Board ' + (data.boards.find((b) => b.id === x.where.board)?.name || '(removed)') : 'Posts of ' + nameOf(x.by)
@@ -806,8 +767,6 @@ function followsList () {
         h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.notifications.unfollow(x.id); await loadFollows() }) }, 'Unfollow'))))
       : h('p', { class: 'small' }, 'Nothing yet: Follow is on a board\'s page and next to each member.')]
 }
-
-// --- members, roles, invites ---
 
 function membersPage () {
   const list = (ui.members || []).filter((m) => m.role || m.banned)
@@ -842,8 +801,6 @@ function membersPage () {
     status(`${list.length} members`, online()))
 }
 
-// --- the start page: your forums, the official one, make one, join one ---
-
 async function startPage () {
   const root = window.hyper
   const s = { forums: null, official: null, name: '', public: false, link: '', error: '', busy: false }
@@ -870,12 +827,10 @@ async function startPage () {
       status('Forums made with this app', ''))))
   }
   paint()
-  s.forums = await root.instances.list() // the identity question, once for the app and all its forums
+  s.forums = await root.instances.list()
   s.official = (await root.query('official').latest(1).catch(() => ({ items: [] }))).items[0]?.instance || null
   paint()
 }
-
-// --- moderation: reports, hidden posts ---
 
 function moderationPage () {
   if (!MODERATORS.has(me.role)) return windowBox('Moderation', h('p', { class: 'pad' }, 'For moderators.'))
@@ -900,8 +855,6 @@ function moderationPage () {
     status('Moderators see reports; members only see that someone reported', online()))
 }
 
-// --- helpers ---
-
 async function act (fn) {
   try {
     await fn()
@@ -916,7 +869,6 @@ function say (what) {
   schedule()
 }
 
-// h('a', { href, onclick }, ...children): null, false and arrays among children are fine.
 function h (tag, attrs = {}, ...children) {
   const el = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs || {})) {

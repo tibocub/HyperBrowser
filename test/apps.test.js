@@ -1,5 +1,3 @@
-// The official apps (scripts/apps.js): `npm run apps:publish` publishes each from its folder and writes its key
-// into preset.json; a rerun changes nothing. On a copy of preset.json and an engine of the tests.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -57,7 +55,6 @@ test('the Apps store lists the apps, a visitor reads the list and can\'t add to 
   t.is(await codeOf(hyper.edit(f.id, { title: 'Hijacked' })), 'NOT_ALLOWED', 'nor edits one')
   t.ok(await hyper.put('profile', { name: 'bob' }), 'while a visitor may write in this public site')
 
-  // an entry that differs from the app's site.json (an older description): the rerun edits it, nothing else
   const said = []
   await siteApi(owner, store).edit(f.id, { about: 'an older line' })
   await publishApps(owner.rpc, { root: ROOT, preset, apps, log: (l) => said.push(l) })

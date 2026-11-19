@@ -1,6 +1,4 @@
-// Post text: a HyperMD subset rendered to HTML. Everything is escaped first; only the subset's
-// own tags are made: **bold**, _italic_, `code`, ``` blocks, > quotes, [links](to), ![images](path),
-// and mentions (@ + a member's key, shown as their current name). Never raw HTML, never a script.
+// Everything is escaped first; only the subset's own tags are made. Never raw HTML, never a script.
 
 export const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 const MENTION = /@([ybndrfg8ejkmcpqxot1uwisza345h769]{52})/g
@@ -12,7 +10,6 @@ export const shortKey = (k) => k.slice(0, 4) + '…' + k.slice(-4)
 const safeHref = (h) => /^hyper:\/\/[a-z0-9]+(\/[^\s"'<>]*)?$/i.test(h) || /^#[\w/.-]*$/.test(h) || isPath(h)
 const isPath = (p) => /^[\w][\w./-]*$/.test(p) && !p.split('/').includes('..')
 
-// nameOf(key) → the member's current name, or null
 export function render (text, nameOf = () => null) {
   const out = []
   const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n')
@@ -60,7 +57,6 @@ function inline (line, nameOf) {
 
 const mention = (key, name) => `<a class="mention" href="#/member/${key}" title="${escape((name || 'someone') + ' · ' + shortKey(key))}">＠${escape(name || shortKey(key))}</a>`
 
-// The keys a text mentions, each once.
 export const mentioned = (text) => [...new Set([...String(text || '').matchAll(MENTION)].map((m) => m[1]))]
 
 // The editor shows @name; the stored text keeps @key. `picks`: { name: key } chosen while writing.
@@ -82,5 +78,4 @@ export function toDraft (text, nameOf) {
   return { draft, picks }
 }
 
-// The text of a post as one line, for lists (no markup).
 export const plain = (text, nameOf = () => null) => String(text || '').replace(MENTION, (m, k) => '＠' + (nameOf(k) || shortKey(k))).replace(/[*_`>#[\]]/g, '').replace(/\s+/g, ' ').trim()

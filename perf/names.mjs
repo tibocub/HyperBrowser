@@ -1,7 +1,4 @@
-// what typing a name costs the engine (names.resolve). An authority of `--names` names is made by another
-// person's hypergraph on a local DHT; the engine resolves one name by the authority's link (the first time: it joins
-// the authority), then `--n` names by the authority's name (held: local reads).
-//   npm run perf:names [-- --names 200 --n 20]   (appends to perf/history.jsonl)
+// One name resolved by the authority's link (joining it the first time), then `--n` names by its name (local reads).
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -51,7 +48,6 @@ try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 }) } catch {}
 
 function stats (l) { const s = l.slice().sort((a, b) => a - b); return { median: Math.round(s[s.length >> 1] * 10) / 10, min: Math.round(s[0] * 10) / 10, max: Math.round(s.at(-1) * 10) / 10 } }
 
-// [scenario, unit, { median, min, max }, n, size] → perf/history.jsonl
 function record (rows) {
   const git = (c) => { try { return execSync('git ' + c, { cwd: HERE }).toString().trim() } catch { return null } }
   const now = new Date().toISOString()
