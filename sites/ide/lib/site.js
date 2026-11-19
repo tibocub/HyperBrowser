@@ -1,5 +1,5 @@
-// The IDE's work on a project, with no page around it: templates, HyperMD built here (D4), pages by title for
-// beginners, site.json changed and checked as the engine checks it (D7), Publish. `projects` is window.hyper.projects
+// The IDE's work on a project, with no page around it: templates, HyperMD built here, pages by title for
+// beginners, site.json changed and checked as the engine checks it, Publish. `projects` is window.hyper.projects
 // (or the tests' copy of it). The page (app.js) only draws and calls these.
 import { parse, renderPage, applyLayout, siteMenu, pageHref, parseManifest, pageTitle, utf8 } from '../vendor/hmd.js'
 

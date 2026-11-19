@@ -12,7 +12,7 @@ import { parseManifest, readManifest, sitePath } from './manifest.js'
 const LIST = 'hyperbrowser/projects' // setting: { [space key]: { name } }, on every device of the person
 const PROJECT = '.hyperbrowser.json' // in the project: { site }, synced, never published
 const IGNORE = '.swarmfsignore' // SwarmFS's ignore file, also what Publish skips
-const ALWAYS = ['.git/', 'node_modules/'] // D4: each device keeps its own
+const ALWAYS = ['.git/', 'node_modules/'] // each device keeps its own
 const NAME_MAX = 64
 const WRITE_MAX = 32 * 1024 * 1024 // one write crossing from a page
 const BUILD_MAX = 64 * 1024 * 1024 // a project's built pages, all together
@@ -669,7 +669,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
-  // --- the site owner's device: the project's members are the site's admins (D5) ---
+  // --- the site owner's device: the project's members are the site's admins ---
 
   async function grant (key) {
     const folder = await folderOf(key)
@@ -686,7 +686,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
-  // --- preview (D7): the project's files as a draft site on this device, its data in a throwaway space ---
+  // --- preview: the project's files as a draft site on this device, its data in a throwaway space ---
 
   async function preview (key, reset = false) {
     const folder = await project(key)

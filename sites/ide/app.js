@@ -1,6 +1,6 @@
-// HyperBrowser's IDE: make sites and apps. Beginners see pages by their titles and a toolbar (D1, D6);
-// developers see files, code (CodeMirror, loaded when first needed: D3) and the site's setup (D7). The project's
-// preview sits beside the page (HyperBrowser docks it: hyper.projects.preview), reloaded on save (D5). No stylesheet:
+// HyperBrowser's IDE: make sites and apps. Beginners see pages by their titles and a toolbar;
+// developers see files, code (CodeMirror, loaded when first needed) and the site's setup. The project's
+// preview sits beside the page (HyperBrowser docks it: hyper.projects.preview), reloaded on save. No stylesheet:
 // HyperBrowser's default theme (CodeMirror's styles are adopted sheets, so it stays). The work itself: lib/site.js.
 import * as ide from './lib/site.js'
 import { fileTree } from './lib/tree.js'
@@ -181,7 +181,7 @@ function setText (text) {
 function edited () {
   dirty = true
   clearTimeout(timer)
-  if (open?.endsWith('.hmd')) timer = setTimeout(save, 700) // HyperMD: as you type (D5)
+  if (open?.endsWith('.hmd')) timer = setTimeout(save, 700) // HyperMD: as you type
   drawState()
 }
 
@@ -433,7 +433,7 @@ function fileView () {
   ]
 }
 
-// D6: what a page needs, in plain words; images picked from the computer.
+// What a page needs, in plain words; images picked from the computer.
 function toolbar () {
   const wrap = (before, after = before, empty = '') => () => {
     const { selectionStart: s, selectionEnd: e, value } = area
@@ -546,7 +546,7 @@ function peopleView () {
       : h('p', {}, 'No friends yet: add some in Contacts.')) : null)
 }
 
-// D7: site.json as a form, or as JSON; checked as the engine checks it before it is written.
+// site.json as a form, or as JSON; checked as the engine checks it before it is written.
 let raw = null
 function setupView () {
   const m = manifestOf()
