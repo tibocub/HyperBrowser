@@ -768,6 +768,12 @@ async function checkIde (win, views, out, tmp, chat) {
   const started = await waitFor(() => run("document.querySelector('h1')?.textContent === 'IDE' && !!document.querySelector('form')"), 30000)
   const start = performance.now() - t0
   pass('ide: it opens (its projects asked for once)', started)
+  // spec 029: a "…" menu is drawn inside the window (the home page's one opened half off it, on the left)
+  const inside = (sel) => `(() => { const r = document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect(); return !!r && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight })()`
+  await run("document.querySelector('[data-menu=home] > button').click(); 0")
+  const homeMenu = await waitFor(() => run(inside('[data-menu=home] [role=menu]')), 3000)
+  await run("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); 0")
+  pass('ide: the home page\'s "…" menu is inside the window', homeMenu)
   const memory = () => (app.getAppMetrics().find((m) => m.pid === v.webContents.getOSProcessId())?.memory.workingSetSize || 0) / 1024 // MB
   const button = (label) => `[...document.querySelectorAll('button')].find((b) => b.textContent === ${JSON.stringify(label)})`
   await run("(() => { const f = document.querySelector('form'); f.name.value = 'Self-test site'; f.kind.value = 'hypermd'; f.requestSubmit(); return 0 })()")
@@ -778,6 +784,26 @@ async function checkIde (win, views, out, tmp, chat) {
   const two = await waitFor(() => run("document.querySelectorAll('nav[aria-label=Pages] li').length === 2 && document.querySelector('nav').textContent.includes('About')"), 15000)
   const bare = await run("!/\\.(hmd|html|json)\\b|\\{/.test(document.body.innerText)")
   pass('ide: a beginner makes a site of two pages, by their titles, with no file name or JSON shown (FR-001)', made && two && bare)
+  // spec 029: the Title field's right border inside the list, the list and the editor inside the window, at full
+  // width and at a preview's share (55%)
+  const edges = `(() => {
+    const title = document.querySelector('nav[aria-label=Pages] input:not([type])')
+    const nav = title.closest('nav').getBoundingClientRect()
+    const box = document.querySelector('#editor').getBoundingClientRect()
+    const main = document.querySelector('[role=main]').getBoundingClientRect()
+    const t = title.getBoundingClientRect()
+    const b = document.querySelector('#editor')
+    return t.right <= nav.right + 0.5 && box.right <= main.right + 0.5 && box.right <= innerWidth && nav.right <= innerWidth && document.scrollingElement.scrollWidth <= innerWidth &&
+      b.scrollWidth <= b.clientWidth && b.scrollHeight <= b.clientHeight // the box itself never scrolls: its text area does
+  })()`
+  const pageEdges = []
+  for (const width of [1400, 770]) {
+    v.view.setBounds({ x: 0, y: 0, width, height: 700 })
+    await wait(400)
+    if (!(await run(edges))) pageEdges.push(width)
+  }
+  v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
+  pass('ide: the Title field and the page editor end inside their boxes and the window (1400, 770px)' + (pageEdges.length ? ' (cut at ' + pageEdges + ')' : ''), !pageEdges.length)
   await run("(() => { const a = document.querySelector('textarea'); a.value += 'Hello **you**'; a.dispatchEvent(new Event('input')); return 0 })()")
   // spec 026: built pages live outside the project; the preview (the project, then its built pages) shows them
   const builtPage = async () => {
@@ -800,6 +826,24 @@ async function checkIde (win, views, out, tmp, chat) {
   const cm = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-editor')"), 15000)
   const editorLoad = performance.now() - t1
   pass('ide: a file in the files view opens in CodeMirror, loaded then', cm)
+  // spec 029: short content, no horizontal scrollbar: the tree, the editor's box and CodeMirror's scroller fit their
+  // space exactly, at full width and at a preview's share
+  const snug = `(() => {
+    const nav = document.querySelector('nav[aria-label=Files]')
+    const box = document.querySelector('#editor')
+    const sc = box?.shadowRoot?.querySelector('.cm-scroller')
+    const fit = (e) => !!e && e.scrollWidth <= e.clientWidth
+    return [fit(nav), fit(box), fit(sc)].join()
+  })()`
+  const loose = []
+  for (const width of [1400, 770]) {
+    v.view.setBounds({ x: 0, y: 0, width, height: 700 })
+    await wait(400)
+    const r = await run(snug)
+    if (r !== 'true,true,true') loose.push(width + ' (tree, box, scroller: ' + r + ')')
+  }
+  v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
+  pass('ide: the tree and the editor fit their space: no horizontal scrollbar for short content (1400, 770px)' + (loose.length ? ' ' + loose.join('; ') : ''), !loose.length)
   pass('ide: the default theme stays with the editor loaded', await run("getComputedStyle(document.body).fontFamily.includes('HB ')"))
   const after = memory()
   // spec 026 I1: the tree: a right-click menu, Shift+F10 on the focused row, Escape, rename in place, a new folder
@@ -870,6 +914,20 @@ async function checkIde (win, views, out, tmp, chat) {
   }
   await run(`${button('Show the list')}.click(); 0`)
   pass('ide: the editor fills the space left over, the list shown or hidden, at 1400, 900, 600 px' + (fills.length ? ' (' + fills.join('; ') + ')' : ''), !fills.length)
+  // spec 029: a file with a long line: the editor scrolls inside, its right border stays inside the window
+  await run("window.hyper.projects.list().then(([p]) => window.hyper.projects.write(p.key, 'long.js', '// ' + 'x'.repeat(3000) + '\\n')).then(() => 0)")
+  await waitFor(() => run(`!!${item('long.js')}`), 10000)
+  await run(`${item('long.js')}.click(); 0`)
+  await waitFor(() => run("document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-content')?.textContent.length > 2000"), 10000)
+  const codeEdges = []
+  for (const width of [1400, 770]) {
+    v.view.setBounds({ x: 0, y: 0, width, height: 700 })
+    await wait(400)
+    const r = await run("(() => { const b = document.querySelector('#editor').getBoundingClientRect(); const m = document.querySelector('[role=main]').getBoundingClientRect(); return b.right <= m.right + 0.5 && b.right <= innerWidth && document.scrollingElement.scrollWidth <= innerWidth ? 'ok' : JSON.stringify([b.right, m.right, innerWidth, document.scrollingElement.scrollWidth]) })()")
+    if (r !== 'ok') codeEdges.push(width + ': ' + r)
+  }
+  v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
+  pass('ide: a long line scrolls inside the editor, its right border inside the window (1400, 770px)' + (codeEdges.length ? ' (' + codeEdges.join('; ') + ')' : ''), !codeEdges.length)
   // spec 026 L5: a button keeps its shadow's room, so a pressed one never covers the next
   pass('ide: buttons keep their shadow\'s room (2px right and below)', await run("(() => { const c = getComputedStyle(document.querySelector('button')); return c.marginRight === '2px' && c.marginBottom === '2px' })()"))
   // spec 026 L3: apps fit the window at every size; only their parts scroll

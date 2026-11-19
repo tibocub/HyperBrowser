@@ -225,6 +225,7 @@ function draw () {
   root.replaceChildren(cur ? project() : home())
   if (inMenu) root.querySelector('[data-menu="' + inMenu + '"] > button')?.focus()
   if (typing) (area || editor)?.focus()
+  fitMenu()
   if (tree && root.contains(treeBox)) {
     tree.set([...files, ...folders])
     tree.select(open)
@@ -306,7 +307,7 @@ function siteBasics () {
   const m = manifestOf()
   const icon = files.find((f) => f.path === m.icon)
   return h('div', {},
-    h('p', {}, h('label', {}, 'Title', h('br'), h('input', { value: m.title || '', maxlength: 200, style: 'width:100%', onchange: (e) => act(() => ide.setManifest(projects, cur.key, { title: e.target.value })) }))),
+    h('p', {}, h('label', {}, 'Title', h('br'), h('input', { value: m.title || '', maxlength: 200, style: 'width:100%; box-sizing:border-box', onchange: (e) => act(() => ide.setManifest(projects, cur.key, { title: e.target.value })) }))),
     h('p', {}, 'Icon: ', icon ? m.icon : 'none', ' ', pick('Choose a picture', 'image/*', (name, bytes) => ide.setIcon(projects, cur.key, name, bytes))),
     h('p', {}, h('label', {}, h('input', { type: 'checkbox', checked: m.public === false ? '' : null, onchange: (e) => act(() => ide.setManifest(projects, cur.key, { public: e.target.checked ? false : null })) }), ' Invite-only (else anyone with its address)')))
 }
@@ -477,7 +478,7 @@ async function mountEditor () {
   if (mode === 'pages' && open?.endsWith('.hmd')) {
     editor?.destroy()
     editor = null
-    area = h('textarea', { 'aria-label': 'The page', style: 'width:100%; height:100%; box-sizing:border-box; border:0; resize:none; font:inherit; padding:6px', oninput: edited })
+    area = h('textarea', { 'aria-label': 'The page', style: 'display:block; width:100%; height:100%; box-sizing:border-box; border:0; resize:none; font:inherit; padding:6px', oninput: edited })
     area.value = text
     slot.replaceChildren(area)
     return
@@ -571,7 +572,7 @@ function setupView () {
         h('p', { class: 'small' }, 'Types and fields can be added, never removed, once published. Roles are made by the app at run time (hyper.defineRole).')),
       h('p', {}, h('button', { onclick: () => act(async () => { raw = await ide.read(projects, cur.key, 'site.json') }) }, 'Edit as JSON'))
     ] : [
-      h('textarea', { 'aria-label': 'site.json', id: 'raw', style: 'width:100%; height:50vh; font-family:monospace', value: raw }),
+      h('textarea', { 'aria-label': 'site.json', id: 'raw', style: 'width:100%; box-sizing:border-box; height:50vh; font-family:monospace', value: raw }),
       h('p', {}, h('button', { onclick: () => { const v = root.querySelector('#raw').value; act(async () => { await ide.writeManifest(projects, cur.key, v); raw = null }, 'Saved.') } }, 'Save'), ' ',
         h('button', { onclick: () => { raw = null; draw() } }, 'Back to the form'))
     ])
@@ -583,7 +584,7 @@ function setupView () {
 function ask (label, value = '', choices = null) {
   const field = choices
     ? h('select', { name: 'v' }, choices.map((c) => h('option', { value: c, selected: c === value ? '' : null }, c)))
-    : h('input', { name: 'v', value, required: '', style: 'width:100%' })
+    : h('input', { name: 'v', value, required: '', style: 'width:100%; box-sizing:border-box' })
   return modal(h('label', {}, label, h('br'), field), 'OK', () => field.value)
 }
 
@@ -612,6 +613,15 @@ function more (id, items) {
       ? h('div', { role: 'menu', style: 'position:absolute; top:100%; right:0; z-index:10; margin-top:2px; padding:4px; display:flex; flex-direction:column; gap:2px; white-space:nowrap; background:var(--paper, Canvas); color:var(--ink, CanvasText); border:1px solid; box-shadow:2px 2px 0 var(--ink, CanvasText)' },
         items.map(([label, fn]) => h('button', { role: 'menuitem', style: 'text-align:left', onclick: () => { menu = null; draw(); fn() } }, label)))
       : null)
+}
+
+// spec 029: an open "…" menu stays inside the window: under its button, flipped right, left or up where it would not fit.
+function fitMenu () {
+  const m = root.querySelector('[data-menu] [role=menu]')
+  if (!m) return
+  if (m.getBoundingClientRect().left < 0) Object.assign(m.style, { right: 'auto', left: '0' })
+  if (m.getBoundingClientRect().right > innerWidth) Object.assign(m.style, { left: 'auto', right: '0' })
+  if (m.getBoundingClientRect().bottom > innerHeight) Object.assign(m.style, { top: 'auto', bottom: '100%', marginTop: '0', marginBottom: '2px' })
 }
 
 function h (tag, attrs = {}, ...children) {
