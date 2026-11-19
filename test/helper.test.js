@@ -1,5 +1,3 @@
-// The helper (spec 020): its config file; joining from it once; a message between two people who are never
-// online together, through the helper alone; an app's new version reaching the helper live, then served by it.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'

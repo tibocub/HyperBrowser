@@ -1,6 +1,3 @@
-// The IDE's work on a project, with no page around it (spec 025): templates, HyperMD built here (D4), pages by title for
-// beginners, site.json changed and checked as the engine checks it (D7), Publish. `projects` is window.hyper.projects
-// (or the tests' copy of it). The page (app.js) only draws and calls these.
 import { parse, renderPage, applyLayout, siteMenu, pageHref, parseManifest, pageTitle, utf8 } from '../vendor/hmd.js'
 
 const json = (o) => JSON.stringify(o, null, 2) + '\n'
@@ -46,14 +43,10 @@ function escape (s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 }
 
-// --- HyperMD (as `hypermd build`, in the page): every page .hmd → .html beside it, the root's .css on every page,
-// `_layout.hmd` around each, its ::menu listing the pages ---
-
 const isPage = (p) => p.endsWith('.hmd') && !p.split('/').pop().startsWith('_')
 export const isHyperMD = (paths) => paths.some(isPage)
 const htmlOf = (p) => p.replace(/\.hmd$/, '.html')
 
-// sources: { path: text } of the project's .hmd files; css: the root's .css paths → { path.html: html }
 export function buildPages (sources, css = []) {
   const entries = Object.keys(sources).filter(isPage).sort().map((p) => ({ path: p, doc: parse(sources[p]) }))
   const layout = sources['_layout.hmd'] !== undefined ? parse(sources['_layout.hmd']) : null
@@ -71,8 +64,6 @@ export function buildPages (sources, css = []) {
   return out
 }
 
-// --- a project, through hyper.projects ---
-
 export async function create (projects, name, template = 'hypermd') {
   const t = TEMPLATES[template]
   if (!t) throw Object.assign(new Error('no template ' + template), { code: 'INVALID_PARAMS' })
@@ -85,10 +76,8 @@ export async function create (projects, name, template = 'hypermd') {
 export const paths = async (projects, key) => (await projects.files(key)).map((f) => f.path)
 export const read = async (projects, key, path) => text(await projects.read(key, path))
 
-// The HyperMD pages built again from their sources, into the project's built pages (spec 026: outside the project
-// folder, so they never sync, never reach git). A .html the IDE wrote beside its .hmd before (exactly what the build
-// makes now) is removed; any other .html of a page's name is the person's and wins over the built one.
-// → { built, hidden }: the built pages, and those a hand-written .html hides.
+// An .html the IDE once wrote beside its .hmd (exactly what the build makes) is removed;
+// any other .html of a page's name is the person's and wins over the built one.
 export async function build (projects, key) {
   const all = await paths(projects, key)
   if (!isHyperMD(all)) return { built: [], hidden: [] }
@@ -100,26 +89,23 @@ export async function build (projects, key) {
   const hidden = []
   for (const [p, html] of Object.entries(pages)) {
     if (!all.includes(p)) continue
-    if ((await read(projects, key, p)) === html) await projects.remove(key, p) // ours, from 025: never the person's
+    if ((await read(projects, key, p)) === html) await projects.remove(key, p) // ours, from an older IDE: never the person's
     else hidden.push(p)
   }
   return { built: Object.keys(pages), hidden }
 }
 
-// A file saved; its pages built again when it is HyperMD's or a root stylesheet. → build()'s answer, or null.
 export async function save (projects, key, path, body) {
   await projects.write(key, path, body)
   return /\.hmd$/.test(path) || (!path.includes('/') && path.endsWith('.css')) ? build(projects, key) : null
 }
 
-// Beginners' pages: [{ path, title }] in menu order, no file names.
 export async function pages (projects, key) {
   const list = []
   for (const p of (await paths(projects, key)).filter(isPage)) list.push({ path: p, doc: parse(await read(projects, key, p)) })
   return siteMenu(list).map((m) => ({ path: m.path, title: m.title }))
 }
 
-// A new page titled `title`: its file named after it (never shown), last in the menu. → its path.
 export async function addPage (projects, key, title) {
   const have = new Set(await paths(projects, key))
   const base = (title.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page').slice(0, 40)
@@ -130,13 +116,10 @@ export async function addPage (projects, key, title) {
   return path
 }
 
-// site.json read, or {} when it isn't JSON yet.
 export async function manifest (projects, key) {
   try { return JSON.parse(await read(projects, key, 'site.json')) } catch { return {} }
 }
 
-// site.json with `change` applied (null removes a field), checked as the engine checks it (INVALID_MANIFEST) before
-// it is written. → the checked manifest.
 export async function setManifest (projects, key, change) {
   const m = { ...await manifest(projects, key) }
   for (const [k, v] of Object.entries(change)) {
@@ -146,7 +129,6 @@ export async function setManifest (projects, key, change) {
   return writeManifest(projects, key, json(m))
 }
 
-// site.json's raw text (the developers' view), checked before it is written.
 export async function writeManifest (projects, key, raw) {
   const checked = parseManifest(raw)
   const all = new Set(await paths(projects, key))
@@ -158,7 +140,6 @@ export async function writeManifest (projects, key, raw) {
   return checked
 }
 
-// A picture as the site's icon: written as icon.<ext>, named in site.json.
 export async function setIcon (projects, key, name, bytes) {
   const ext = (name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
   for (const p of await paths(projects, key)) if (/^icon\.[a-z0-9]+$/.test(p) && p !== 'icon.' + ext) await projects.remove(key, p)
@@ -166,7 +147,6 @@ export async function setIcon (projects, key, name, bytes) {
   return setManifest(projects, key, { icon: 'icon.' + ext })
 }
 
-// A picked file added under `folder` with a name free there. → its path.
 export async function upload (projects, key, name, bytes, folder = '') {
   const have = new Set(await paths(projects, key))
   const clean = name.replace(/[^\w.-]+/g, '-').replace(/^[.-]+/, '') || 'file'
@@ -178,15 +158,12 @@ export async function upload (projects, key, name, bytes, folder = '') {
   return path
 }
 
-// The preview (spec 026 B1): every HyperMD page built first, so site.json's entry (index.html) is there. `reset`: a new
-// throwaway space.
-// → { key, hidden }: hidden, the pages a hand-written .html of the same name replaces.
+// Every HyperMD page is built first, so site.json's entry (index.html) is there.
 export async function preview (projects, key, reset = false) {
   const { hidden } = await build(projects, key)
   return { ...(reset ? await projects.resetPreview(key) : await projects.preview(key)), hidden }
 }
 
-// Publish: the pages built first, so what is published is what the project says.
 export async function publish (projects, key) {
   const { hidden } = await build(projects, key)
   return { ...(await projects.publish(key)), hidden }

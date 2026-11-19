@@ -1,17 +1,6 @@
 #!/usr/bin/env node
-// The update path, end to end on this machine (spec 011): version N installed, N+1 released on a channel,
-// N picks it up while running and keeps its data. A local DHT (hyperdht testnet) and a throwaway channel
-// written here (the drive `pear stage` would write), so nothing reaches the real network's release channel.
-//
+// A local DHT and a throwaway channel, so nothing reaches the real release channel. Heavy (two builds, ~10 min): not in npm test.
 //   npm run test:update [-- --tmp <dir>] [-- --reuse]
-//
-// 1. npm run build twice: 1.0.0 and 1.0.1, both following the throwaway channel (--reuse: the last builds).
-// 2. 1.0.0 "installed" (a copy in <tmp>/install), a data folder of its own (--user-data-dir) with settings.
-// 3. 1.0.0 runs; once its engine is up, 1.0.1 is released on the channel (scripts/release.js's folder).
-// 4. Its log says "update: ready 1.0.1". It quits (its window closed, the tray off): what is installed is
-//    1.0.1 now (Windows: the HyperBrowser folder, swapped once it has quit; Linux: the AppImage, at once).
-// 5. Launched again: it is 1.0.1, same identity, same settings.
-// Heavy (two builds, ~10 min): not in npm test. Run on Windows; Linux (.AppImage) not run yet.
 
 import { spawn, execFileSync } from 'child_process'
 import fs from 'fs'
@@ -46,7 +35,6 @@ const versionOf = (p) => {
   } catch { return null }
 }
 
-// The channel: a Hyperdrive on the local DHT, its key kept in <tmp> across --reuse runs (the builds carry it).
 fs.mkdirSync(tmp, { recursive: true })
 if (!REUSE) for (const d of ['channel', 'install', 'data']) fs.rmSync(path.join(tmp, d), { recursive: true, force: true })
 const testnet = await createTestnet(3)
@@ -60,8 +48,7 @@ swarm.on('connection', (c) => store.replicate(c))
 swarm.join(drive.discoveryKey, { server: true, client: false })
 await swarm.flush()
 
-// 1. the two builds
-const built = (v) => path.join(tmp, 'build-' + v + (WIN ? '' : '.AppImage')) // Windows: the folder
+const built = (v) => path.join(tmp, 'build-' + v + (WIN ? '' : '.AppImage'))
 for (const v of [N, N1]) {
   if (REUSE && fs.existsSync(built(v))) continue
   if (REUSE) throw new Error('--reuse: no build ' + v + ' in ' + tmp)
@@ -74,7 +61,6 @@ if (REUSE) { // the builds follow the channel of the run that made them: write t
   if (saved !== upgrade) throw new Error('--reuse: the channel changed; run without --reuse')
 } else fs.writeFileSync(path.join(tmp, 'channel.link'), upgrade)
 
-// 2. installed: 1.0.0, a data folder with settings of its own
 const install = path.join(tmp, 'install')
 const data = path.join(tmp, 'data')
 const installed = path.join(install, WIN ? 'HyperBrowser' : 'HyperBrowser.AppImage')
@@ -119,7 +105,6 @@ const identityIn = (text) => [...text.matchAll(/engine up, identity (\S+)/g)].ma
 const folder = releaseFolder([built(N1)], { out: path.join(tmp, 'release'), pkg: { name: 'hyperbrowser', productName: 'HyperBrowser', version: N1, upgrade } })
 
 try {
-  // 3. 1.0.0 runs, then 1.0.1 is released (with --reuse, the channel has it already: found at launch)
   let app = launch()
   check('1.0.0 starts and follows the channel', !!(await until(() => logText().includes('HyperBrowser ' + N + ', channel ' + upgrade), 60000)), logText().slice(-500))
   const before = await until(() => identityIn(logText())[0], 60000)
@@ -129,13 +114,11 @@ try {
   await local.close()
   console.log('released ' + N1 + ' on ' + upgrade + ' (' + drive.version + ' blocks)')
 
-  // 4. picked up while running
   check('1.0.0 downloads 1.0.1 and installs it ("update: ready 1.0.1")', !!(await until(() => logText().includes('update: ready ' + N1), 300000)), logText().slice(-800))
   check('it quits when its window closes', await stop(app))
   check('what is installed is 1.0.1 now', !!(await until(() => versionOf(installed) === N1, 60000)), versionOf(installed))
   if (WIN) check("1.0.0's folder removed", !!(await until(() => !fs.existsSync(installed + '-' + N), 30000)))
 
-  // 5. the next launch is 1.0.1, with the same data
   fs.appendFileSync(LOG, '--- relaunch\n')
   app = launch()
   const after = await until(() => identityIn(logText().split('--- relaunch\n')[1] || '')[0], 90000)

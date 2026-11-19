@@ -1,5 +1,3 @@
-// spec 022: names.resolve, the shell's call resolving name@authority through HyperDNS (an authority made by
-// another person's hypergraph on the test's DHT), and its errors.
 import test from 'brittle'
 import testing from 'hypergraph/testing'
 import hyperdns from 'hyperdns'

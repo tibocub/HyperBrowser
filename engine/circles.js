@@ -1,20 +1,16 @@
-// Circles (spec 018): people whose computers keep each other's spaces online (hypergraph 023, 5 copies: 024).
-// The shell's own calls only (circles.*, holding.*), never a page's: making, joining, inviting, members,
-// and how much this computer holds. Holding runs whenever the engine runs; turning it off deletes what is
-// held (hypergraph), so only the person's "Turn off" does it. The person's circles are a list in their
-// settings (on every device of theirs): hg.spaces() doesn't say which spaces are circles until they are open.
+// Shell-only calls: no page reaches circles.* or holding.*.
 import fs from 'fs'
 import path from 'path'
 
 export const GB = 1e9 // hypergraph's 1 GB share is 1e9 bytes
-const LIST = 'hyperbrowser/circles' // { [circle key]: true }
-const CONTACTS = 'hyperbrowser/contacts' // engine/contacts.js: names of the person's friends
+const LIST = 'hyperbrowser/circles' // { [circle key]: true }: hg.spaces() can't tell which spaces are circles until they are open
+const CONTACTS = 'hyperbrowser/contacts'
 const NAME_TYPE = 'circle-name' // a rename: the latest one by the owner or an admin (hypergraph has no rename)
 const TYPES = { [NAME_TYPE]: { fields: { name: 'string' } } }
-const WEEK = 7 * 24 * 3600 * 1000 // an invite's life (Q10)
+const WEEK = 7 * 24 * 3600 * 1000
 const MAX = 50 // hypergraph refuses the 51st (CIRCLE_FULL)
 const MIN_SHARE = 0.1 * GB
-const SPARE = 2 * GB // left free on the disk (Q9)
+const SPARE = 2 * GB
 const RECORDS = 1000 // hg/holder records read, newest first (as hypergraph does)
 const CHECK = 30000 // share full: hypergraph tells no event for it
 const DECIDERS = new Set(['owner', 'admin'])
@@ -23,11 +19,10 @@ const error = (code, message) => Object.assign(new Error(message), { code })
 const noop = () => {}
 const validName = (n) => typeof n === 'string' && n.trim().length > 0 && n.length <= 64 && !/[\x00-\x1f\x7f]/.test(n) // eslint-disable-line no-control-regex
 
-// The people holding, from a circle's hg/holder records (newest first): the newest record of each of their
-// devices since their newest `left` (lib/holding.js #view reads them the same way).
+// The newest record of each device since the person's newest `left`, as hypergraph's lib/holding.js reads them.
 export function holdsFrom (records) {
   const out = new Set()
-  const cut = new Set() // past their newest `left`: older records are from before it
+  const cut = new Set()
   const seen = new Set()
   for (const r of records) {
     if (cut.has(r.author)) continue
@@ -39,29 +34,26 @@ export function holdsFrom (records) {
   return out
 }
 
-// A circle's name: the newest `circle-name` record (newest first) by someone owner or admin as of now (a removed
-// admin's rename stops counting), else the name it was made with.
+// Only current owners and admins count: a removed admin's rename stops counting.
 export function pickName (records, deciders, made) {
   const r = records.find((x) => validName(x.name) && deciders.has(x.author))
   return r ? r.name : made
 }
 
-// Share full (FR-007): told once when what is held reaches the share, again only after it went under 90%.
 export function shareFull ({ full }, { on, used, bytes }) {
   if (!on) return { full: false, tell: false }
   if (used >= bytes) return { full: true, tell: !full }
   return { full: full && used >= 0.9 * bytes, tell: false }
 }
 
-// sfs: the engine's SwarmFS; dir: its folder; notes: the notifications (share full); emit(event, data).
 export function circles ({ sfs, dir, notes, emit }) {
   const hg = sfs.hg
-  const FILE = path.join(dir, 'circles.json') // this device's: { set: the person chose holding, full }
+  const FILE = path.join(dir, 'circles.json')
   let local = { set: false, full: false }
   try { local = { ...local, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) } } catch {}
   let writing = Promise.resolve()
   let closed = false
-  const watched = new Map() // circle key -> stop()
+  const watched = new Map()
   let timer = null
 
   const saveLocal = () => fs.promises.writeFile(FILE, JSON.stringify(local)).catch(noop)
@@ -87,7 +79,6 @@ export function circles ({ sfs, dir, notes, emit }) {
     return write
   }
 
-  // A circle of the person's, opened, or NOT_FOUND.
   async function circle (key) {
     if (typeof key !== 'string' || !(await listed())[key]) throw error('NOT_FOUND', 'not one of your circles')
     let s
@@ -118,8 +109,6 @@ export function circles ({ sfs, dir, notes, emit }) {
     } catch { return s.name ?? '' } // a circle made before its types: no rename yet
   }
 
-  // --- holding ---
-
   async function free () {
     const { bavail, bsize } = await fs.promises.statfs(dir)
     return bavail * bsize
@@ -145,8 +134,6 @@ export function circles ({ sfs, dir, notes, emit }) {
     return holding()
   }
 
-  // The first circle made or joined turns holding on at 1 GB, unless the person chose before (FR-003) or the
-  // disk has no room for it (then it stays off: the Circles section says so).
   async function firstCircle () {
     if (local.set || hg.holding().on) return
     const bytes = hg.holding().bytes
@@ -165,8 +152,6 @@ export function circles ({ sfs, dir, notes, emit }) {
     }
     if (next.tell) await notes.hyperbrowser({ id: 'share-full-' + Date.now(), text: 'Your share for your circles is full: the oldest copies you keep are dropped first. Give more room in Configuration.' })
   }
-
-  // --- the calls ---
 
   async function list () {
     const out = []
@@ -217,7 +202,7 @@ export function circles ({ sfs, dir, notes, emit }) {
       role: m.role,
       you: !!m.you,
       holds: holds.has(m.identity),
-      share: m.share ?? null, // spec 021 (hypergraph 026): bytes, across all their circles; null: not reported
+      share: m.share ?? null,
       used: m.used ?? null
     }))
   }

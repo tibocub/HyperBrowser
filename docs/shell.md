@@ -1,8 +1,25 @@
-# Using HyperBrowser (the shell, spec 002)
+# The shell
+
+The shell (`shell/`) is the Electron window: tabs, the desktop, the tray, and one sandboxed view per site. Only
+the shell talks to the engine ([engine.md](engine.md)), and it names the site from the view, never from the page.
+
+| File | What it does |
+|---|---|
+| `main.js` | starts the engine worker, serves `hyper://`, bridges site calls to the engine, the self-test and frame check |
+| `frame.js` | the window: bars, tabs, site views, the docked preview |
+| `views.js` | the sandboxed site views: own session, `hyper://<key>/` only, no pop-ups, no permissions |
+| `site-preload.cjs` | `window.hyper` in a site's page |
+| `frame-preload.cjs`, `ui/` | the window's own interface |
+| `model.js` | the frame's pure logic: addresses, desktop icons and cells, wording (tested in `test/model.test.js`) |
+| `tray.js` | the tray icon |
+| `updater.js` | the update worker |
+| `preset.json` | the official apps' keys on a new desktop |
 
 ```bash
-npm start
+npm start [-- --open <key>] [-- --dir <engine folder>]
 ```
+
+## The window
 
 The window has no OS frame and no menu bar: two bars drawn by HyperBrowser itself (a site only ever draws
 below them):
@@ -23,7 +40,7 @@ Paste a site's whole key (52 letters and digits) in the address and press Enter.
 `Title · abcdef…xyz`; click it to see the whole key. A key already open selects its tab. If nobody serving the
 site is online, the tab says so: "Try again" or "Close tab".
 
-**By name** (spec 022): type `name@authority` (e.g. `blog@bobsDNS`; `hyper://` in front is fine) and press Enter.
+**By name**: type `name@authority` (e.g. `blog@bobsDNS`; `hyper://` in front is fine) and press Enter.
 HyperDNS looks it up in the engine ("Looking up…"), then the site opens and the address keeps showing the name; its
 key is in the tab's tooltip. The authority is one you have (created or reached before), or any authority by its
 link: `blog@hg:…` (its owner gives it; the first time joins it, read-only). No authority is built in. When it doesn't
@@ -47,7 +64,7 @@ Each site's icon (from its `site.json`), its title under it.
 - Preset: the official site, the forum, Apps, Chat and Contacts; until their keys are published they say "not
   published". (A desktop saved before an entry was added doesn't get it: preset icons only fill a new desktop.)
 
-## Apps (spec 014)
+## Apps
 
 Apps (`sites/apps`) is an ordinary site: a list of apps, each with Install (or Open once installed). Its entries
 are `app` records only its owner and admins write (`npm run apps:publish` writes them from each app's
@@ -58,7 +75,7 @@ same install as the desktop's right-click. Any site may ask the same way; none c
 The desktop, bookmarks and the look are kept in `shell.json` in the app's data folder
 (`%APPDATA%\HyperBrowser` on Windows).
 
-## Notifications (spec 016)
+## Notifications
 
 Apps you allow can tell you about new messages and mentions, even while they are closed, as long as HyperBrowser
 runs (the tray counts). Quit fully and nothing arrives; at the next launch, one popup sums up what came meanwhile.
@@ -72,17 +89,17 @@ runs (the tray counts). Quit fully and nothing arrives; at the next launch, one 
 - Each app asks once ("Let "Chat" notify you?"). Reading on one of your computers clears the others, and your
   answers follow you.
 
-## Configuration (spec 016)
+## Configuration
 
 "HyperBrowser ▾" → **Configuration…**:
 
 - **Notifications**: per app **Allowed** / **Blocked** and **Hide text** (popups and the list say "New message");
   per conversation **Mute**.
-- **When the window closes**: **Stay in the tray** or **Quit** (moved here from the menu).
+- **When the window closes**: **Stay in the tray** or **Quit**.
 - **Devices**: **Your devices…** opens the Devices window.
-- **Circles** (spec 018): below.
+- **Circles**: below.
 
-## Circles: friends' computers keep your conversations online (spec 018)
+## Circles: friends' computers keep your conversations online
 
 A circle is up to 50 people whose computers keep copies of each other's conversations and boards (5 copies of
 each, in all your circles together), so a friend reads your message while your computer is off. Holders can't
@@ -101,15 +118,15 @@ A circle is not a group chat: only a holding group.
   go first and HyperBrowser notifies you once (again only after it went under 90%).
 - **Your circles…** opens the circles window: each circle with its members and how many hold. **Create a circle**
   (a name). The first circle made or joined shows a notice once (what it costs, what holders see, and that members see each computer's share and how much it holds): **OK** goes
-  on, **Not now** makes or joins nothing. **Join with a link…** (next to Create a circle, spec 019): paste the link
+  on, **Not now** makes or joins nothing. **Join with a link…** (next to Create a circle): paste the link
   someone sent you, **Join**: no "Join?" question (pasting is the yes), only that notice the first time; "You
   joined "<name>"", or "This invite was already used or has expired", "This circle is full (50)", "This is not a
   circle invite" (a forum's or a site's link: the engine joins it, sees it isn't a circle and leaves; its one use is
   spent). Each circle's **…**: **Copy invite link** (owner and admins: one person, 7 days), **Invite contacts…**
-  (owner and admins, spec 019: your friends with a box each, those already in greyed "already in"; **Send** posts
+  (owner and admins: your friends with a box each, those already in greyed "already in"; **Send** posts
   each ticked friend their own one-use, 7-day invite in your Chat conversation with them, then "Invites sent to N
   friends in Chat", naming those that failed and why; no friend yet: "No friends yet: add some in Contacts"),
-  **Members** (name or short key, role, "holds", and (spec 021) what each holder holds out of their share, e.g.
+  **Members** (name or short key, role, "holds", and what each holder holds out of their share, e.g.
   "0.8/3 GB" (one decimal, "<0.1" under 0.1 GB; across all their circles, as the tooltip says; nothing for someone
   not holding or not reported yet); under the list "TOTAL ≈ 4.2 GB", the circle's room after its 5 copies
   (everyone's shares ÷ 5, approximate: shares also serve other circles); for the owner and admins a **…** per person:
@@ -117,7 +134,7 @@ A circle is not a group chat: only a holding group.
   since hypergraph has no rename; the newest by someone owner or admin *now* counts, so a removed admin's rename
   stops counting and the name goes back to the last one by a current owner or admin), **Leave** (the owner is warned
   when no admin is left to invite people).
-- **Inviting a friend**: Contacts → the friend's **…** (a button; its menu floats under it, spec 019) → **Invite to
+- **Inviting a friend**: Contacts → the friend's **…** (a button; its menu floats under it) → **Invite to
   "<circle>"**, or the circles window's **Invite contacts…**, posts an **Accept <you>'s invitation to "<circle>"**
   button in your Chat conversation with them. Their click opens HyperBrowser's own question (or the notice, the
   first time); a page can never join a circle by itself. A used or expired link says "This invite was already
@@ -125,7 +142,7 @@ A circle is not a group chat: only a holding group.
 - In Chat and Forum: "Kept by N of 5 copies, M online" in a conversation's or private board's **…**, a warning
   under 2 online, and **Change key** (the owner: a new key from now on, for a lost device or a suspected leak).
 
-## Devices: one identity on two computers (spec 012)
+## Devices: one identity on two computers
 
 "HyperBrowser ▾" → **Configuration…** → **Your devices…**: this computer and your other devices, one identity.
 
@@ -151,7 +168,7 @@ A circle is not a group chat: only a holding group.
 - Wait a minute after joining before quitting: a quit in the first seconds can hang (a hypergraph issue,
   `specs/requests-to-hypergraph.md` B4).
 
-## The tray (spec 010)
+## The tray
 
 Closing the window doesn't quit: HyperBrowser stays in the tray (Windows: the notification area, by the
 clock) and keeps serving your installed sites, your own sites and the forums you joined. The first time, a
@@ -209,7 +226,7 @@ A new icon: add `<name>.png`, then use `name` where the window's code names icon
 
 ## Linux
 
-Not tried yet. The window has no OS frame: it moves by the top bar; resizing at the edges depends on the
+Not tested yet. The window has no OS frame: it moves by the top bar; resizing at the edges depends on the
 window manager (some Wayland desktops give none).
 
 The tray depends on the desktop: KDE, Cinnamon, XFCE and most others show it; GNOME shows it only with the
@@ -220,7 +237,7 @@ quits, rather than leaving a HyperBrowser running that you can't see or stop.
 
 Mentions, folders on the desktop, starting with the system, `hyper://` links from the system, phone layout.
 
-## Updates (spec 011)
+## Updates
 
 An installed HyperBrowser (the Windows folder, `HyperBrowser.AppImage`: `npm run build`) follows its
 release channel, `package.json` `"upgrade"`:
@@ -235,14 +252,14 @@ release channel, `package.json` `"upgrade"`:
 
 Building, releasing, installing: [packaging.md](packaging.md).
 
-## The IDE's preview (spec 025)
+## The IDE's preview
 
 `hyper.projects.preview(key)` and `resetPreview(key)` answer with a draft site's key. The shell then docks that site's
 view beside the page's view in its tab (`frame.js` `dock`): 55 % / 45 %, the same key again reloads it (a save).
 `hyper.projects.closePreview()` (the shell's alone) removes it; closing the tab does too. A site can't show
 another site in itself, so this is the shell's: the only shell feature the IDE needs.
 
-**The line between them** (spec 027) is a third, 6px view over the boundary (`shell/ui/split.html`,
+**The line between them** is a third, 6px view over the boundary (`shell/ui/split.html`,
 `split-preload.cjs`): a `separator` with a col-resize cursor.
 - **Drag it.** While dragging, it covers both views so the pointer never leaves it, then it is a strip again.
 - **Keyboard:** F6 moves the focus to it. ←/→ move it 24px, Shift for 120px, Home and End to the ends. F6 or Escape
@@ -251,7 +268,7 @@ another site in itself, so this is the shell's: the only shell feature the IDE n
 - The split is a share of the width, kept in `shell.json` (`settings.split`, 0.55 at first), so it is the same for
   every tab and after a restart.
 - The frame check docks a preview and checks both views' bounds after the keys, a drag and the minimum.
-- **The focus** (spec 028): a (re)load of the preview never takes the keyboard from the page that asked for it. If
+- **The focus**: a (re)load of the preview never takes the keyboard from the page that asked for it. If
   the page had the focus, it is given back the moment the preview takes it, until 300ms after the load. So typing
   in the IDE goes on through each save, the caret where it was, while a click into the preview later keeps it
   there. The frame check types through three reloads.

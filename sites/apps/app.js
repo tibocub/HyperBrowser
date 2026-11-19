@@ -1,11 +1,7 @@
-// Apps' page (spec 014): the store's `app` entries (written by its owner with `npm run apps:publish`), each with
-// Install or Open. Installing goes through HyperBrowser (hyper.apps): a click here, then the person's yes in
-// HyperBrowser's own dialog. No stylesheet: HyperBrowser's default theme.
-
 const hyper = window.hyper
 const root = document.getElementById('app')
 let apps = []
-const installed = new Map() // key -> boolean
+const installed = new Map()
 let notice = ''
 
 if (!hyper) root.replaceChildren(h('p', {}, 'Open Apps in HyperBrowser.'))

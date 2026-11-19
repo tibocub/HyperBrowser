@@ -1,9 +1,8 @@
-/* The frame's look (spec 002 FR-012): System 1's look, 1-bit black and white plus one accent, Cozette. */
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette.woff2) format('woff2'); font-weight: 400; }
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette-bold.woff2) format('woff2'); font-weight: 700; }
 
 :root { --accent: #1f4fd1; --ink: #000; --paper: #fff; }
-/* --px: one device pixel, so the textures stay on whole pixels at Windows' 125 %, 150 %, 175 % (spec 008) */
+/* --px: one device pixel, so the textures stay on whole pixels at Windows' 125 %, 150 %, 175 % */
 :root { --px: 1px; }
 @media (resolution: 1.25dppx) { :root { --px: calc(1px / 1.25); } }
 @media (resolution: 1.5dppx) { :root { --px: calc(1px / 1.5); } }
@@ -49,7 +48,6 @@ button:disabled { cursor: default; opacity: .35; }
 .tab .x:hover { outline: 1px solid currentColor; outline-offset: -1px; }
 .tab.busy .name::after { content: ' …'; }
 
-/* toolbar: striped like a System 1 title bar */
 #toolbar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-bottom: 1px solid var(--ink);
   background-image: repeating-linear-gradient(to bottom, var(--paper) 0 calc(2 * var(--px)), var(--ink) calc(2 * var(--px)) calc(3 * var(--px))); }
 .tool { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 28px; padding: 0; border: 1px solid var(--ink); background: var(--paper); }
@@ -62,7 +60,6 @@ button:disabled { cursor: default; opacity: .35; }
 #m-update { color: var(--accent); }
 #state.bad { background: var(--ink); color: var(--paper); }
 
-/* the desktop: a dithered gray, a grid of icons */
 #desktop { position: absolute; inset: 68px 0 0 0; overflow: auto; padding: 24px; box-sizing: border-box; background-color: var(--paper);
   background-image: repeating-conic-gradient(var(--ink) 0 25%, var(--paper) 0 50%);
   background-size: calc(2 * var(--px)) calc(2 * var(--px)); background-attachment: fixed; }
@@ -78,7 +75,6 @@ button:disabled { cursor: default; opacity: .35; }
 .icon:focus-visible { outline: none; }
 .icon.dragging { opacity: .4; }
 
-/* a System 1 window: striped title bar */
 .window { position: absolute; top: 140px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); z-index: 1; }
 .window .title { display: flex; justify-content: center; padding: 2px 8px; border-bottom: 1px solid var(--ink);
   background-image: repeating-linear-gradient(to bottom, var(--paper) 0 var(--px), var(--ink) var(--px) calc(2 * var(--px))); }
@@ -89,7 +85,6 @@ button:disabled { cursor: default; opacity: .35; }
 .push { padding: 4px 14px; border: 1px solid var(--ink); background: var(--paper); box-shadow: 2px 2px 0 var(--ink); font-weight: 700; }
 .push:active { transform: translate(2px, 2px); box-shadow: none; }
 
-/* menus */
 #backdrop { position: fixed; inset: 0; z-index: 3; -webkit-app-region: no-drag; }
 #menu, #ctx { -webkit-app-region: no-drag; position: fixed; z-index: 4; min-width: 220px; padding: 6px 0; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
 #menu { top: 31px; left: 0; width: 290px; }
@@ -108,7 +103,6 @@ button:disabled { cursor: default; opacity: .35; }
 .swatch i { display: block; width: 18px; height: 14px; }
 .swatch[aria-pressed="true"] { background: var(--paper); outline: 2px solid var(--ink); outline-offset: 1px; }
 
-/* the Devices window (spec 012) */
 #devices, #circles { top: 60px; z-index: 5; -webkit-app-region: no-drag; }
 #devices ul, #circles ul { list-style: none; margin: 4px 0 12px; padding: 0; }
 #devices li, #circles li { display: flex; align-items: center; gap: 8px; padding: 2px 0 2px 8px; }
@@ -119,7 +113,6 @@ button:disabled { cursor: default; opacity: .35; }
 #dv-out p, #devices .note, #cl-out p, #cf-hold-out p { margin: 0 0 10px; word-break: normal; }
 #dv-out .code, #cl-out .code { user-select: all; word-break: break-all; text-decoration: underline; } /* not bold: Cozette bold has no m */
 #devices textarea, #devices input, #circles input, #cf-share { box-sizing: border-box; width: 100%; padding: 4px 8px; border: 1px solid var(--ink); background: var(--paper); font: inherit; color: inherit; user-select: text; }
-/* spec 018: a "…" per circle and per member */
 #circles li .grow { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #circles details { position: relative; }
 #circles summary { list-style: none; cursor: pointer; padding: 0 8px; border: 1px solid var(--ink); }
@@ -135,7 +128,6 @@ button:disabled { cursor: default; opacity: .35; }
 .dim { opacity: .6; }
 #devices input[type=password] { margin-bottom: 10px; }
 
-/* notifications (spec 016): the counter, its list, icon counts, the Configuration window */
 #bell { width: auto; min-width: 32px; padding: 0 8px; }
 #bell.new { background: var(--accent); color: var(--paper); border-color: var(--accent); }
 #notes { -webkit-app-region: no-drag; position: fixed; z-index: 4; top: 68px; right: 8px; width: min(380px, calc(100% - 16px)); max-height: calc(100% - 84px); overflow: auto; padding: 6px 0; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }

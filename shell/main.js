@@ -1,11 +1,4 @@
-// The shell: runs the engine as a Bare worker (pear-runtime), keeps it alive with heartbeats, serves
-// hyper://<key>/ from the engine, and shows each site in its own sandboxed view inside the frame
-// (frame.js, spec 002). Only this file bridges a site to the engine, and it names the site from the view.
-//   npm start [-- --open <key>] [-- --dir <engine folder>]
-//   npm run selftest [-- --no-guards]      (the sandbox self-test; --no-guards is its control run: must fail)
-//   npm run framecheck                     (the frame: no OS frame, no app menu, sites under the bars)
-//   electron . --user-data-dir=<tmp> --traycheck quit|off   (the tray, spec 010: npm run test:sandbox runs it)
-// Installed (npm run build, spec 011), it also follows its release channel: see startUpdates().
+// Only this file bridges a site to the engine, and it names the site from the view, never the page.
 import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme, Notification } from 'electron'
 import fs from 'fs'
 import { spawnSync } from 'child_process'
@@ -33,7 +26,6 @@ const TYPES = {
 }
 const typeOf = (p) => TYPES[p.split('.').pop().toLowerCase()] || 'application/octet-stream'
 const PKG = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf-8'))
-// The official apps the shell's own calls open (spec 013): their keys once Tibo published them (preset.json)
 const PRESET = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
 const APPS = { chat: PRESET.find((p) => p.id === 'preset:chat')?.key || null, contacts: PRESET.find((p) => p.id === 'preset:contacts')?.key || null }
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
@@ -49,16 +41,15 @@ function log (line) {
   } catch {}
 }
 
-// One HyperBrowser a data folder (spec 010): a second launch shows the first one's window (maybe in the tray)
-// instead of a second engine on the same folder. Another --dir is another HyperBrowser (two-peer testing).
+// One HyperBrowser per data folder: two engines on one folder would conflict.
 const FIRST = SELFTEST || FRAMECHECK || !!arg('--dir') || app.requestSingleInstanceLock()
 if (!FIRST) app.quit()
-let ui = null // startFrame's { win, inspect, show }
-let engineErred = false // engine.error: the notice once a session
+let ui = null
+let engineErred = false
 app.on('second-instance', () => ui?.show())
 
-// Windows shows a popup (spec 016) only for an app id its Start menu shortcut names: the installer's (scripts/build.js).
-// From the repo, Electron's own id is left as is. shortcut: unchecked by hand yet (R8); a balloon if it fails.
+// Windows shows a popup only for an app id its Start menu shortcut names: the installer's (scripts/build.js).
+// From the repo, Electron's own id is left as is. shortcut: unchecked by hand yet; a balloon if it fails.
 if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('org.hyperbrowser.app')
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'hyper', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
@@ -66,26 +57,26 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'hyper', privileges: { standard:
 let rpc = null
 let worker = null
 let updater = null
-let update = null // the version installed by an update, started at the next launch (spec 011)
+let update = null
 let quitting = false
-let stopping = null // the engine connection being stopped (a join, spec 012)
-const sites = new Map() // key -> { manifest, dynamic }
-const viewOf = new Map() // webContents id -> site key
-const subscribers = new Map() // engine subscription id -> webContents
-const early = new Map() // engine subscription id -> events that came before its reply
-const pages = new WeakMap() // webContents -> how many pages it has loaded (the preload's 'page' message)
-const asking = new Map() // key -> the identity question in progress
-const asked = [] // keys the question was asked for (the self-test checks: once per site)
-const permits = new Map() // key + permission -> the contacts (spec 013) or projects (spec 024) question in progress
-const notifyAsks = new Map() // key -> the notifications question in progress (spec 016)
-const viewed = new WeakMap() // webContents -> the instance its page says it shows (hyper.notifications.viewing)
-const marked = [] // the self-test's record of the places a page's viewing marked read
-const peopleOpened = [] // the self-test's record of what hyper.people opened (no frame there)
-const appsInstalled = new Set() // the self-test's installs and opens through hyper.apps (spec 014)
+let stopping = null
+const sites = new Map()
+const viewOf = new Map()
+const subscribers = new Map()
+const early = new Map()
+const pages = new WeakMap()
+const asking = new Map()
+const asked = []
+const permits = new Map()
+const notifyAsks = new Map()
+const viewed = new WeakMap()
+const marked = []
+const peopleOpened = []
+const appsInstalled = new Set()
 const appsOpened = []
-const heard = [] // the self-test's record of which subscriptions the engine still sends events for
-let selftestYes = false // the self-test's answer to "Install …?"
-let testnet = null // the self-test's own DHT (spec 017: a second person, Ann, in Chat)
+const heard = []
+let selftestYes = false
+let testnet = null
 
 async function serve (key, p) {
   const { bytes, path: real } = await rpc.request('site.read', { key, path: p })
@@ -96,7 +87,7 @@ function onEvent (event, data) {
   if (event === 'devices') return ui?.devices()
   if (event === 'circles') return ui?.circles()
   if (event === 'notify') return ui?.notify(data)
-  if (event === 'engine.error') { // an error escaped in the engine, which kept running: logged; said once a session
+  if (event === 'engine.error') {
     log(`engine error${data.code ? ' ' + data.code : ''}${data.method ? ' in ' + data.method : ''}: ${data.message}`)
     if (!engineErred) ui?.notice('Something went wrong in HyperBrowser\'s engine. It kept running.')
     engineErred = true
@@ -114,7 +105,6 @@ function onEvent (event, data) {
   else if (!wc.isDestroyed()) wc.send('hyper-event', { id: data.id, data: out })
 }
 
-// "Let this site use your identity?": once per site; the engine remembers the answer.
 function ask (key) {
   if (!asking.has(key)) {
     asked.push(key)
@@ -124,14 +114,12 @@ function ask (key) {
       : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 1, cancelId: 1, message: `Let "${title}" use your identity?`, detail: 'It will read and write in its own space as you. You can change this later.' }).then((r) => r.response === 0)
     asking.set(key, answer.then(async (allow) => {
       await rpc.request('site.consent', { key, allow })
-      if (allow && declares(sites.get(key).manifest)) askNotify(key) // spec 016: the next question (not waited for)
+      if (allow && declares(sites.get(key).manifest)) askNotify(key)
     }).finally(() => asking.delete(key)))
   }
   return asking.get(key)
 }
 
-// "Let this site see and manage your contacts?" (spec 013) or "...your projects?" (spec 024): once per site
-// declaring it; the engine remembers.
 const QUESTIONS = {
   contacts: ['see and manage your contacts', 'It will list your friends and requests, accept or remove them, and send requests. Only HyperBrowser\'s Contacts and Chat need this.'],
   projects: ['edit and publish your projects', 'It will read and change the files of your projects, publish their sites, preview them and invite co-authors. Nothing outside your projects. Only an editor like HyperBrowser\'s IDE needs this.']
@@ -149,7 +137,6 @@ function askPermit (key, permission = 'contacts') {
   return permits.get(id)
 }
 
-// "Let this app notify you?": right after the identity question (spec 016), once; the engine remembers.
 function askNotify (key) {
   if (!notifyAsks.has(key)) {
     const title = sites.get(key).manifest.title
@@ -162,8 +149,7 @@ function askNotify (key) {
 }
 const declares = (manifest) => manifest.permissions.includes('notifications') && !!manifest.notifications?.length
 
-// What a page says it shows, marked read for its own app only (the engine checks the place is that app's).
-// The frame calls it only while that tab is current and the window focused.
+// Marked read for the page's own app only (the engine checks); the frame calls it only for the current, focused tab.
 async function readViewed (wc) {
   const place = viewed.get(wc)
   const key = viewOf.get(wc.id)
@@ -194,11 +180,11 @@ async function bridge (wc, msg) {
   const page = pages.get(wc)
   let key = viewOf.get(wc.id)
   let sub = msg.sub ?? null
-  let instance = msg.instance ?? null // one of the app's instances (spec 009): the engine checks it is
+  let instance = msg.instance ?? null // one of the app's instances: the engine checks it is
   if (!GUARDS && sites.has(sub)) { key = sub; sub = null } // control run: trusts a key from the page
   if (!GUARDS && sites.has(instance)) { key = instance; instance = null }
-  if (!GUARDS && sites.has(msg.site)) key = msg.site // spec 018's checks: another app's instance, named with its app
-  if (msg.op === 'viewing') { // spec 016
+  if (!GUARDS && sites.has(msg.site)) key = msg.site // another app's instance, named with its app
+  if (msg.op === 'viewing') {
     if (msg.instance !== null && typeof msg.instance !== 'string') throw Object.assign(new Error('an instance key or null'), { code: 'INVALID_PARAMS' })
     viewed.set(wc, msg.instance)
     ui?.looked()
@@ -210,8 +196,8 @@ async function bridge (wc, msg) {
   // only the fields of that call; the key is the view's
   const params = { key, sub, instance, method: msg.method, args: msg.args, chain: msg.chain, opts: msg.opts, event: msg.event }
   const permission = (typeof msg.method === 'string' && msg.method.startsWith('projects.')) || msg.event === 'projects' ? 'projects' : 'contacts'
-  if (msg.op === 'call' && msg.method === 'projects.openFolder') params.args = [await pickFolder()] // spec 024: never a page's path
-  if (msg.op === 'call' && msg.method === 'projects.closePreview') return !!ui?.undock(wc) // spec 025: the shell's alone
+  if (msg.op === 'call' && msg.method === 'projects.openFolder') params.args = [await pickFolder()] // never a page's path
+  if (msg.op === 'call' && msg.method === 'projects.closePreview') return !!ui?.undock(wc) // the shell's alone
   let result
   try {
     result = await rpc.request(method, params)
@@ -224,7 +210,7 @@ async function bridge (wc, msg) {
       return rpc.request(method, params)
     })
   }
-  if (msg.op === 'call' && (msg.method === 'projects.preview' || msg.method === 'projects.resetPreview') && result?.key) ui?.dock(wc, result.key) // spec 025
+  if (msg.op === 'call' && (msg.method === 'projects.preview' || msg.method === 'projects.resetPreview') && result?.key) ui?.dock(wc, result.key)
   if (msg.op === 'live' || msg.op === 'on') {
     if (wc.isDestroyed() || pages.get(wc) !== page) { // its page left while the engine answered: nobody else would stop it
       unsubscribe(result.id)
@@ -237,7 +223,6 @@ async function bridge (wc, msg) {
   return result
 }
 
-// hyper.projects.openFolder() (spec 024): the person picks the folder; cancelled: CANCELLED.
 async function pickFolder () {
   const o = { title: 'Open a folder as a project', properties: ['openDirectory'] }
   const r = await (ui?.win ? dialog.showOpenDialog(ui.win, o) : dialog.showOpenDialog(o))
@@ -254,7 +239,6 @@ ipcMain.handle('site', async (evt, msg) => {
   }
 })
 
-// hyper.people (spec 013): what any site may ask of the person's contacts and chats, through HyperBrowser only.
 // Opening needs a click on the page (the preload says whether one is running); a request, the person's yes.
 async function people (wc, { op, identity, name, activated }) {
   if (typeof identity !== 'string' || !KEY.test(identity)) throw Object.assign(new Error('not a person\'s key'), { code: 'INVALID_PARAMS' })
@@ -266,9 +250,9 @@ async function people (wc, { op, identity, name, activated }) {
     return rpc.request('contacts.request', { identity, name })
   }
   if (op !== 'chat' && op !== 'contact') throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
-  if (GUARDS && !activated) return false // only right after a click on the page
+  if (GUARDS && !activated) return false
   const c = op === 'chat' ? await rpc.request('contacts.get', { identity }) : null
-  const [key, query] = c?.state === 'friend' ? [c.chat, ''] : [APPS.contacts, '?person=' + identity] // not a friend: their page
+  const [key, query] = c?.state === 'friend' ? [c.chat, ''] : [APPS.contacts, '?person=' + identity]
   if (SELFTEST) return !!peopleOpened.push(key || op)
   if (!key) throw Object.assign(new Error('Contacts is not published yet'), { code: 'NOT_PUBLISHED' })
   ui?.open(key, query)
@@ -284,14 +268,13 @@ ipcMain.handle('people', async (evt, msg) => {
   }
 })
 
-// hyper.apps (spec 014): any site may offer to install or open another (the Apps store does), through HyperBrowser
-// only. Both need a click on the page; installing, the person's yes to a question naming the app by its own title.
+// Both need a click on the page; installing, the person's yes to a question naming the app by its own title.
 async function apps (wc, { op, key, activated }) {
   if (typeof key !== 'string' || !KEY.test(key)) throw Object.assign(new Error("not a site's key"), { code: 'INVALID_PARAMS' })
   const installed = () => SELFTEST ? appsInstalled.has(key) : !!ui?.installed(key)
   if (op === 'installed') return installed()
   if (op !== 'install' && op !== 'open') throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
-  if (GUARDS && !activated) return false // only right after a click on the page
+  if (GUARDS && !activated) return false
   if (op === 'open') {
     if (SELFTEST) return !!appsOpened.push(key)
     ui?.open(key)
@@ -317,12 +300,11 @@ ipcMain.handle('apps', async (evt, msg) => {
   }
 })
 
-// hyper.circles.join (spec 018): a page offers a circle's invite (Chat's Join button); only HyperBrowser joins, after
-// a click on the page and the person's yes (the notice the first time). A page has no circles.* call of the engine.
+// Only HyperBrowser joins a circle, after a click and the person's yes: a page has no circles.* call.
 async function circles (wc, { op, link, name, activated }) {
   if (op !== 'join') throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
   if (typeof link !== 'string' || !link.startsWith('hg:')) throw Object.assign(new Error('an invite link (hg:...)'), { code: 'INVALID_PARAMS' })
-  if (GUARDS && !activated) return { joined: false } // only right after a click on the page
+  if (GUARDS && !activated) return { joined: false }
   if (!GUARDS) return { joined: !!(await rpc.request('circles.join', { link })) } // control run: no question
   if (SELFTEST) return { joined: false } // the person's Not now
   return { joined: (await ui.joinCircle(link, typeof name === 'string' ? name : '')).joined } // the page learns no more
@@ -340,20 +322,19 @@ ipcMain.handle('circles', async (evt, msg) => {
 async function openSite (key, query = '') {
   const { manifest, dynamic, key: real, instance = null, ...rest } = await rpc.request('site.open', { key })
   sites.set(real, { manifest, dynamic })
-  if (instance) query = '?instance=' + instance + (query.startsWith('#') ? query : '') // an app's instance (spec 009): the app's pages, told which one; a notification's place in it (spec 016)
-  if (rest.notify === 'ask') askNotify(real) // spec 016: identity said yes before, this question not asked yet
+  if (instance) query = '?instance=' + instance + (query.startsWith('#') ? query : '')
+  if (rest.notify === 'ask') askNotify(real)
   const v = createSiteView(real, { dynamic, serve, guards: GUARDS, persist: !SELFTEST, query })
   viewOf.set(v.webContents.id, real)
   v.webContents.on('destroyed', () => {
     stopAll(v.webContents)
-    rpc?.request('site.close', { key: real }).catch(() => {}) // the engine leaves it a while later unless installed (spec 004)
+    rpc?.request('site.close', { key: real }).catch(() => {})
   })
   return { key: real, instance, manifest, ...v }
 }
 
 const IMAGES = new Set(['png', 'gif', 'svg', 'webp', 'jpg', 'jpeg', 'ico'])
 
-// A site's icon (site.json `icon`) as a data URL for the frame, or null.
 async function readIcon (key, manifest) {
   if (!manifest.icon || !IMAGES.has(manifest.icon.split('.').pop().toLowerCase())) return null
   const { bytes, type } = await serve(key, manifest.icon)
@@ -362,7 +343,7 @@ async function readIcon (key, manifest) {
 
 async function shutdown () {
   quitting = true
-  if (updater) { updater.end(); updater = null } // it closes by itself (or dies with the app)
+  if (updater) { updater.end(); updater = null }
   await stopEngine()
 }
 
@@ -389,7 +370,6 @@ function layout (win, views) {
   win.on('resize', place)
 }
 
-// The sandbox self-test: two dynamic sites and a static one, published from copies of shell/selftest/site.
 async function selftest (dir) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-selftest-'))
   const folder = (name, manifest) => {
@@ -399,12 +379,12 @@ async function selftest (dir) {
     return dir
   }
   const keys = []
-  const dyn = (title) => ({ title, permissions: ['space', 'notifications'], types: { note: { fields: { text: 'string' } } } }) // spec 017: no watch, so no question
+  const dyn = (title) => ({ title, permissions: ['space', 'notifications'], types: { note: { fields: { text: 'string' } } } }) // no watch, so no question
   for (const [name, manifest] of [['a', dyn('Site A')], ['b', dyn('Site B')], ['c', { title: 'Static C' }]]) {
     keys.push((await rpc.request('site.publish', { folder: folder(name, manifest) })).key)
   }
   const [a, b, c] = keys
-  await rpc.request('apps.set', { chat: a }) // spec 013: a request makes a conversation of some app
+  await rpc.request('apps.set', { chat: a })
   const views = [await openSite(a, '?other=' + b), await openSite(b, '?other=' + a), await openSite(c, '?other=' + a + '&static=1')]
   const win = new BaseWindow({ width: 1500, height: 800, title: 'HyperBrowser self-test' + (GUARDS ? '' : ' (no guards)') })
   layout(win, views)
@@ -423,10 +403,8 @@ async function selftest (dir) {
   clearTimeout(timeout)
   const out = results.flat()
   out.push({ site: 'shell', name: 'the identity question: asked once per dynamic site, never for the static one', pass: asked.length === 2 && asked.includes(a) && asked.includes(b) })
-  // spec 013: what the pages asked of hyper.people without a click, or refused by the person, did nothing
   out.push({ site: 'shell', name: 'hyper.people: nothing opened without a click', pass: peopleOpened.length === 0 })
   out.push({ site: 'shell', name: 'hyper.people: a request the person refused sent nothing', pass: (await rpc.request('contacts.get', { identity: b })) === null })
-  // spec 014: hyper.apps installs only after a click (executeJavaScript's user gesture) and the person's yes
   out.push({ site: 'shell', name: 'hyper.apps: nothing installed or opened without a click', pass: appsInstalled.size === 0 && appsOpened.length === 0 })
   const install = () => views[0].webContents.executeJavaScript(`window.hyper.apps.install(${JSON.stringify(c)}).then(String, (e) => e.code)`, true)
   const refused = await install()
@@ -434,7 +412,6 @@ async function selftest (dir) {
   selftestYes = true
   const said = await install()
   out.push({ site: 'shell', name: 'hyper.apps: a click and a yes install it', pass: said === 'true' && appsInstalled.has(c) })
-  // the look (spec 008): HyperBrowser's theme reaches sites; a page with no stylesheet gets the default theme
   const dark = async () => { await new Promise((resolve) => setTimeout(resolve, 300)); return views[0].webContents.executeJavaScript("matchMedia('(prefers-color-scheme: dark)').matches") }
   nativeTheme.themeSource = 'dark'
   const isDark = await dark()
@@ -470,7 +447,6 @@ async function selftest (dir) {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const until = async (f) => { for (let n = 0; n < 100; n++) { if (await f().catch(() => false)) return true; await wait(100) } return false }
 
-// A real load ends the old page's subscriptions and only those; a hash change or a cancelled navigation ends none.
 async function checkLoads ([a, b], out) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const wc = b.webContents
@@ -483,7 +459,6 @@ async function checkLoads ([a, b], out) {
     return until(async () => (await got()) > n)
   }
 
-  // the reply to a subscribe comes after its page left
   const flying = bridge(wc, { op: 'live', args: ['profile'], chain: [] })
   bridge(wc, { op: 'page' }).catch(() => {})
   const late = await flying
@@ -522,14 +497,13 @@ async function checkLoads ([a, b], out) {
   pass("a page can't stop another page's subscription", await until(async () => heard.slice(mark).includes(other)))
 }
 
-// spec 016: a page tells what it shows, and silences that only, for its own app; it reads nothing back.
 async function checkNotifications ([a, b], out) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const own = await rpc.request('site.call', { key: a.key, method: 'instances.create', args: ['mine'] })
   const other = await rpc.request('site.call', { key: b.key, method: 'instances.create', args: ['theirs'] })
   const viewing = (k) => a.webContents.executeJavaScript(`window.hyper.notifications.viewing(${JSON.stringify(k)}).then(String, (e) => e.code)`)
   await viewing(other.key)
-  await readViewed(a.webContents) // as the frame does while that tab is current and the window focused
+  await readViewed(a.webContents)
   pass("notifications: a page's viewing can't mark another app's conversation read", !marked.includes(other.key))
   await viewing(own.key)
   await readViewed(a.webContents)
@@ -540,8 +514,7 @@ async function checkNotifications ([a, b], out) {
   pass("notifications: a page can't read the person's notifications or their settings (notify.* refused; its own app's counts only, spec 017)", api === 'viewing,unread,on,follow,unfollow,follows' && asked === 'UNKNOWN_METHOD')
 }
 
-// spec 017: a page reaches its own app's counts and follows only. Each check names B's site as the instance, which
-// the control run takes for the page's site (as with the other guards): there it reads and changes B's.
+// Each check names B's site as the instance, which the control run takes for the page's site: there it reads and changes B's.
 async function checkOwnCounts (a, b, own, other, pass) {
   const ask = (method, args = []) => bridge(a.webContents, { op: 'call', instance: b.key, method, args }).then((r) => r, (e) => ({ error: e.code }))
   const counts = await ask('notifications.unread')
@@ -558,21 +531,20 @@ async function checkOwnCounts (a, b, own, other, pass) {
   await wait(1000)
   const sub = await bridge(a.webContents, { op: 'on', instance: b.key, event: 'notifications' })
   const mark = heard.length
-  await rpc.request('site.call', { key: b.key, method: 'instances.leave', args: [gone.key] }) // B's counts change: one place fewer
+  await rpc.request('site.call', { key: b.key, method: 'instances.leave', args: [gone.key] })
   await wait(1000)
   pass("notifications: a page doesn't hear another app's counts", !heard.slice(mark).includes(sub.id))
   await bridge(a.webContents, { op: 'off', id: sub.id })
 }
 
-// spec 018: copies and rotateKey (spec 023: secure and trimHistory) reach the page's own app's instances only (each check names B's site with B's
-// private instance, which the control run takes for the page's site); a circle is joined only through HyperBrowser.
+// Each check names B's site with B's private instance, which the control run takes for the page's site.
 async function checkCircles ([a, b], out) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const theirs = await rpc.request('site.call', { key: b.key, method: 'instances.create', args: ['Theirs', { private: true }] })
   const ask = (method) => bridge(a.webContents, { op: 'call', site: b.key, instance: theirs.key, method, args: [] }).then(() => 'done', (e) => e.code)
   pass("copies: a page can't read another app's instance's copies", (await ask('copies')) === 'NOT_ALLOWED')
   pass("rotateKey: a page can't change another app's instance's key", (await ask('rotateKey')) === 'NOT_ALLOWED')
-  pass("secure: a page can't renew another app's instance", (await ask('secure')) === 'NOT_ALLOWED') // spec 023
+  pass("secure: a page can't renew another app's instance", (await ask('secure')) === 'NOT_ALLOWED')
   pass("trimHistory: a page can't trim another app's instance", (await ask('trimHistory')) === 'NOT_ALLOWED')
   const circle = await rpc.request('circles.create', { name: 'Self-test' })
   const { link } = await rpc.request('circles.invite', { key: circle.key })
@@ -582,7 +554,6 @@ async function checkCircles ([a, b], out) {
   pass("circles: a click and the person's Not now join nothing", clicked === '{"joined":false}')
 }
 
-// Chat's page, in a real browser: where a redraw leaves the message list and the caret.
 async function checkChat (win, views, out, tmp) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const folder = path.join(tmp, 'chat') // a copy: publishing links a folder both ways with the engine
@@ -621,9 +592,7 @@ async function checkChat (win, views, out, tmp) {
 
 const waitFor = async (f, ms = 60000) => { for (const end = Date.now() + ms; Date.now() < end; await wait(250)) if (await f().catch(() => false)) return true; return false }
 
-// spec 017 SC-005: Chat opens at a "New messages" line just above the unread messages, in view; sending goes to the
-// end; a group and a direct conversation alike (oldest at the top). Ann: a second engine, in this process, on the
-// self-test's own DHT. 30 messages read, then 5 unread.
+// Ann: a second engine in this process, on the self-test's own DHT.
 async function checkChatLine ({ key, view }, out, tmp) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const { start } = await import('../engine/index.js')
@@ -672,14 +641,12 @@ async function checkChatLine ({ key, view }, out, tmp) {
     }
     const menu = await run(`(() => { const d = ${list}.querySelector('details'); if (!d) return 'none'; d.querySelector('summary').focus(); return [document.activeElement.tagName, [...d.querySelectorAll('button')].map((b) => b.textContent).join()].join() })()`)
     pass('chat: Edit and Delete behind one "…" per message, reachable by keyboard', menu === 'SUMMARY,Edit,Delete')
-    // spec 018: a page's instances.join of a circle link (Ann's) doesn't leave Bob in the circle (the engine's guard:
-    // the control run doesn't change it; its one use is spent, a known limit)
+    // A page's instances.join of a circle link doesn't leave Bob in the circle; its one use is still spent (a known limit).
     const ring = await ann.request('circles.create', { name: 'Ann only' })
     const { link } = await ann.request('circles.invite', { key: ring.key })
     const before = (await rpc.request('hosting')).sites
     const said = await run(`window.hyper.instances.join(${JSON.stringify(link)}).then(() => 'joined', (e) => e.code)`)
     pass("circles: a page's instances.join of a circle link leaves the person out of it", said === 'NOT_ALLOWED' && (await rpc.request('hosting')).sites === before && !(await rpc.request('circles.list')).some((c) => c.key === ring.key))
-    // Ann invites Bob from Contacts: Chat shows a Join button in their conversation; a click asks HyperBrowser (Not now)
     await as(ann, 'contacts.inviteToCircle', [(await as(rpc, 'contacts.me')).identity, ring.key])
     await run(`location.search = '?instance=${direct}'; 0`)
     const button = "[...document.querySelectorAll('main button')].find((b) => b.textContent.startsWith('Accept Ann\\'s invitation to ') && b.textContent.includes('Ann only'))"
@@ -691,8 +658,7 @@ async function checkChatLine ({ key, view }, out, tmp) {
   }
 }
 
-// spec 019 FR-004, FR-005: a "…" menu opens without moving anything else on the page (every element's box before
-// and after, but the menu's own content). `menu`: an expression for the menu's element, `open`: a script opening it.
+// Every element's box before and after opening, except the menu's own content.
 async function moves (run, menu, open) {
   const places = `((m) => [...document.body.querySelectorAll('*')].filter((e) => !(m.contains(e) && !e.matches('summary, [aria-haspopup]'))).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join() }).join('|'))(${menu})`
   await run('document.fonts.ready.then(() => 0)') // the theme's font loading late moved text (a false "moved")
@@ -702,7 +668,6 @@ async function moves (run, menu, open) {
   return before !== await run(places)
 }
 
-// Contacts' friend "…" (Bob's friend Ann, his circle "Self-test"), Chat's message "…", a Forum's "…", in real pages.
 async function checkMenus (win, views, out, tmp, chat) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const page = async (name, query = '') => {
@@ -740,7 +705,6 @@ async function checkMenus (win, views, out, tmp, chat) {
   const fm = "document.querySelector('details.menu')"
   const shown = await waitFor(() => forum.run(`!!${fm}`), 30000)
   pass('forum: a forum\'s "…" opens without moving anything', shown && !(await moves(forum.run, fm, `${fm}.querySelector('summary').click()`)))
-  // spec 023: its owner's "…" on a private forum: Secure this place… (a box with the history checkbox off) and Trim history…
   const button = (label) => `[...document.querySelectorAll('details.menu button')].find((b) => b.textContent === ${JSON.stringify(label)})`
   const both = await waitFor(() => forum.run(`!!${button('Secure this place…')} && !!${button('Trim history…')}`), 20000)
   pass('forum: its owner\'s "…" has Secure this place… and Trim history…', both)
@@ -751,9 +715,7 @@ async function checkMenus (win, views, out, tmp, chat) {
   pass('forum: Trim history… warns that copies taken can\'t be recalled', await waitFor(() => forum.run("!!document.querySelector('.confirm-box') && document.querySelector('.confirm-box').textContent.includes('be recalled')"), 5000))
 }
 
-// spec 025: the IDE in a real page. A beginner makes a site of two pages without a file name or JSON in sight, typing
-// builds the page; a developer's file opens CodeMirror (loaded then), the default theme stays. Its costs are printed
-// as PERF lines (perf/ide.mjs records them): start, the editor's load, memory before and after, a preview's reload.
+// Prints PERF lines that perf/ide.mjs records: start, the editor's load, memory, a preview's reload.
 async function checkIde (win, views, out, tmp, chat) {
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const folder = path.join(tmp, 'ide')
@@ -768,7 +730,6 @@ async function checkIde (win, views, out, tmp, chat) {
   const started = await waitFor(() => run("document.querySelector('h1')?.textContent === 'Hyper IDE' && !!document.querySelector('form')"), 30000)
   const start = performance.now() - t0
   pass('ide: it opens (its projects asked for once)', started)
-  // spec 029: a "…" menu is drawn inside the window (the home page's one opened half off it, on the left)
   const inside = (sel) => `(() => { const r = document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect(); return !!r && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight })()`
   await run("document.querySelector('[data-menu=home] > button').click(); 0")
   const homeMenu = await waitFor(() => run(inside('[data-menu=home] [role=menu]')), 3000)
@@ -784,8 +745,6 @@ async function checkIde (win, views, out, tmp, chat) {
   const two = await waitFor(() => run("document.querySelectorAll('nav[aria-label=Pages] li').length === 2 && document.querySelector('nav').textContent.includes('About')"), 15000)
   const bare = await run("!/\\.(hmd|html|json)\\b|\\{/.test(document.body.innerText)")
   pass('ide: a beginner makes a site of two pages, by their titles, with no file name or JSON shown (FR-001)', made && two && bare)
-  // spec 029: the Title field's right border inside the list, the list and the editor inside the window, at full
-  // width and at a preview's share (55%)
   const edges = `(() => {
     const title = document.querySelector('nav[aria-label=Pages] input:not([type])')
     const nav = title.closest('nav').getBoundingClientRect()
@@ -805,7 +764,6 @@ async function checkIde (win, views, out, tmp, chat) {
   v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
   pass('ide: the Title field and the page editor end inside their boxes and the window (1400, 770px)' + (pageEdges.length ? ' (cut at ' + pageEdges + ')' : ''), !pageEdges.length)
   await run("(() => { const a = document.querySelector('textarea'); a.value += 'Hello **you**'; a.dispatchEvent(new Event('input')); return 0 })()")
-  // spec 026: built pages live outside the project; the preview (the project, then its built pages) shows them
   const builtPage = async () => {
     const { key } = await run('window.hyper.projects.list().then(([p]) => window.hyper.projects.preview(p.key))')
     await rpc.request('site.open', { key })
@@ -826,8 +784,6 @@ async function checkIde (win, views, out, tmp, chat) {
   const cm = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-editor')"), 15000)
   const editorLoad = performance.now() - t1
   pass('ide: a file in the files view opens in CodeMirror, loaded then', cm)
-  // spec 029: short content, no horizontal scrollbar: the tree, the editor's box and CodeMirror's scroller fit their
-  // space exactly, at full width and at a preview's share
   const snug = `(() => {
     const nav = document.querySelector('nav[aria-label=Files]')
     const box = document.querySelector('#editor')
@@ -846,9 +802,8 @@ async function checkIde (win, views, out, tmp, chat) {
   pass('ide: the tree and the editor fit their space: no horizontal scrollbar for short content (1400, 770px)' + (loose.length ? ' ' + loose.join('; ') : ''), !loose.length)
   pass('ide: the default theme stays with the editor loaded', await run("getComputedStyle(document.body).fontFamily.includes('HB ')"))
   const after = memory()
-  // spec 026 I1: the tree: a right-click menu, Shift+F10 on the focused row, Escape, rename in place, a new folder
   const menuItems = "[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent).join('|')"
-  // spec 028: names from their first letter (the theme's li text-indent cut two), cut at the end, the path as tooltip
+  // The theme's li text-indent used to cut names' first two letters.
   const names = await run(`[...document.querySelectorAll('[role=treeitem]')].map((li) => {
     const span = [...li.querySelectorAll('span')].find((x) => x.textContent && !/^[▸▾ ]*$/.test(x.textContent))
     const r = document.createRange()
@@ -876,7 +831,6 @@ async function checkIde (win, views, out, tmp, chat) {
   await run("[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => b.textContent.startsWith('Paste')).click(); 0")
   const pasted = await waitFor(() => run(`!!${item('_layout copy.hmd')}`), 10000)
   pass('ide: copy, then paste: a copy under a free name', pasteItem.includes('Paste _layout.hmd') && pasted)
-  // spec 026 I2, I3: the list hidden (remembered), the editor's settings
   await run(`${button('Hide file explorer')}.click(); 0`)
   const hidden = await waitFor(() => run("!document.querySelector('nav[aria-label=Files]') && !!document.querySelector('#editor')"), 5000)
   const remembered = await waitFor(() => run('window.hyper.mine.all().then((m) => m.tree === false)'), 5000) // saved in the background
@@ -890,7 +844,6 @@ async function checkIde (win, views, out, tmp, chat) {
   await run(`${button('← Back to the editor')}.click(); 0`)
   const wrapping = await waitFor(() => run("!!document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-lineWrapping')"), 10000)
   pass('ide: Editor settings: line wrapping on, saved per person (hyper.mine)', saved && wrapping)
-  // spec 027: the editor fills what is left beside the list (both ways), the list shown or hidden, at any width
   const fill = `(() => {
     const box = document.querySelector('#editor')
     const cm = box?.shadowRoot?.querySelector('.cm-editor')
@@ -914,7 +867,6 @@ async function checkIde (win, views, out, tmp, chat) {
   }
   await run(`${button('Show file explorer')}.click(); 0`)
   pass('ide: the editor fills the space left over, the list shown or hidden, at 1400, 900, 600 px' + (fills.length ? ' (' + fills.join('; ') + ')' : ''), !fills.length)
-  // spec 029: a file with a long line: the editor scrolls inside, its right border stays inside the window
   await run("window.hyper.projects.list().then(([p]) => window.hyper.projects.write(p.key, 'long.js', '// ' + 'x'.repeat(3000) + '\\n')).then(() => 0)")
   await waitFor(() => run(`!!${item('long.js')}`), 10000)
   await run(`${item('long.js')}.click(); 0`)
@@ -928,9 +880,7 @@ async function checkIde (win, views, out, tmp, chat) {
   }
   v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
   pass('ide: a long line scrolls inside the editor, its right border inside the window (1400, 770px)' + (codeEdges.length ? ' (' + codeEdges.join('; ') + ')' : ''), !codeEdges.length)
-  // spec 026 L5: a button keeps its shadow's room, so a pressed one never covers the next
   pass('ide: buttons keep their shadow\'s room (2px right and below)', await run("(() => { const c = getComputedStyle(document.querySelector('button')); return c.marginRight === '2px' && c.marginBottom === '2px' })()"))
-  // spec 026 L3: apps fit the window at every size; only their parts scroll
   const sizes = [[1400, 800], [1000, 700], [700, 500], [480, 360]]
   const fitsAll = async (v) => {
     for (const [width, height] of sizes) {
@@ -947,7 +897,6 @@ async function checkIde (win, views, out, tmp, chat) {
   win.contentView.addChildView(c.view)
   const chatStuck = await fitsAll(c)
   pass('chat: no page scrollbar at those sizes' + (chatStuck ? ' (scrolls at ' + chatStuck + ')' : ''), !chatStuck)
-  // spec 028: a long word (a 300-character hg: link) wraps: no horizontal overflow, in the messages nor the page
   c.view.setBounds({ x: 0, y: 0, width: 700, height: 500 })
   const crun = (js) => c.webContents.executeJavaScript(js, true)
   const link = 'hg:' + 'x'.repeat(297)
@@ -987,8 +936,6 @@ async function checkIde (win, views, out, tmp, chat) {
   console.log(`PERF ide.preview.reload ${ms(reload)} ms`)
 }
 
-// spec 027: the IDE's preview, docked beside the tab's site with a line between them: where both views are, the line
-// moved by its arrow keys and by a drag (each side keeps 240px), remembered in shell.json and when docked again.
 async function checkSplit (win, inspect, dock, undock, key, file) {
   const out = []
   const wc = inspect().wcs.find((w) => w.getURL().startsWith('hyper://' + key))
@@ -1036,7 +983,6 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
   await waitFor(async () => !!inspect().side, 15000)
   await wait(200)
   out.push(['docked again: the line where it was left', inspect().views[0].width === 240 && meet(inspect())])
-  // spec 028: typing in the page while its preview reloads (each save): the keyboard stays in the page, the caret too
   await wc.executeJavaScript("(() => { const t = document.createElement('textarea'); t.id = 'typing'; document.body.append(t); t.focus(); return 0 })()")
   win.focus()
   wc.focus()
@@ -1044,7 +990,7 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
   const kept = []
   type('abc')
   for (const more of ['def', 'ghi', 'jkl']) {
-    dock(wc, key) // a save: the preview reloads
+    dock(wc, key)
     await waitFor(async () => !inspect().handle || !tabOfSide(inspect)?.isLoading(), 5000)
     await wait(400)
     kept.push(wc.isFocused() && !(await wc.executeJavaScript("document.activeElement?.id === 'typing'").then((x) => !x)))
@@ -1059,13 +1005,12 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
 
 const tabOfSide = (inspect) => inspect().sideWc
 
-// The frame check: the demo site in a frame of its own, then where everything is.
 async function framecheck (dir) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-framecheck-'))
   fs.cpSync(path.join(HERE, '..', 'sites', 'demo'), path.join(tmp, 'site'), { recursive: true })
   const { key } = await rpc.request('site.publish', { folder: path.join(tmp, 'site') })
   const { fake, calls } = scripted(key)
-  fs.writeFileSync(path.join(tmp, 'shell.json'), JSON.stringify({ settings: { circleNoticed: true } })) // spec 018: Q8's notice seen (a dialog would wait)
+  fs.writeFileSync(path.join(tmp, 'shell.json'), JSON.stringify({ settings: { circleNoticed: true } })) // the circles notice seen (a dialog would wait)
   const { win, inspect, notify, dock, undock, open: openTab } = startFrame({ rpc: fake, openSite, readIcon, identity: null, file: path.join(tmp, 'shell.json'), open: key })
   const timeout = setTimeout(() => { console.log('FRAMECHECK TIMEOUT'); app.exit(2) }, 90000)
   const settled = async () => inspect().ready === 1 && await inspect().fwc.executeJavaScript("document.getElementById('tabs').children.length === 2").catch(() => false)
@@ -1080,7 +1025,6 @@ async function framecheck (dir) {
       glyphs: paths.length === document.querySelectorAll('[data-g]').length && paths.every((p) => p.getAttribute('d')), plus: document.querySelector('#plus path').getAttribute('d') }
   })()`)
   const site = await openSiteOf(key).executeJavaScript('typeof window.frame')
-  // the Devices window (spec 012): from the menu, this computer listed, a code to add another
   await i.fwc.executeJavaScript("document.getElementById('hb').click(); document.getElementById('m-config').click(); document.getElementById('cf-devices').click()")
   const listed = await until(() => i.fwc.executeJavaScript("document.querySelectorAll('#dv-list li').length === 1 && document.querySelector('#dv-list li').textContent.includes('(this computer)')"))
   await i.fwc.executeJavaScript("document.getElementById('dv-add').click()")
@@ -1119,8 +1063,6 @@ async function framecheck (dir) {
   app.exit(ok ? 0 : 1)
 }
 
-// spec 018: Configuration's Circles section (holding off, its share), then the circles window: a circle made, its
-// members (you, holding), an invite link.
 async function checkCirclesWindow (fwc) {
   const js = (s) => fwc.executeJavaScript(s)
   await js("document.getElementById('dv-close').click(); document.getElementById('hb').click(); document.getElementById('m-config').click()")
@@ -1131,7 +1073,7 @@ async function checkCirclesWindow (fwc) {
   const made = await until(() => js("[...document.querySelectorAll('#cl-list li')].some((l) => l.textContent.startsWith('Frame1 member'))"))
   await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Members').click() })()")
   const members = await until(() => js("document.getElementById('cl-out').textContent.includes('(you)owner · holds')"))
-  // spec 021: this computer's held/share and the circle's TOTAL (its share ÷ 5); the Members window read again until hypergraph has its record
+  // Read again until hypergraph has the holder's record.
   const numbers = await until(async () => {
     await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Members').click() })()")
     await new Promise((resolve) => setTimeout(resolve, 300))
@@ -1139,7 +1081,6 @@ async function checkCirclesWindow (fwc) {
   })
   await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Copy invite link').click() })()")
   const link = await until(() => js("(document.querySelector('#cl-out .code')?.textContent || '').startsWith('hg:')"))
-  // spec 019: Invite contacts… with no friend yet; a pasted link that isn't a circle's
   await js("(() => { const d = document.querySelector('#cl-list details'); d.open = true; [...d.querySelectorAll('button')].find((b) => b.textContent === 'Invite contacts…').click() })()")
   const friends = await until(() => js("document.getElementById('cl-out').textContent === 'No friends yet: add some in Contacts'"))
   await js("document.getElementById('cl-join').click(); document.querySelector('#cl-out input').value = 'hg:nope'; [...document.querySelectorAll('#cl-out button')].find((b) => b.textContent === 'Join').click()")
@@ -1157,8 +1098,6 @@ async function checkCirclesWindow (fwc) {
   ]
 }
 
-// spec 022's frame check: name@authority in the address bar opens the site it names (the engine's names.resolve,
-// scripted) and keeps showing the name; an unknown name says so in plain words.
 async function checkNames (fwc, key) {
   const js = (s) => fwc.executeJavaScript(s)
   const type = (text) => js(`(() => { const a = document.getElementById('address'); a.focus(); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })) })()`)
@@ -1177,8 +1116,6 @@ async function checkNames (fwc, key) {
   ]
 }
 
-// spec 016's frame check: the engine's notify.* answered with scripted notifications (3 unread: 2 in a Chat
-// conversation, 1 in a forum), the rest passed to the real engine. calls: what the frame asked.
 const SCRIPT = { chat: PRESET.find((p) => p.id === 'preset:chat').key, forum: PRESET.find((p) => p.id === 'preset:forum').key, a: 'y'.repeat(52), b: 'b'.repeat(52) }
 function scripted (site) {
   const calls = []
@@ -1202,7 +1139,7 @@ function scripted (site) {
   }
   const fake = {
     request (method, params = {}) {
-      if (method === 'names.resolve') { // spec 022: one name of a scripted authority (the engine's own call has its test)
+      if (method === 'names.resolve') { // one name of a scripted authority (the engine's own call has its test)
         calls.push([method, params])
         if (params.address === 'demo@frame') return new Promise((resolve) => setTimeout(() => resolve({ key: site, authority: 'f'.repeat(52) }), 1000))
         return Promise.reject(Object.assign(new Error('no such name'), { code: 'UNKNOWN_NAME' }))
@@ -1218,7 +1155,7 @@ function scripted (site) {
 
 async function checkNotes (fwc, inspect, notify, calls) {
   const js = (s) => fwc.executeJavaScript(s)
-  await js("document.querySelector('#tabs .tab').click()") // the desktop
+  await js("document.querySelector('#tabs .tab').click()")
   const counted = await until(() => js("document.getElementById('bell-n').textContent === '3'"))
   const badge = (key) => `([...document.querySelectorAll('#grid .icon')].find((b) => b.title.endsWith(${JSON.stringify(key)}))?.querySelector('.badge')?.textContent || '')`
   const icons = await until(async () => (await js(badge(SCRIPT.chat))) === '2' && (await js(badge(SCRIPT.forum))) === '1')
@@ -1232,7 +1169,7 @@ async function checkNotes (fwc, inspect, notify, calls) {
   const down = await until(async () => (await js(badge(SCRIPT.chat))) === '' && (await js(badge(SCRIPT.forum))) === '1')
   await js("document.getElementById('hb').click(); document.getElementById('m-config').click()")
   const config = await until(() => js("document.querySelectorAll('#cf-apps .app').length === 2 && !!document.querySelector('#config [data-tray=\"off\"]') && !document.querySelector('#menu [data-tray]') && !document.getElementById('m-devices')"))
-  await js("[...document.querySelectorAll('#cf-apps .app')][0].querySelectorAll('.choice')[1].click()") // Chat: Blocked
+  await js("[...document.querySelectorAll('#cf-apps .app')][0].querySelectorAll('.choice')[1].click()")
   const blocked = await until(async () => calls.some(([m, p]) => m === 'notify.set' && p.app === SCRIPT.chat && p.allow === false))
   await js("document.getElementById('cf-close').click()")
   const before = inspect().popups
@@ -1258,9 +1195,7 @@ async function checkNotes (fwc, inspect, notify, calls) {
   ]
 }
 
-// The tray check (spec 010): the app itself, in a data folder of its own (--user-data-dir). It ends the way
-// `mode` says, and npm run test:sandbox checks the process really ends: 'quit' (closed to the tray, launched
-// again, then the tray's Quit) or 'off' (the setting turned off in the menu, then the window closed).
+// test:sandbox checks the process really ends: 'quit' (to the tray, launched again, then Quit) or 'off' (setting off, window closed).
 async function traycheck ({ win, inspect, show }, mode) {
   const ok = (name, pass) => console.log((pass ? 'PASS ' : 'FAIL ') + 'tray  ' + name)
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -1294,9 +1229,6 @@ async function traycheck ({ win, inspect, show }, mode) {
   }
 }
 
-// P2P updates (spec 011): only an installed build that follows a channel, never from source (npm start).
-// What pear-runtime replaces: the .AppImage, the .app, or on Windows the folder (HyperBrowser\, its .exe
-// and files). The data folder is the same one either way.
 function installed () {
   if (!app.isPackaged || !PKG.upgrade) return null
   if (process.platform === 'win32') return path.dirname(process.execPath)
@@ -1308,7 +1240,7 @@ function startUpdates () {
   const file = installed()
   log('HyperBrowser ' + PKG.version + (file ? ', channel ' + PKG.upgrade : ', no updates'))
   if (!file) return
-  const name = PKG.productName + (process.platform === 'win32' ? '' : path.extname(file)) // its name in the release
+  const name = PKG.productName + (process.platform === 'win32' ? '' : path.extname(file))
   const args = [app.getPath('userData'), PKG.version, PKG.upgrade, name, file, process.env.HYPERBROWSER_UPDATE_BOOTSTRAP || '', process.env.HYPERBROWSER_UPDATE_DELAY || '']
   updater = PearRuntime.run(fileURLToPath(new URL('./updater.js', import.meta.url)), args)
   let rest = ''
@@ -1327,11 +1259,8 @@ function startUpdates () {
   updater.on('error', () => {})
 }
 
-// Windows: the downloaded folder takes the installed folder's place once HyperBrowser (and its Bare workers,
-// whose files are in it) has quit: a PowerShell step renames the installed folder away (retrying while files
-// are still in use), moves the new one in, puts the old one back if that fails, else deletes it; for restart
-// it then starts the new HyperBrowser.exe. Started through WMI, not as our child, so nothing that ends with
-// HyperBrowser takes it along. If it never runs (power cut), the next launch gets the update again.
+// Windows can't replace the folder while HyperBrowser or its Bare workers run: a PowerShell step swaps it after the quit,
+// started through WMI so nothing that ends with HyperBrowser takes it along. If it never runs, the next launch updates again.
 let incoming = null
 let relaunch = false
 const ps = (s) => "'" + s.replace(/'/g, "''") + "'"
@@ -1354,7 +1283,6 @@ ${start}`
   log('update: ' + update + ' takes the place of ' + PKG.version + ' once HyperBrowser has quit (' + (String(r.stdout).trim() === '0' ? 'started' : 'could not start: ' + (r.error?.message || String(r.stderr).trim())) + ')')
 })
 
-// The new version now: the same file again (swapped by now, or at the quit on Windows), the same arguments.
 function restart () {
   const args = process.argv.slice(1)
   if (process.platform === 'linux') app.relaunch({ execPath: process.env.APPIMAGE, args: ['--appimage-extract-and-run', ...args.filter((a) => a !== '--appimage-extract-and-run')] })
@@ -1363,22 +1291,18 @@ function restart () {
   ui.win.destroy() // the tray's Quit path: window-all-closed, shutdown(), app.quit()
 }
 
-// The engine, as a Bare worker: rpc set, then init in `dir` (with `more`: a join code, spec 012).
 async function startEngine (dir, more = {}) {
   worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
   worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
   const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
-  // spec 015: the apps a build packed (scripts/build.js --apps-from) next to shell/; none when run from the repo
-  const projects = SELFTEST || FRAMECHECK ? path.join(dir, 'projects') : path.join(app.getPath('documents'), 'HyperBrowser') // spec 024: where the person finds them
+  const projects = SELFTEST || FRAMECHECK ? path.join(dir, 'projects') : path.join(app.getPath('documents'), 'HyperBrowser')
   const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), projects, ...more })
-  if (APPS.chat) await rpc.request('apps.set', { chat: APPS.chat }) // spec 013: friends' conversations are Chat's (also after a join)
+  if (APPS.chat) await rpc.request('apps.set', { chat: APPS.chat }) // friends' conversations are Chat's (also after a join)
   return up
 }
 
-// Join another device's identity (spec 012): this computer's engine folder is moved aside (kept), a new one
-// joins with the code; a failed join puts the old folder back. The frame then goes on with whichever engine
-// is up. Not a restart: closing an engine seconds after a join can hang in hypergraph (seen 2026-11-08).
+// Not a restart: closing an engine seconds after a join can hang in hypergraph.
 async function join (dir, code) {
   const aside = dir + '-before-join-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
   await stopEngine()
@@ -1414,21 +1338,20 @@ const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContent
 app.whenReady().then(async () => {
   if (!FIRST) return
   const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST || FRAMECHECK ? 'selftest-' + process.pid : 'engine')
-  if (SELFTEST) testnet = await (await import('hyperdht/testnet.js')).default(3) // spec 017: two people, offline
+  if (SELFTEST) testnet = await (await import('hyperdht/testnet.js')).default(3)
   const { identity } = await startEngine(dir, testnet ? { bootstrap: testnet.bootstrap } : {})
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
   log('engine up, identity ' + identity)
   if (SELFTEST) return selftest(dir)
   if (FRAMECHECK) return framecheck(dir)
   if (!TRAYCHECK) startUpdates()
-  // the frame and the tray reach whichever engine is up (a join starts another, spec 012)
   const engine = { request: (method, params) => rpc ? rpc.request(method, params) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' })) }
   ui = startFrame({ rpc: engine, openSite, readIcon, readViewed, contacts: APPS.contacts, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open'), update: () => update, restart, join: (code) => join(dir, code).catch((err) => { log('join: ' + err.message); app.exit(1) }) })
   if (TRAYCHECK) traycheck(ui, TRAYCHECK)
 }).catch((err) => { console.error(err); app.exit(1) })
 
 app.on('window-all-closed', async () => {
-  if (SELFTEST || FRAMECHECK) return // the checks exit with their own code
+  if (SELFTEST || FRAMECHECK) return
   await shutdown()
   app.quit()
 })

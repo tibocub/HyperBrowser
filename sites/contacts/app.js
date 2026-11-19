@@ -1,17 +1,13 @@
-// Contacts' page (spec 013): you, requests, friends; ?person=<key> opens one person's page. The list lives in
-// HyperBrowser (window.hyper.contacts, this app's permission); Chat opens through hyper.people.chat. No
-// stylesheet: HyperBrowser's default theme.
-
 const hyper = window.hyper
 const root = document.getElementById('app')
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 let me = null
 let list = []
-let circles = [] // spec 018: the circles you may invite to ({ key, name })
+let circles = []
 let person = new URLSearchParams(location.search).get('person')
 let notice = ''
 let link = null
-let menu = null // spec 019: the friend whose "…" menu is open (kept across draw())
+let menu = null
 
 start().catch((err) => {
   root.replaceChildren(h('p', {}, err.code === 'NOT_ALLOWED' ? 'Contacts needs your identity and your contacts. Reload the page to be asked again.' : 'Contacts could not start: ' + err.message))
@@ -19,7 +15,6 @@ start().catch((err) => {
 
 async function start () {
   if (!hyper) return root.replaceChildren(h('p', {}, 'Open Contacts in HyperBrowser.'))
-  // the "…" menu closes on a click outside it or Escape (focus back on its button)
   document.addEventListener('click', (e) => { if (menu && !e.target.closest('[data-menu]')) { menu = null; draw() } })
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !menu) return
@@ -94,9 +89,6 @@ function home () {
   ]
 }
 
-// A friend's "…" (spec 018; 019: a button with a gap from Message, its menu floating under it, moving nothing):
-// Invite to "<circle>", an invite posted in your Chat conversation with them. Enter or Space opens it, Tab reaches
-// its items; a choice, a click outside or Escape closes it.
 function more (c) {
   const open = menu === c.identity
   const choose = (x) => { menu = null; act(async () => { await hyper.contacts.inviteToCircle(c.identity, x.key); notice = 'Invite to "' + x.name + '" sent in your Chat with ' + label(c) + '.' }) }

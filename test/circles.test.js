@@ -1,5 +1,3 @@
-// Circles (spec 018): the shell's circles.* and holding.* calls, and the two site calls (copies, rotateKey) with
-// their guards. Engines on a local DHT; hypergraph's circles (023) and copies (024) underneath.
 import test from 'brittle'
 import { engine, siteFolder, siteApi, codeOf, eventually } from './helpers.js'
 import { holdsFrom, shareFull, pickName, GB } from '../engine/circles.js'
@@ -80,7 +78,6 @@ test('circles: make, invite (one use), join, members and who holds, admin, renam
   const row = (await members()).find((m) => m.identity === bId)
   t.alike([row.role, row.you, typeof row.name], ['member', false, 'string'], 'a member, named (short key until a contact)')
   t.ok(await eventually(async () => (await a.rpc.request('circles.list'))[0].holders === 2, 30000), 'the list counts who holds')
-  // spec 021: each holder's share and use (hypergraph 026), the circle's room after 5 copies
   t.ok(await eventually(async () => (await members()).every((m) => m.share === GB && typeof m.used === 'number'), 30000), "each one's share and use")
   t.ok(await eventually(async () => (await a.rpc.request('circles.list'))[0].total === 2 * GB / 5, 30000), 'the total: shares / 5')
 
@@ -95,7 +92,6 @@ test('circles: make, invite (one use), join, members and who holds, admin, renam
   await a.rpc.request('circles.remove', { key: made.key, identity: bId })
   t.ok(await eventually(async () => (await members()).length === 1, 30000), 'removed')
 
-  // the shell's only: a page reaches none of it; an app's join of a circle link leaves it at once
   const { key, hyper } = await app(t, a)
   const other = await c.rpc.request('circles.create', { name: 'Not via a page' })
   const before = (await a.rpc.request('hosting')).sites

@@ -1,4 +1,4 @@
-# Packaging and releases (spec 011)
+# Packaging and releases
 
 HyperBrowser installs without an installer or admin rights, and updates itself over P2P through Pear, the
 way Keet does:
@@ -6,12 +6,12 @@ way Keet does:
 - **Windows**: a `HyperBrowser` folder, downloaded as `HyperBrowser.zip`. Run `HyperBrowser.exe` inside it.
 - **Linux**: `HyperBrowser.AppImage`, one file.
 
-Tibo releases a new version on his **release channel**, a pear link. Installed copies download it while they
+The maintainer releases each new version on the **release channel**, a pear link. Installed copies download it while they
 run. On Linux it replaces the AppImage at once; on Windows it replaces the folder as soon as HyperBrowser
 quits. The next launch is the new version. Until then, **HyperBrowser ▾** shows "Update ready (x.y.z):
 restart". The data folder (identity, installed sites, forums, settings) is elsewhere and never moves.
 
-Why it works this way (folder vs MSIX vs one `.exe`, who seeds, where the keys are): `specs/011-packaging/plan.md`.
+Why it works this way (a folder rather than MSIX or one `.exe`, who seeds, where the keys are): `specs/011-packaging/plan.md`.
 
 ## What you need
 
@@ -23,7 +23,7 @@ Why it works this way (folder vs MSIX vs one `.exe`, who seeds, where the keys a
 
 ## Once: make the release channel
 
-On the PC you release from (Tibo's Windows PC):
+On the PC you release from (a Windows PC):
 
 ```bash
 pear touch
@@ -44,14 +44,14 @@ Commit that line: it is public, like a site key. Every build made from now on fo
    folder first (`cli.js publish`): the build opens it to pack the apps.
 
    ```bash
-   npm run apps:publish -- --dir E:/Code/P2P/hyperbrowser-owner
+   npm run apps:publish -- --dir <owner engine folder>
    ```
 
    ```bash
-   npm run build -- --apps-from E:/Code/P2P/hyperbrowser-owner
+   npm run build -- --apps-from <owner engine folder>
    ```
 
-   `--apps-from` packs the preset apps (spec 015) into the build: their own signed data, the same sites with the
+   `--apps-from` packs the preset apps ([engine.md](engine.md#bundled-apps)) into the build: their own signed data, the same sites with the
    same keys, so a new install opens them with nobody online, and peers update them as before. It packs what
    is published in that folder (run `apps:publish` first: edits not published yet are not packed). The forum
    icon's official instance is invite-only, so only the forum **app** is packed; the instance's posts still come
@@ -62,7 +62,7 @@ Commit that line: it is public, like a site key. Every build made from now on fo
    - `out/dist/HyperBrowser.zip`: the same folder zipped (~180 MB, one `HyperBrowser` folder inside), for people to download.
 
    The first build downloads the packages and build tools (~300 MB) into `out/cache`. It uses the Electron already in `node_modules`.
-3. **Build on Linux** (on the laptop, the same commit, set up the same way; copy the owner folder there first,
+3. **Build on Linux** (on a Linux machine, the same commit, set up the same way; copy the owner folder there first,
    with nothing running on it on either machine, or skip `--apps-from`: that build then ships no apps):
 
    ```bash
@@ -99,7 +99,7 @@ Releasing is done from the PC that ran `pear touch`, because only that PC can wr
 
 ## Install it (the first time)
 
-Both PCs, and anyone else. The first copy comes from a plain download; after that, updates come over P2P.
+On every machine. The first copy comes from a plain download; after that, updates come over P2P.
 Put `HyperBrowser.zip` and `HyperBrowser.AppImage` on the GitHub release page (a new release, "Attach
 binaries", with the version as the tag). The official site's start page links to `https://github.com/tibocub/HyperBrowser/releases/latest`.
 
@@ -111,7 +111,7 @@ binaries", with the version as the tag). The official site's start page links to
   Things to expect:
   - **SmartScreen**: the first time, Windows says "Windows protected your PC" (unknown publisher: the files aren't code-signed). Click **More info**, then **Run anyway**.
   - **Windows Firewall** may ask whether `bare.exe` (HyperBrowser's P2P engine) may communicate on networks. Choose **Allow access**. Refused or ignored, Windows blocks incoming connections, and HyperBrowser is harder for others to reach.
-  - The first launch of each new version is slow: 20–40 s here, then about 7 s. That's most likely Windows Defender scanning the new files once (not confirmed).
+  - The first launch of each new version is slow (20–40 s, then about 7 s), most likely Windows Defender scanning the new files once.
   - An update downloads into `HyperBrowser.update\` beside the folder. When HyperBrowser quits (or "restart"), the folders are swapped and the old version is deleted.
   - Leave the folder's name and place as they are while HyperBrowser runs.
 - **Linux**: put `HyperBrowser.AppImage` where it will stay (`~/Applications/` for example).
@@ -127,7 +127,7 @@ binaries", with the version as the tag). The official site's start page links to
   - AppImages need FUSE 2. On Ubuntu 22.04 and newer: `sudo apt install libfuse2` (24.04: `libfuse2t64`). Without it, run with `--appimage-extract-and-run`.
   - Nothing is signed on Linux and nothing asks. Your file manager may need "Allow executing file as program" once.
   - Updates replace that file in place, so the folder must be writable by you.
-- **macOS** (not tested; no Mac here): `npm run build` on a Mac gives `out/dist/HyperBrowser-mac.zip` (the `.app`). Unsigned, other Macs refuse it unless right-click → Open, and updates don't get past Gatekeeper. That needs an Apple Developer certificate.
+- **macOS** (not tested): `npm run build` on a Mac gives `out/dist/HyperBrowser-mac.zip` (the `.app`). Unsigned, other Macs refuse it unless right-click → Open, and updates don't get past Gatekeeper. That needs an Apple Developer certificate.
 
 From source, `npm start` uses **the same data folder** as an installed copy: `%APPDATA%\HyperBrowser` on Windows, `~/.config/HyperBrowser` on Linux. So switching between them keeps your identity, sites and settings, but only one runs at a time.
 

@@ -1,4 +1,4 @@
-// The frame page's only door to the shell (spec 002, contracts/frame.md). Site views never get this preload.
+// Site views never get this preload.
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('frame', {
@@ -6,5 +6,5 @@ contextBridge.exposeInMainWorld('frame', {
   onState: (fn) => ipcRenderer.on('frame-state', (e, state) => fn(state)),
   onFocusAddress: (fn) => ipcRenderer.on('frame-focus', () => fn()),
   onDevices: (fn) => ipcRenderer.on('frame-devices', () => fn()),
-  onCircles: (fn) => ipcRenderer.on('frame-circles', (e, d) => fn(d)) // spec 018
+  onCircles: (fn) => ipcRenderer.on('frame-circles', (e, d) => fn(d))
 })

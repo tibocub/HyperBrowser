@@ -1,7 +1,3 @@
-// Spec 023 (hypergraph 027): Secure this place, Trim history. The site calls (secure, trimHistory: on the page's
-// own app's instances, owners and admins only, as hypergraph checks), the app's instance list and open pages
-// following a move by themselves, a removed person told they no longer have access, and the forum's own flows.
-// Node and Bare.
 import test from 'brittle'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -46,7 +42,6 @@ test('secure and trimHistory: own app\'s instances only; the list and old keys f
   t.alike((await hyper.instance(fresh.key).query('message').latest(5)).items, [], 'trimmed')
 })
 
-// A private forum made with the forum app as it is in the repo; b invited.
 async function privateForum (t) {
   const owner = await engine(t)
   const { key } = await owner.rpc.request('site.publish', { folder: FORUM })
@@ -86,7 +81,7 @@ test('the forum: ban, secure; members follow on their own, the banned one is tol
   t.ok(told, 'c is told it moved')
   t.is(told.movedTo, null, 'with no new address')
 
-  await a.trimHistory(-1) // everything up to tomorrow
+  await a.trimHistory(-1)
   t.ok(await eventually(async () => (await b.f.hyper.query('thread').latest(5)).items.length === 0, WAIT), 'trimmed on b too')
 })
 
@@ -103,7 +98,6 @@ test('the hand-over and errors in plain words', (t) => {
   t.is(trimBefore(1, 'years', now), now - 365 * 24 * 3600e3)
 })
 
-// Chat: a group secured by its owner; a member follows; the one banned is left out.
 async function person (t, key, name) {
   const e = await engine(t)
   await e.rpc.request('apps.set', { chat: key })

@@ -1,4 +1,3 @@
-// site.json (specs/001-engine/data-model.md) and the path rule shared by publish and site.read.
 import b4a from 'b4a'
 import fs from 'fs'
 import path from 'path'
@@ -13,7 +12,6 @@ export function sitePath (p) {
   return parts.join('/')
 }
 
-// The checked manifest from site.json's text: { title, entry, icon?, permissions }.
 export function parseManifest (textOrBytes) {
   const raw = typeof textOrBytes === 'string' ? textOrBytes : b4a.toString(textOrBytes)
   let m
@@ -33,7 +31,6 @@ export function parseManifest (textOrBytes) {
     throw error('INVALID_MANIFEST', 'site.json: permissions must be a list of names')
   }
   out.permissions = permissions
-  // spec 006: an invite-only site (public: false), and a dynamic site's own record types (hypergraph's form)
   if (m.public !== undefined) {
     if (typeof m.public !== 'boolean') throw error('INVALID_MANIFEST', 'site.json: public must be true or false')
     out.public = m.public
@@ -46,20 +43,17 @@ export function parseManifest (textOrBytes) {
   return out
 }
 
-// spec 016: what the engine watches for this app, as data (contracts/notifications.md). Strict: site.json's
-// fields can't change once released, so anything unknown is refused now and may mean something later.
+// Strict: these fields can't change once released, so anything unknown is refused now.
 function watches (list, types) {
   if (!Array.isArray(list) || list.length > 16) throw error('INVALID_MANIFEST', 'site.json: notifications: a list of at most 16 watches')
   for (const w of list) watch(w, types)
   return list
 }
 
-const WATCH_KEYS = new Set(['type', 'me', 'text', 'says', 'open', 'show']) // show: spec 017
+const WATCH_KEYS = new Set(['type', 'me', 'text', 'says', 'open', 'show'])
 const FOLLOW_KEYS = new Set(['place', 'type', 'where', 'by', 'text', 'says', 'open', 'popup'])
-const MEMBER = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/ // z32 of 32 bytes
+const MEMBER = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 
-// One watch of site.json, or (follow: true) a follow a page adds at runtime (spec 017 R3): the same rules, plus
-// its place (the caller checks it is the app's), a type or a list of types, where { field: value }, by, popup.
 export function watch (w, types, follow = false) {
   const bad = (why) => { throw follow ? error('INVALID_PARAMS', 'follow: ' + why) : error('INVALID_MANIFEST', 'site.json: notifications: ' + why) }
   if (!w || typeof w !== 'object' || Array.isArray(w)) bad('each watch is an object')
@@ -75,7 +69,7 @@ export function watch (w, types, follow = false) {
   if (w.says !== undefined && (typeof w.says !== 'string' || !w.says.trim() || w.says.length > 60)) bad('says is 1 to 60 characters')
   if (w.open !== undefined) {
     if (typeof w.open !== 'string' || w.open[0] !== '#' || w.open.length > 200) bad('open is a place within the app: #...')
-    for (const [, f] of w.open.matchAll(/\{([^}]*)\}/g)) if (f !== 'id' && !field(f)) bad(`open: {${f}} names a field of ${of}, or {id}: the record's own`) // {id}: spec 017
+    for (const [, f] of w.open.matchAll(/\{([^}]*)\}/g)) if (f !== 'id' && !field(f)) bad(`open: {${f}} names a field of ${of}, or {id}: the record's own`)
   }
   if (w.show !== undefined && w.show !== 'dot') bad('show is "dot" (only a dot: no notification)')
   if (w.where !== undefined) {
@@ -88,8 +82,6 @@ export function watch (w, types, follow = false) {
   if (w.popup !== undefined && typeof w.popup !== 'boolean') bad('popup is true or false')
 }
 
-// The checked manifest of a folder about to be published: site.json parsed, its entry and icon present (in `folder`,
-// or in `built`: a project's built pages, spec 026).
 export async function readManifest (folder, built = null) {
   let text
   try { text = await fs.promises.readFile(path.join(folder, 'site.json'), 'utf-8') } catch { throw error('NO_MANIFEST', `no site.json in ${folder}`) }
@@ -101,5 +93,4 @@ export async function readManifest (folder, built = null) {
   return manifest
 }
 
-// Dynamic: asks for its space (the hypergraph API); unknown permissions are ignored.
 export const isDynamic = (manifest) => manifest.permissions.includes('space')

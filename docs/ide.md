@@ -1,7 +1,7 @@
 # The IDE
 
-HyperBrowser's IDE makes sites and apps. It is a site like Chat (`sites/ide`). It asks once for your projects, the
-files it edits. Specs: `specs/024-site-files/` (projects) and `specs/025-ide/` (the IDE).
+HyperBrowser's IDE makes sites and apps. It is a site like Chat (`sites/ide`), built on the `projects` site calls
+([site-api.md](site-api.md#projects)). It asks once for your projects, the files it edits.
 
 ## For everyone: a site with pages
 
@@ -71,8 +71,8 @@ It syncs with your other computers while they are online.
   - The preview and Publish use your files plus the built pages.
   - **What you wrote wins.** If you write `about.html` yourself and also have `about.hmd`, your `about.html` is used.
     The IDE says so when you preview or publish.
-  - Pages the IDE wrote beside `.hmd` files before (until spec 026) are removed at the next build, but only those
-    exactly as the build makes them.
+  - Older versions of the IDE wrote built pages beside the `.hmd` files. Those are removed at the next build, but
+    only if they are exactly what the build makes.
   - `_layout.hmd` wraps every page;
   - its `::menu` lists the pages (`::page{order=N}`);
   - root `.css` files style every page.
@@ -93,25 +93,26 @@ compiler.
 - `sites/ide/app.js` is the page. It fits the window (`<body class="hb-app">`): the tree and the editor scroll,
   never the page.
   Its "…" menus stay inside the window: under their button, flipped right, left or up where they would not fit
-  (`fitMenu`, spec 029). Full-width fields are `border-box`, and the page's text area is a block, so nothing pushes a
+  (`fitMenu`). Full-width fields are `border-box`, and the page's text area is a block, so nothing pushes a
   right border out of its box. The self-test checks these at 1400 and 770px.
   Its editor panel is a `div role="main"`, not a `<main>`: the theme gives `<main>` a HyperMD page's window
-  (1140px at most, margins), which left blank space beside the editor (spec 027). The self-test checks the editor
+  (1140px at most, margins), which would leave blank space beside the editor. The self-test checks the editor
   fills the space left over, with the list shown and hidden, at three widths.
 - `sites/ide/lib/tree.js` is the file tree, a component with nothing of the IDE's. HyperBrowser's file manager will
   reuse it: a site loads only its own files, so that app takes a copy.
   - `fileTree(element, { label, open(path), rename(from, to), menu(path, kind) → [[label, fn] | null], mark(path) })`
     returns `{ set(items), select(path), rename(path), selected, expanded }`.
   - `items` are `[{ path, folder? }]`; a file's folders are implied, and empty folders are listed as folders.
+  - `rename` may throw: the old name is kept. A `menu` item's `fn` runs once the menu has closed; `null` draws a
+    separator.
   - `nest(items)` is the pure part (tested).
   - The menu floats at the click and moves nothing. It also opens with the Menu key and Shift+F10; Escape closes it
     and the focus goes back to the row.
   - Roles: `tree`, `treeitem`, `aria-expanded`, `aria-selected`.
   - The rows aren't buttons, so a click never shifts them. They are `div`s, not `li`s: the theme's list style (a
-    bullet, `text-indent: -2ch`) cut names' first two letters (spec 028). A long name is cut at its end; its
+    bullet, `text-indent: -2ch`) would cut names' first two letters. A long name is cut at its end; its
     tooltip has the whole path.
-- Previews and Publish build every HyperMD page first (spec 026: `sites/home` previews with `entry: index.html`),
-  into the engine's `builds/<project>/` through `hyper.projects.build`.
+- Previews and Publish build every HyperMD page first (so `sites/home` previews with `entry: index.html`), into the engine's `builds/<project>/` through `hyper.projects.build`.
 - `sites/ide/lib/site.js` does the work: templates, HyperMD built in the page, pages by title, `site.json` changes,
   Publish. `test/ide.test.js` runs it on Node and Bare.
 - `sites/ide/vendor/editor.js` (CodeMirror 6: JS, HTML, CSS, JSON, Markdown, search, undo) is loaded the first time
@@ -121,7 +122,7 @@ compiler.
 - **The preview beside the page is HyperBrowser's.** A site can't show another site, so the shell docks the draft's
   view next to the IDE in its tab (`hyper.projects.preview`). It needs the shell for that reason only.
 
-Costs (`npm run perf:ide`, 2026-11-17):
+Costs, as measured by `npm run perf:ide` on one machine:
 
 | What | Cost |
 |---|---|

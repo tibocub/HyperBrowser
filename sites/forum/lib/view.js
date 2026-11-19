@@ -1,11 +1,8 @@
-// What the pages show, computed on the device from records (spec 006 data-model "Derived"): pure functions.
-
 export const SORTS = ['activity', 'newest', 'top', 'lively']
-export const LIVELY = 48 * 3600e3 // "lately" for the lively sort
+export const LIVELY = 48 * 3600e3
 
-// Each member's latest vote per target: Map target → Map author → value.
 export function tally (votes) {
-  const latest = new Map() // target|author → vote
+  const latest = new Map()
   for (const v of votes) {
     const k = v.on + '|' + v.author
     const had = latest.get(k)
@@ -21,10 +18,8 @@ export function tally (votes) {
 
 export const score = (tallied, id) => [...(tallied.get(id)?.values() || [])].reduce((n, v) => n + v, 0)
 export const voteOf = (tallied, id, me) => tallied.get(id)?.get(me) || 0
-// Clicking ▲ (+1) or ▼ (−1): the same again takes the vote back.
 export const nextVote = (current, clicked) => current === clicked ? 0 : clicked
 
-// Per thread: replies, activity (its newest stamp), score, lively (replies and votes lately).
 export function summarize (threads, comments, votes, now = Date.now()) {
   const tallied = tally(votes)
   const by = new Map(threads.map((t) => [t.id, { thread: t, replies: 0, activity: t.stamp, score: score(tallied, t.id), lively: 0 }]))
@@ -48,15 +43,12 @@ export function summarize (threads, comments, votes, now = Date.now()) {
 
 const KEYS = { activity: (s) => s.activity, newest: (s) => s.thread.stamp, top: (s) => s.score, lively: (s) => s.lively }
 
-// Highest first; ties: the most recent activity first.
 export function sortThreads (summaries, how = 'activity') {
   const key = KEYS[how] || KEYS.activity
   return [...summaries].sort((a, b) => key(b) - key(a) || b.activity - a.activity)
 }
 
-// The reply tree, oldest first under each parent, as rows: { comment, depth, segs, children } where segs are
-// the box-drawing steps before it ('pipe' │, 'blank', 'tee' ├─, 'elbow' └─). Replies whose parent is gone
-// (deleted, hidden) hang under a placeholder row { comment: null, id } at the parent's place.
+// Replies whose parent is gone (deleted, hidden) hang under a placeholder row { comment: null, id }.
 export function tree (comments, threadId) {
   const ids = new Set(comments.map((c) => c.id))
   const kids = new Map()
@@ -84,7 +76,6 @@ export function tree (comments, threadId) {
   return rows
 }
 
-// Rows left to show once some are folded: a folded row stays, what is under it goes.
 export function visible (rows, folded) {
   const out = []
   let hideBelow = -1
@@ -96,8 +87,7 @@ export function visible (rows, folded) {
   return out
 }
 
-// Unread (spec 017 R5): the threads with something new, from since()'s records, by message numbers, never by dates
-// (a reply received late, stamped long ago, still counts). unread: { [thread]: [ids of its new comments] }.
+// By message numbers, never by dates: a reply received late, stamped long ago, still counts.
 export const NEW_MAX = 300 // comment ids kept in all (~60 bytes each; a mine value is at most 64 KB): past it the oldest go, their threads stay unread
 export function addNew (unread, records, me) {
   const out = Object.fromEntries(Object.entries(unread).map(([k, v]) => [k, [...v]]))
@@ -125,7 +115,6 @@ export function ago (stamp, now = Date.now()) {
   return new Date(stamp).toISOString().slice(0, 10)
 }
 
-// Boards in order, each with its sub-boards: [{ board, subs: [board] }]. Removed boards aren't records any more.
 export function boardTree (boards) {
   const byOrder = (a, b) => (a.order || 0) - (b.order || 0) || a.stamp - b.stamp
   const ids = new Set(boards.map((b) => b.id))

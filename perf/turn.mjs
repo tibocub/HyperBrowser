@@ -1,6 +1,4 @@
-// Spec 016 R3: is 20 s enough for a watched place's turn online? Measures, N times, how long a place that
-// isn't held takes from its hold to the notification of a record written while it was away: Bob's engine
-// stopped, Ann writes, Bob's engine started (it holds the place: a turn starts). Two engines in one process.
+// Is 20 s enough for a watched place's turn? Time from hold to the notification of a record written while away.
 //   node perf/turn.mjs [runs] [--public]   (default: a local test DHT; --public: the real one)
 import fs from 'fs'
 import os from 'os'

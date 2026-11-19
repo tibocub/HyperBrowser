@@ -1,6 +1,3 @@
-// Notifications (spec 016): an app declares in site.json what to watch; once the person says yes the engine
-// watches its instances with no app code, finds what's new with space.since() cursors (never by dates), and
-// tells the shell (notify.* messages, the `notify` event). Engines on a local DHT, no site view open.
 import test from 'brittle'
 import { engine, siteFolder, siteApi, codeOf, eventually, sleep, bootstrap, tmpDir } from './helpers.js'
 import { parseManifest } from '../engine/manifest.js'
@@ -23,16 +20,14 @@ const FORUM = {
   }
 }
 
-// Tibo publishes the app; each person opens it, says yes to identity (and to notifications unless notify: false).
 async function setup (t, app, names, opts = {}) {
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: siteFolder(t, app) })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, app) })
   const out = []
   for (const name of names) out.push(await person(t, key, name, opts))
   return { key, people: out }
 }
 
-// notifyTurn: a place's turn online, and the launch's catch-up window (20 s by default)
 async function person (t, key, name, { notify = true, dir, init = { notifyTurn: 3000 } } = {}) {
   const e = await engine(t, { ...(dir ? { dir } : {}), ...init })
   await e.rpc.request('site.open', { key })
@@ -46,7 +41,6 @@ const state = (p) => p.e.rpc.request('notify.state')
 const items = async (p) => (await state(p)).items
 const waitItems = (p, fn, ms = 30000) => eventually(async () => fn(await items(p)), ms)
 
-// A group of `owner`, the others joined, everyone's view of it complete (its history is in).
 async function group (owner, others, name = 'G') {
   const g = await owner.hyper.instances.create(name)
   const link = await owner.hyper.instance(g.key).createInvite({ role: 'member', uses: others.length })
@@ -126,7 +120,7 @@ test('a message notifies with no view open; own records and history do not; read
   t.ok(!(await state(bob)).apps.some((a) => a.key === key), 'and its watches')
 })
 
-// Clocks: since() goes by seqs, never stamps (a clock far ahead or a late arrival: hypergraph 021's own tests;
+// Clocks: since() goes by seqs, never stamps (a clock far ahead or a late arrival: hypergraph's own tests;
 // a patched Date.now doesn't reach hypergraph's stamper). Here: records received after a restart.
 test('a restart catches up: what arrived while away notifies, as one summary', async (t) => {
   t.timeout(240000)
@@ -138,7 +132,6 @@ test('a restart catches up: what arrived while away notifies, as one summary', a
   await ag.put('message', { text: 'normal 2' })
   t.ok(await waitItems(bob, (l) => l.length === 2))
 
-  // Bob away; Ann writes; Bob comes back: one summary, both found
   await bob.e.rpc.request('close')
   await ag.put('message', { text: 'yesterday 1' })
   await ag.put('message', { text: 'yesterday 2' })
@@ -197,7 +190,6 @@ test('the person decides: no yes, nothing; block, mute, hide; a no is remembered
   t.alike(await items(bob), [], 'and nothing new')
   t.is(await codeOf(bob.e.rpc.request('notify.set', { app: key, allow: 'yes' })), 'INVALID_PARAMS')
 
-  // an app that doesn't declare notifications can't be given them
   const plain = await engine(t)
   const { key: other } = await plain.rpc.request('site.publish', { folder: siteFolder(t, { manifest: { title: 'Plain', permissions: ['space'] } }) })
   await bob.e.rpc.request('site.open', { key: other })
@@ -261,7 +253,6 @@ test('two devices of one person: reading on one clears the other; a block follow
   await e.rpc.request('init', { dir: e.dir, bootstrap: await bootstrap(t), joinCode: code, deviceName: 'laptop', joinTimeout: 60000, notifyTurn: 3000 })
   const laptop = { e }
   const place = await group(ann, [pc])
-  // the laptop holds what the PC joined (the app's instance list follows the person's settings)
   t.ok(await eventually(async () => (await state(laptop)).apps.some((a) => a.key === key && a.places.some((p) => p.key === place)), 60000), 'the laptop watches it too')
   await sleep(3000)
   await ann.hyper.instance(place).put('message', { text: 'to both' })
@@ -274,7 +265,6 @@ test('two devices of one person: reading on one clears the other; a block follow
   t.ok(await eventually(async () => (await items(laptop)).length === 0, 30000), 'blocked on the PC: blocked on the laptop')
 })
 
-// notifications() on a stub hypergraph: which places since() reads (it opens a closed space: hypergraph 021).
 test('watching opens no closed place: only held or open ones are checked, a setting change or a read opens none', async (t) => {
   const APP = 'a'.repeat(52)
   const places = Array.from({ length: 10 }, (_, i) => 'p' + i)
@@ -316,8 +306,6 @@ test('watching opens no closed place: only held or open ones are checked, a sett
   await notes.close()
 })
 
-// --- spec 017: dots, follows, a page's own counts ---
-
 const BOARDS = {
   manifest: {
     title: 'Forum',
@@ -335,10 +323,9 @@ const BOARDS = {
   }
 }
 
-// Another app on p's engine, allowed, with one instance of its own: what the forum's page must not reach.
 async function otherApp (t, p) {
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
   await p.e.rpc.request('site.open', { key })
   await p.e.rpc.request('site.consent', { key, allow: true })
   await p.e.rpc.request('site.permit', { key, permission: 'notifications', allow: true })
@@ -375,7 +362,7 @@ test('a dot watch: something new sets a dot, no notification; a page reads its o
   t.ok(await eventually(async () => (await unread())[place].count === 1, 30000), 'a mention: a number')
   t.is((await items(bob)).length, 1)
 
-  await bob.e.rpc.request('notify.read', { place, app: key }) // what the page's viewing() does
+  await bob.e.rpc.request('notify.read', { place, app: key })
   t.alike((await unread())[place], { count: 0, dot: false }, 'viewed: both cleared')
   t.ok(await eventually(() => heard.at(-1)?.[place]?.dot === false && heard.at(-1)[place].count === 0, 5000), 'the page is told')
   t.ok(heard.every((d) => !(elsewhere in d)), 'never another app\'s places')
@@ -419,7 +406,6 @@ test('follows: a board, a person; quiet unless asked, a dot not a number; unfoll
   await sleep(4000)
   t.is((await items(bob)).length, 2, 'unfollowed: nothing')
 
-  // own places only; checked as data
   const elsewhere = await otherApp(t, bob)
   t.is(await codeOf(follow({ place: elsewhere, type: 'thread', says: 'x' })), 'NOT_ALLOWED', 'another app\'s place')
   t.is(await codeOf(follow({ place: 'y'.repeat(52), type: 'thread', says: 'x' })), 'NOT_ALLOWED', 'a guessed one')
@@ -445,8 +431,6 @@ test('follows: a board, a person; quiet unless asked, a dot not a number; unfoll
   t.alike(await bob.hyper.notifications.follows(), [], 'left: its follows go')
 })
 
-// spec 018: HyperBrowser's own news (a circles' share full): listed, counted, popped up, read like any other; no app
-// to allow first.
 test("HyperBrowser's own notification: listed and unread at once, read like the others", async (t) => {
   const set = {}
   const told = []

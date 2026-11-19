@@ -1,12 +1,9 @@
-// Installing decides hosting (specs/004-hosting): an installed site stays joined and served with no tab and
-// after a restart; any other site is left once its last tab is closed and the grace period is over, and at
-// the next start. "Not served" is checked the only way that matters: a fresh peer can't open it.
+// "Not served" is checked the only way that matters: a fresh peer can't open it.
 import test from 'brittle'
 import { engine, siteFolder, codeOf, eventually, sleep, text } from './helpers.js'
 
 const GRACE = 500 // ms, instead of minutes
 
-// The owner's site, read whole by a visitor (who may then serve it).
 async function published (t) {
   const owner = await engine(t)
   const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, { files: { 'index.html': '<h1>hosted</h1>' } }) })
@@ -18,7 +15,6 @@ async function reads (e, key, timeout = 30000) {
   return text((await e.rpc.request('site.read', { key, path: '', timeout })).bytes)
 }
 
-// A fresh peer can't open the site within `ms`: nobody holding it is found.
 const unreachable = async (t, key, ms = 5000) => {
   const v = await engine(t)
   const code = await codeOf(reads(v, key, ms))
@@ -62,7 +58,7 @@ test('a site only visited is left after its grace period, and at the next start'
   t.is(await reads(v1, key), '<h1>hosted</h1>', 'served while its tab is open')
   await v1.rpc.request('close')
 
-  await visitor.rpc.request('site.open', { key }) // a second tab
+  await visitor.rpc.request('site.open', { key })
   await visitor.rpc.request('site.close', { key })
   await sleep(GRACE * 3)
   t.is((await visitor.rpc.request('site.state', { key })).complete, true, 'one tab closed of two: still open')
@@ -77,7 +73,7 @@ test('a site only visited is left after its grace period, and at the next start'
 test('at start, a site neither installed nor own is left; opened again, it comes back and can be installed', async (t) => {
   t.timeout(120000)
   const { owner, key } = await published(t)
-  const visitor = await engine(t) // the default grace: minutes
+  const visitor = await engine(t)
   t.is(await reads(visitor, key), '<h1>hosted</h1>')
   t.is((await owner.rpc.request('site.open', { key })).key, key)
   await visitor.rpc.request('close') // a tab still open: no grace period at shutdown, the start decides
@@ -87,7 +83,6 @@ test('at start, a site neither installed nor own is left; opened again, it comes
   t.ok(await unreachable(t, key), 'not served after the restart')
   await restarted.rpc.request('close')
 
-  // the owner back: the owner's site is still theirs after a restart, and the visitor joins it again
   const back = await engine(t, { dir: owner.dir })
   const v = await engine(t, { dir: visitor.dir, grace: GRACE })
   t.is(await reads(v, key), '<h1>hosted</h1>', 'opened again after it was left')

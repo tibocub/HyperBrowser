@@ -1,5 +1,3 @@
-// Federated apps (spec 009): an app's instances, owned by whoever made them, reached by that app only.
-// Through the site API as a page sees it (siteApi() is window.hyper), engines on a local DHT.
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -8,14 +6,13 @@ import { engine, siteFolder, siteApi, codeOf, eventually, sleep, text } from './
 const NOTE = { note: { fields: { text: 'string' } } }
 const APP = { manifest: { title: 'Forums', permissions: ['space'], types: NOTE }, files: { 'index.html': '<h1>v1</h1>' } }
 
-// Tibo publishes the app; `people` engines open it and allow it. → { tibo, key, folder, apis: [hyper of each] }
 async function app (t, people, opts = APP) {
-  const tibo = await engine(t)
+  const author = await engine(t)
   const folder = siteFolder(t, opts)
-  const { key } = await tibo.rpc.request('site.publish', { folder })
+  const { key } = await author.rpc.request('site.publish', { folder })
   const out = []
   for (let i = 0; i < people; i++) out.push(await opened(t, key))
-  return { tibo, key, folder, people: out }
+  return { author, key, folder, people: out }
 }
 
 async function opened (t, key, e = null) {
@@ -29,7 +26,7 @@ const notes = async (h) => (await h.query('note').latest(20)).items.map((n) => n
 
 test('two people each create an instance: each owns theirs, neither has authority over the other\'s', async (t) => {
   t.timeout(180000)
-  const { tibo, key, people: [a, b] } = await app(t, 2)
+  const { author, key, people: [a, b] } = await app(t, 2)
   const fa = await a.hyper.instances.create('A forum')
   const fb = await b.hyper.instances.create('B forum', { public: true })
   t.is(fa.name, 'A forum')
@@ -39,7 +36,6 @@ test('two people each create an instance: each owns theirs, neither has authorit
   t.is((await ia.info()).app, key, 'an instance names its app')
   t.is((await ia.put('note', { text: 'hi from A' })).text, 'hi from A', 'the app\'s types work in it')
 
-  // B joins A's forum as a member: no authority there
   const link = await ia.createInvite({ role: 'member' })
   const joined = await b.hyper.instances.join(link)
   t.is(joined.key, fa.key)
@@ -51,10 +47,9 @@ test('two people each create an instance: each owns theirs, neither has authorit
   t.is(await codeOf(ba.moderateAction('hide', (await ia.query('note').latest(1)).items[0].id, { reason: 'x' })), 'NOT_ALLOWED', 'nor hide A\'s post')
   t.is(await ia.getRole(b.me), 'member')
 
-  // Tibo, the app's author: no role in either
-  const tiboHyper = (await opened(t, key, tibo)).hyper
-  t.is(await codeOf(tiboHyper.instance(fa.key).info()), 'NOT_ALLOWED', 'the app\'s author doesn\'t reach A\'s forum')
-  t.is(await ia.getRole((await tiboHyper.info()).identity), null, 'and has no role in it')
+  const authorHyper = (await opened(t, key, author)).hyper
+  t.is(await codeOf(authorHyper.instance(fa.key).info()), 'NOT_ALLOWED', 'the app\'s author doesn\'t reach A\'s forum')
+  t.is(await ia.getRole((await authorHyper.info()).identity), null, 'and has no role in it')
   t.is(await codeOf(a.hyper.instances.create('')), 'INVALID_PARAMS', 'a name of 1 to 200 characters')
   t.is(await codeOf(a.hyper.instances.create('x'.repeat(201))), 'INVALID_PARAMS')
   t.is(await codeOf(a.hyper.instances.create('ok', { public: 'yes' })), 'INVALID_PARAMS', 'public is true or false')
@@ -120,7 +115,7 @@ test('opening an instance\'s link opens its app on it', async (t) => {
 
 test('one fix reaches every instance: the app\'s new page and new type', async (t) => {
   t.timeout(180000)
-  const { tibo, key, folder, people: [a, b] } = await app(t, 2)
+  const { author, key, folder, people: [a, b] } = await app(t, 2)
   const fa = await a.hyper.instances.create('A forum')
   const fb = await b.hyper.instances.create('B forum')
   const m = await b.hyper.instances.join(await a.hyper.instance(fa.key).createInvite({ role: 'member' }))
@@ -128,7 +123,7 @@ test('one fix reaches every instance: the app\'s new page and new type', async (
 
   fs.writeFileSync(path.join(folder, 'index.html'), '<h1>v2</h1>')
   fs.writeFileSync(path.join(folder, 'site.json'), JSON.stringify({ ...APP.manifest, types: { ...NOTE, tag: { fields: { name: 'string' } } } }))
-  await tibo.rpc.request('site.publish', { folder })
+  await author.rpc.request('site.publish', { folder })
   for (const p of [a, b]) {
     t.ok(await eventually(async () => {
       await p.e.rpc.request('site.open', { key }) // a new tab: the manifest read again
@@ -148,7 +143,6 @@ test('an app reaches only its own instances (guards)', async (t) => {
   const { key, people: [a] } = await app(t, 1)
   const other = await app(t, 1)
   const fa = await a.hyper.instances.create('A forum')
-  // the other app, on A's engine
   const ao = (await opened(t, other.key, a.e)).hyper
   const fo = await ao.instances.create('Other app\'s forum')
 
@@ -159,7 +153,6 @@ test('an app reaches only its own instances (guards)', async (t) => {
   t.is(await codeOf(a.hyper.instance('nope').info()), 'INVALID_KEY')
   t.is(await codeOf(a.hyper.instance(key).info()), 'NOT_ALLOWED', 'the app\'s own key is not an instance')
 
-  // joining what isn't one of its instances
   const pubSite = await engine(t)
   const s = await pubSite.rpc.request('site.publish', { folder: siteFolder(t, { manifest: { title: 'Public site', permissions: ['space'] } }) })
   t.is(await codeOf(a.hyper.instances.join('hg:' + s.key)), 'NOT_ALLOWED', 'a site\'s public link')
@@ -170,12 +163,10 @@ test('an app reaches only its own instances (guards)', async (t) => {
   t.is(await codeOf(a.hyper.instances.join('not a link')), 'INVALID_PARAMS')
   t.alike((await a.hyper.instances.list()).map((i) => i.key), [fa.key], 'nothing added')
 
-  // consent taken back: none of its instances
   await a.e.rpc.request('site.consent', { key, allow: false })
   t.is(await codeOf(a.hyper.instance(fa.key).info()), 'NOT_ALLOWED', 'no consent, no instance')
   t.is(await codeOf(a.hyper.instances.list()), 'NOT_ALLOWED')
 
-  // a static site has no instances
   const st = await a.e.rpc.request('site.publish', { folder: siteFolder(t) })
   await a.e.rpc.request('site.open', { key: st.key })
   t.is(await codeOf(a.e.rpc.request('site.call', { key: st.key, method: 'instances.create', args: ['x'] })), 'NOT_ALLOWED')
@@ -203,7 +194,6 @@ test('joined instances stay joined: no tab, past the grace period, after a resta
   t.alike(await notes(h.instance(fa.key)), ['kept'], 'and held here: read with its owner offline')
 })
 
-// spec 017 R1: a forum switched away from is let go (its space may then close), never one a page still uses.
 test('an instance\'s handle is let go once no page uses it, kept while one does', async (t) => {
   t.timeout(180000)
   const IDLE = 800

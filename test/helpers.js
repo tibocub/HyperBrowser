@@ -1,5 +1,4 @@
-// Test helpers on Node and Bare: an engine started exactly as the worker does (start() on one end of a
-// stream), on the test's own DHT (hypergraph/testing), and site folders.
+// Engines start exactly as the worker does: start() on one end of a stream, on the test's own DHT.
 import fs from 'fs'
 import b4a from 'b4a'
 import path from 'path'
@@ -9,12 +8,11 @@ import { connect, pair } from '../engine/protocol.js'
 
 export const { bootstrap, tmpDir, eventually, within, codeOf, sleep } = testing
 
-// { rpc, dir, engine, events, next(event) }: init'ed unless { init: false }.
 export async function engine (t, { init = true, dir = tmpDir(t, 'hb'), ...opts } = {}) {
   const [a, b] = pair()
   const events = []
   const waiters = []
-  const listeners = new Set() // fn(event, data), for siteApi's live views
+  const listeners = new Set()
   const eng = start(a)
   const rpc = connect(b, {
     onEvent: (event, data) => {
@@ -28,8 +26,7 @@ export async function engine (t, { init = true, dir = tmpDir(t, 'hb'), ...opts }
   return { rpc, dir, engine: eng, events, listeners, next: () => new Promise((resolve) => waiters.push(resolve)) }
 }
 
-// A site's `window.hyper` as shell/site-preload.cjs makes it, on an engine of the tests (the site opened and
-// allowed there): sites' own code (sites/forum/lib) runs on it unchanged. `instance`: hyper.instance(key) (spec 009).
+// A site's `window.hyper` as shell/site-preload.cjs makes it, so sites' own code (sites/forum/lib) runs on it unchanged.
 const METHODS = ['put', 'get', 'edit', 'del', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags', 'relate',
   'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces',
@@ -76,15 +73,13 @@ export function siteApi (e, key, instance = null) {
       leave: (k) => call('instances.leave', [k])
     }
     api.instance = (k) => siteApi(e, key, String(k))
-    // spec 013: a site with the contacts permission
     api.contacts = {}
     for (const m of ['me', 'setMe', 'list', 'request', 'accept', 'decline', 'remove', 'rename', 'link', 'add', 'circles', 'inviteToCircle']) api.contacts[m] = (...args) => call('contacts.' + m, args)
     api.contacts.on = (fn) => subscribe('site.on', { event: 'contacts' }, fn)
-    // spec 017: the app's own unread counts and follows
     api.notifications = {}
     for (const m of ['unread', 'follow', 'unfollow', 'follows']) api.notifications[m] = (...args) => call('notifications.' + m, args)
     api.notifications.on = (fn) => subscribe('site.on', { event: 'notifications' }, fn)
-    // spec 024, 025: the person's projects, as the preload gives them (preview's docking is the shell's)
+    // the person's projects, as the preload gives them (preview's docking is the shell's)
     api.projects = {}
     for (const m of ['list', 'create', 'openFolder', 'openCopy', 'join', 'leave', 'files', 'mkdir', 'build', 'read', 'write', 'rename', 'remove', 'publish',
       'versions', 'rollBack', 'preview', 'resetPreview', 'invite', 'inviteContact', 'members', 'removeMember', 'status']) api.projects[m] = (...args) => call('projects.' + m, args)
@@ -93,7 +88,6 @@ export function siteApi (e, key, instance = null) {
   return api
 }
 
-// A folder with `files` ({ name: text }); site.json from `manifest` unless it is null.
 export function siteFolder (t, { manifest = { title: 'Test site' }, files = { 'index.html': '<h1>hi</h1>' } } = {}) {
   const dir = tmpDir(t, 'site')
   if (manifest !== null) files = { 'site.json': typeof manifest === 'string' ? manifest : JSON.stringify(manifest), ...files }

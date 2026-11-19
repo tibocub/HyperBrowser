@@ -1,4 +1,3 @@
-// The engine's entry and lifecycle: init, refusals, heartbeat, close (spec 001 US5, FR-001..005, SC-003, SC-005).
 import test from 'brittle'
 import b4a from 'b4a'
 import FramedStream from 'framed-stream'

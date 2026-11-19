@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// npm run apps:publish -- --dir <owner engine folder>: publishes every official app (scripts/apps.js) once, from
-// that engine folder (default ~/.hyperbrowser, as engine/cli.js), writes their keys into shell/preset.json and
-// says which changed. A different key already in preset.json is kept unless --replace. Then stops, or with --stay
-// stays online for other HyperBrowsers until Ctrl+C (`npm run apps:seed`).
 import process from 'process'
 import os from 'os'
 import path from 'path'
@@ -18,7 +14,7 @@ for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--dir') opts.dir = argv[++i]
   else if (argv[i] === '--bootstrap') opts.bootstrap = argv[++i].split(',').map((hp) => ({ host: hp.split(':')[0], port: Number(hp.split(':')[1]) }))
   else if (argv[i] === '--replace') opts.replace = true
-  else if (argv[i] === '--preset') opts.preset = argv[++i] // the tests' copy
+  else if (argv[i] === '--preset') opts.preset = argv[++i]
   else if (argv[i] === '--stay') opts.stay = true
   else { console.error('usage: apps-publish [--dir <engine folder>] [--bootstrap host:port,...] [--preset <file>] [--replace] [--stay]'); process.exit(1) }
 }
@@ -47,7 +43,7 @@ const stop = async () => {
   await engine.closed
   process.exit(code)
 }
-if (opts.stay && !code) { // keeps every app (and the forum) online for other HyperBrowsers until Ctrl+C
+if (opts.stay && !code) {
   console.log('online; Ctrl+C to stop')
   process.on('SIGINT', stop)
 } else await stop()

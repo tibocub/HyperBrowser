@@ -1,19 +1,6 @@
 #!/usr/bin/env node
-// Builds the installable HyperBrowser for this machine's OS (spec 011). One command:
-//   Windows: <out>/dist/win-unpacked (the HyperBrowser folder: what is released) and HyperBrowser.zip (it, to
-//            download); Linux: HyperBrowser.AppImage; macOS: HyperBrowser.zip (the .app, not tested).
-//
-//   npm run build [-- --version x.y.z] [-- --upgrade pear://...] [-- --out <dir>] [-- --apps-from <dir>]
-//
-// --apps-from: the owner's engine folder (the one `npm run apps:publish` publishes from): the preset apps'
-// own signed data is packed into <out>/app/apps (spec 015, scripts/bundle.js), so a new install opens them
-// with nobody online and peers update them. No process may have that folder open. Without it: no apps.
-//
-// The app's files (shell/, engine/) go to <out>/app with a package.json of their own; the sibling repos this
-// repo links (file:../hypergraph, ../SwarmFS... and theirs) are copied in as real folders, without their
-// tests, docs and .claude; npm installs it all (--install-links: copies, never links); electron-builder makes
-// the files in <out>/dist. --upgrade (default: package.json "upgrade") is the release channel the build
-// follows; a build without one never updates. Caches go under <out>/cache (C: is nearly full here).
+// npm run build [-- --version x.y.z] [-- --upgrade pear://...] [-- --out <dir>] [-- --apps-from <dir>]
+// The sibling repos are copied in as real folders (--install-links), never links: the install must stand alone.
 
 import { execFileSync } from 'child_process'
 import fs from 'fs'
@@ -29,7 +16,7 @@ const version = arg('--version', pkg.version)
 const upgrade = arg('--upgrade', pkg.upgrade || null)
 const out = path.resolve(arg('--out', path.join(ROOT, 'out')))
 const appsFrom = arg('--apps-from', null)
-const preset = path.resolve(arg('--preset', path.join(ROOT, 'shell', 'preset.json'))) // a check's copy, as apps-publish's --preset
+const preset = path.resolve(arg('--preset', path.join(ROOT, 'shell', 'preset.json')))
 const app = path.join(out, 'app')
 const vendor = path.join(out, 'vendor')
 const cache = path.join(out, 'cache')

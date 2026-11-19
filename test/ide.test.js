@@ -1,5 +1,3 @@
-// The IDE (spec 025) through its own code (sites/ide/lib/site.js) on window.hyper as the page gets it: a beginner's
-// HyperMD site (FR-001), a developer's copy of Chat (FR-002), two co-authors (FR-003).
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -10,7 +8,6 @@ import { nest } from '../sites/ide/lib/tree.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-// An engine with the IDE (sites/ide) published and allowed: { e, hyper, projects }.
 async function withIde (t, opts = {}) {
   const e = await engine(t, { projects: tmpDir(t, 'projects'), ...opts })
   const { key } = await e.rpc.request('site.publish', { folder: path.join(ROOT, 'sites', 'ide') })
@@ -46,7 +43,7 @@ test('FR-001: a beginner makes a HyperMD site with a title, an icon and two page
   const { projects } = await withIde(t)
   const p = await ide.create(projects, 'My corner', 'hypermd')
   t.alike((await ide.pages(projects, p.key)).map((x) => x.title), ['My corner'], 'one page, by its title')
-  await ide.setManifest(projects, p.key, { title: 'Tibo’s corner' })
+  await ide.setManifest(projects, p.key, { title: 'Ann’s corner' })
   await ide.setIcon(projects, p.key, 'me.png', new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]))
   const about = await ide.addPage(projects, p.key, 'About me')
   await ide.save(projects, p.key, about, '::page{order=2}\n\n# About me\n\nI make **sites**.\n')
@@ -56,7 +53,7 @@ test('FR-001: a beginner makes a HyperMD site with a title, an icon and two page
 
   const visitor = await engine(t)
   const opened = await visitor.rpc.request('site.open', { key: site, timeout: 30000 })
-  t.is(opened.manifest.title, 'Tibo’s corner', 'its title')
+  t.is(opened.manifest.title, 'Ann’s corner', 'its title')
   t.is(opened.manifest.icon, 'icon.png', 'its icon')
   const home = await page(visitor, site, '')
   t.ok(home.includes('My corner') && home.includes('href="about-me.html"'), 'the home page, its menu naming the second page')
@@ -156,7 +153,7 @@ test('spec 026: built pages live outside the project; a hand-written .html wins;
   const p = await ide.create(projects, 'Mine', 'hypermd')
   t.absent((await ide.paths(projects, p.key)).some((x) => x.endsWith('.html')), 'no .html in the project after a build')
   const sources = { '_layout.hmd': await ide.read(projects, p.key, '_layout.hmd'), 'index.hmd': await ide.read(projects, p.key, 'index.hmd') }
-  await projects.write(p.key, 'index.html', ide.buildPages(sources)['index.html']) // what 025 wrote beside its page
+  await projects.write(p.key, 'index.html', ide.buildPages(sources)['index.html']) // what an older IDE wrote beside its page
   t.alike((await ide.build(projects, p.key)).hidden, [], 'an .html exactly as the build makes it: the IDE’s own')
   t.absent((await ide.paths(projects, p.key)).includes('index.html'), 'removed')
   await projects.write(p.key, 'index.html', '<p>written by hand</p>')

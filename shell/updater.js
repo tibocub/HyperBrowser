@@ -1,12 +1,5 @@
-// Bare entry for P2P updates (spec 011), started by main.js in an installed HyperBrowser only: pear-runtime's
-// updater follows the release channel (package.json "upgrade") and downloads a higher version for this OS.
-// Linux, macOS: swapped in for the installed file right away (pear-runtime's applyUpdate). Windows: the
-// installed thing is a folder (HyperBrowser\, its .exe and files), which can't be renamed while it runs, so
-// the new folder is downloaded beside it (<folder>.update\) and main.js swaps them once HyperBrowser quits.
-// Its corestore (client only) in <data folder>/pear-runtime, apart from the engine's.
-// Tells main.js one line at a time: 'updating', 'ready <version> [<new folder, Windows>]', 'error <message>'.
-//   argv: <data folder> <version> <channel> <name in the release> <installed file or folder> [bootstrap] [delay]
-//   (bootstrap host:port,... and delay, the most ms to wait after a release while running: for tests)
+// Windows: the install is a folder that can't be renamed while it runs, so the new one downloads beside it
+// (<folder>.update\) and main.js swaps them once HyperBrowser quits. Linux, macOS: swapped right away.
 /* global Bare */
 import PearRuntime from 'pear-runtime'
 import Corestore from 'corestore'

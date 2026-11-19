@@ -1,5 +1,3 @@
-// Device pairing (spec 012): two engines, one identity. The second starts with the first one's code in an
-// empty folder; settings, site data and installs follow; a removed device's writes are refused.
 import test from 'brittle'
 import { engine, siteFolder, eventually, bootstrap } from './helpers.js'
 

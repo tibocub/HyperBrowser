@@ -1,14 +1,11 @@
-// Contacts (spec 013): friend requests over the DHT and by contact link, each making a private Chat conversation;
-// the `contacts` permission. Through the site API as the Chat app sees it, engines on a local DHT.
 import test from 'brittle'
 import { engine, siteFolder, siteApi, codeOf, eventually, sleep } from './helpers.js'
 
 const CHAT = { manifest: { title: 'Chat', permissions: ['space', 'contacts'], types: { message: { fields: { text: 'text' } } } } }
 
-// Tibo publishes Chat; each person's engine knows it as its chat app, opened and allowed (identity, contacts).
 async function setup (t, names) {
-  const tibo = await engine(t)
-  const { key } = await tibo.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: siteFolder(t, CHAT) })
   const out = []
   for (const name of names) out.push(await person(t, key, name))
   return { key, people: out }
@@ -46,7 +43,6 @@ test('a friend request by key, over the DHT: accepted, both friends, one private
   t.ok(await eventually(async () => (await find(ann, bob.id))?.state === 'friend', 30000), 'Ann sees Bob joined')
   t.ok(await eventually(async () => (await find(ann, bob.id))?.name === 'Bob', 15000), 'with Bob\'s own name')
 
-  // the conversation: a private instance of Chat, in both lists
   t.ok((await ann.hyper.instances.list()).some((i) => i.key === sent.chat))
   t.ok((await bob.hyper.instances.list()).some((i) => i.key === sent.chat))
   const ac = ann.hyper.instance(sent.chat)
@@ -76,7 +72,7 @@ test('a request to someone offline arrives once they are online; declining drops
   const sent = await ann.c('request', dan, 'Dan')
   await sleep(3000)
   t.is((await find(ann, dan)).state, 'outgoing', 'waiting')
-  const back = await person(t, key, 'Dan', { dir: first.dir }) // Dan starts again
+  const back = await person(t, key, 'Dan', { dir: first.dir })
   t.is(back.id, dan)
   t.ok(await eventually(async () => (await find(back, ann.id))?.state === 'incoming', 45000), 'it arrives')
   t.is((await find(back, ann.id)).chat, sent.chat)
@@ -104,7 +100,6 @@ test('a contact link: one use, no DHT; findable off is never found', async (t) =
   t.ok(await codeOf(eve.c('add', link)), 'a used link is refused')
   t.is(await find(cleo, eve.id), undefined)
 
-  // a link to something else than a Chat conversation
   const other = await engine(t)
   const { key: site } = await other.rpc.request('site.publish', { folder: siteFolder(t, { manifest: { title: 'Not chat', permissions: ['space'] } }) })
   t.is(await codeOf(dan.c('add', 'hg:' + site)), 'NOT_ALLOWED', 'not a conversation')
@@ -128,7 +123,6 @@ test('the contacts permission: declared, asked once, refused after a no; none fo
   t.is(await codeOf(e.rpc.request('site.on', { key, event: 'contacts' })), 'NEEDS_PERMISSION', 'the event too')
   await e.rpc.request('site.permit', { key, permission: 'contacts', allow: false })
   t.is(await codeOf(list()), 'NOT_ALLOWED', 'after a no')
-  // spec 019: the shell's own contacts.list and contacts.inviteToCircle change nothing for a page
   t.is(await codeOf(e.rpc.request('site.call', { key, method: 'contacts.inviteToCircle', args: ['y'.repeat(52), 'y'.repeat(52)] })), 'NOT_ALLOWED', 'inviteToCircle too, after a no')
   await e.rpc.request('site.permit', { key, permission: 'contacts', allow: true })
   t.alike(await list(), [], 'after a yes')
@@ -140,7 +134,6 @@ test('the contacts permission: declared, asked once, refused after a no; none fo
   t.is(await codeOf(e.rpc.request('site.permit', { key: forum, permission: 'contacts', allow: true })), 'NOT_ALLOWED', 'and can\'t be given it')
   t.is(await codeOf(e.rpc.request('site.permit', { key, permission: 'files', allow: true })), 'INVALID_PARAMS')
 
-  // the shell's own calls (after its dialog): no permission needed, any site's button
   const { identity: other } = await (await engine(t)).rpc.request('contacts.me')
   const sent = await e.rpc.request('contacts.request', { identity: other, name: 'Someone' })
   t.is(sent.state, 'outgoing')

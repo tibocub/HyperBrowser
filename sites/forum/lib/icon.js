@@ -1,4 +1,4 @@
-// Members' 16×16 1-bit icons (spec 006 FR-009): 32 bytes, rows top down, the high bit leftmost.
+// Members' 16×16 1-bit icons: 32 bytes, rows top down, the high bit leftmost.
 
 export const SIZE = 16
 export const BYTES = 32
@@ -31,7 +31,6 @@ export function fromKey (key) {
 
 export const valid = (bytes) => bytes instanceof Uint8Array && bytes.length === BYTES
 
-// An SVG path (viewBox 0 0 16 16) of the set pixels, one rect per run in a row.
 export function path (bytes) {
   let d = ''
   for (let y = 0; y < SIZE; y++) {

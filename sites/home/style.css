@@ -1,4 +1,4 @@
-/* HyperBrowser's look (docs/design-milestone-1.md, "Visual identity"): System 1's look, 1-bit black and white
+/* HyperBrowser's look (specs/design-milestone-1.md, "Visual identity"): System 1's look, 1-bit black and white
    plus one accent; Cozette for the interface and titles, IBM Plex Mono for the text. Dark = the same, inverted. */
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette.woff2) format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Cozette'; src: url(fonts/cozette-bold.woff2) format('woff2'); font-weight: 700; font-display: swap; }
@@ -11,7 +11,7 @@
   :root { --ink: #fff; --paper: #000; --accent: #8ea8ff; color-scheme: dark; }
 }
 
-/* --px: one device pixel, so the textures stay on whole pixels at Windows' 125 %, 150 %, 175 % (spec 008) */
+/* --px: one device pixel, so the textures stay on whole pixels at Windows' 125 %, 150 %, 175 % */
 :root { --px: 1px; }
 @media (resolution: 1.25dppx) { :root { --px: calc(1px / 1.25); } }
 @media (resolution: 1.5dppx) { :root { --px: calc(1px / 1.5); } }
@@ -26,7 +26,6 @@ body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; alig
 a { color: var(--accent); text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
-/* the bar: the site's pages */
 header { align-self: stretch; margin: 0 -16px; background: var(--paper); border-bottom: 1px solid var(--ink); font-family: 'Cozette', ui-monospace, monospace; font-size: 13px; }
 header ul { display: flex; flex-wrap: wrap; justify-content: center; margin: 0; padding: 0; list-style: none; }
 header li { border-right: 1px solid var(--ink); }
@@ -34,7 +33,6 @@ header li:first-child { border-left: 1px solid var(--ink); font-weight: 700; }
 header a { display: block; padding: 4px 14px; color: var(--ink); text-decoration: none; }
 header a:hover, header a[aria-current="page"] { background: var(--ink); color: var(--paper); }
 
-/* the page: a window, its first heading the striped title bar */
 main { width: min(1140px, 100%); box-sizing: border-box; margin: 28px 0 0; padding: 0 28px 20px; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
 /* stripes on both sides of the title, the title on paper between them (no close box: a page can't close) */
 main > h1:first-child { display: flex; align-items: center; gap: 10px; margin: 0 -28px 20px; padding: 3px 4px; border-bottom: 1px solid var(--ink);
@@ -69,11 +67,9 @@ th { font-family: 'Cozette', ui-monospace, monospace; }
 th:empty { padding: 0; }
 hr { border: 0; border-top: 1px solid var(--ink); }
 
-/* :::note: a little window of its own */
 aside { padding: 8px 14px; border: 1px solid var(--ink); border-left-width: 4px; }
 aside > :last-child { margin-bottom: 0; }
 
-/* ::toc: a box-drawn list */
 nav[aria-label="Contents"] { margin: 0 0 14px; font-family: 'Cozette', ui-monospace, monospace; font-size: 13px; }
 nav[aria-label="Contents"] ul { margin: 0; }
 nav[aria-label="Contents"] li { padding-left: 3ch; text-indent: -3ch; }
@@ -83,7 +79,7 @@ nav[aria-label="Contents"] li:last-child::before { content: '└─ '; }
 footer { margin-top: 20px; padding: 2px 10px; background: var(--paper); border: 1px solid var(--ink); font: 13px/1.6 'Cozette', ui-monospace, monospace; text-align: center; }
 footer p { margin: 0; }
 
-/* scrollbars (spec 026), as the shared theme's (shell/ui/theme.css) */
+/* scrollbars, as the shared theme's (shell/ui/theme.css) */
 ::-webkit-scrollbar { width: 16px; height: 16px; background: var(--paper); }
 ::-webkit-scrollbar-track { background-color: var(--paper); background-image: repeating-conic-gradient(var(--ink) 0 25%, var(--paper) 0 50%); background-size: calc(2 * var(--px)) calc(2 * var(--px)); }
 ::-webkit-scrollbar-track:vertical { border-left: 1px solid var(--ink); }

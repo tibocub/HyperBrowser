@@ -1,8 +1,4 @@
-// The frame (spec 002): the window, the tabs, and the one trusted view HyperBrowser draws itself (top bar,
-// taskbar, toolbar, desktop, menus: shell/ui/). Site views sit under the bars and never above the frame;
-// the frame covers the whole window on the desktop tab, while a tab has no page yet, and while a menu is
-// open (transparent over the site). Its messages are taken from its own view only (contracts/frame.md).
-// No OS frame and no app menu: the taskbar row is the title bar (drag, double-click, our window buttons).
+// Messages are taken from the frame's own view only (contracts/frame.md); site views sit under the bars, never above.
 import { app, BaseWindow, WebContentsView, ipcMain, Menu, nativeTheme, nativeImage, Notification, dialog } from 'electron'
 import fs from 'fs'
 import path from 'path'
@@ -11,20 +7,18 @@ import { parseAddress, nameError, shortKey, upsert, move, remove, checkShare, gb
 import { startTray, hasTray } from './tray.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const HANDLE = 6 // px: the preview's split handle (spec 027)
-const SPLIT_MIN = 240 // px: the least either side keeps
+const HANDLE = 6
+const SPLIT_MIN = 240
 const POLL = 2000
 const HELD = 10000 // site.held reads every file record of the site: every 10 s, not every poll
 const KINDS = new Set(['installed', 'bookmark'])
 const THEMES = new Set(['system', 'light', 'dark'])
 const ACCENTS = new Set(['#1f4fd1', '#c2410c', '#0b7a52'])
-const DEV = !app.isPackaged // devtools: F12, Ctrl+Shift+I
+const DEV = !app.isPackaged
 const NOTICE = 'HyperBrowser keeps running in the tray to host your sites; turn this off in HyperBrowser ▾'
-// spec 018: the circles' calls the frame page may make (the engine's own, passed as they are)
 const CIRCLES = new Set(['circles.list', 'circles.members', 'circles.invite', 'circles.rename', 'circles.setRole', 'circles.remove', 'circles.leave', 'holding.get', 'holding.set'])
 
-// The frame's pixel icons (spec 008): one PNG a glyph in shell/icons/, dark pixels are the glyph (white or
-// transparent around). Sent to the frame as SVG paths, one 1×1 run a row, so they keep currentColor.
+// Sent to the frame as SVG paths (one 1×1 run a row), so they keep currentColor.
 export function readGlyphs (dir = path.join(HERE, 'icons')) {
   const glyphs = {}
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.png'))) {
@@ -47,16 +41,11 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
   return glyphs
 }
 
-// openSite(key) → { key, manifest, view, webContents, close }; readIcon(key, manifest) → data URL or null.
-// update() → the version an update is ready for, or null; restart() starts it (spec 011).
-// join(code): this computer joins another device's identity; then main calls joined() (spec 012).
-// readViewed(wc): marks read what that page says it shows (spec 016), its place or null; contacts: Contacts' key.
 export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null }) {
-  let joined = null // { said, n }: what the last join did, for the Devices window
+  let joined = null
   const preset = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
   let data = load()
   const glyphs = readGlyphs()
-  // the look's theme for every page: the frame and each site's prefers-color-scheme (spec 008)
   nativeTheme.themeSource = data.settings.theme
   Menu.setApplicationMenu(null) // no File/Edit/View: copy, paste and undo still work in pages (Windows, Linux)
   const win = new BaseWindow({ width: 1280, height: 820, minWidth: 560, minHeight: 360, frame: false, title: 'HyperBrowser', backgroundColor: '#ffffff' })
@@ -75,9 +64,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   let nextId = 1
   let bars = 68 // the frame measures itself and says (op 'bars')
   let cover = false
-  let notes = { items: [], unread: { total: 0, byApp: {}, byPlace: {} }, apps: [] } // notify.state (spec 016)
-  const popups = new Map() // place -> its system popup: one per conversation, the newest
-  let popupsShown = 0 // for the frame check
+  let notes = { items: [], unread: { total: 0, byApp: {}, byPlace: {} }, apps: [] }
+  const popups = new Map()
+  let popupsShown = 0
 
   function load () {
     let saved = null
@@ -89,7 +78,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     return {
       desktop: { icons },
       settings: { theme: THEMES.has(s.theme) ? s.theme : 'system', accent: ACCENTS.has(s.accent) ? s.accent : '#1f4fd1', tray: s.tray !== false, trayNoticed: !!s.trayNoticed, circleNoticed: !!s.circleNoticed,
-        split: typeof s.split === 'number' && s.split >= 0.1 && s.split <= 0.9 ? s.split : 0.55 } // spec 027: the IDE's share beside its preview
+        split: typeof s.split === 'number' && s.split >= 0.1 && s.split <= 0.9 ? s.split : 0.55 }
     }
   }
 
@@ -140,7 +129,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     for (const t of tabs) if (t.side?.view) t.side.view.setVisible(t === tab)
     for (const t of tabs) if (t.side?.handle) t.side.handle.setVisible(t === tab)
     const h = Math.max(0, height - bars)
-    const main = tab.side ? splitAt(width) : width // spec 025: a project's preview docked beside the IDE (027: resizable)
+    const main = tab.side ? splitAt(width) : width
     if (tab.view) tab.view.setBounds({ x: 0, y: bars, width: main, height: h })
     if (tab.side?.view) tab.side.view.setBounds({ x: main, y: bars, width: width - main, height: h })
     const handle = tab.side?.handle
@@ -161,8 +150,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     looked()
   }
 
-  // --- notifications (spec 016): the engine's list, the counter, popups, the tray's mark ---
-
   async function refresh () {
     const s = await rpc.request('notify.state').catch(() => null)
     if (!s) return
@@ -171,8 +158,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     push()
   }
 
-  // What the person is looking at: the current tab's page says which conversation (hyper.notifications.viewing),
-  // believed only while that tab is current and the window focused. Seen there is read.
+  // Believed only while that tab is current and the window focused.
   const viewingNow = () => win.isFocused() && tabOf(current)?.wc ? tabOf(current).wc : null
   let lookedPlace = null
   async function looked () {
@@ -184,7 +170,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   async function notify ({ items, summary }) {
     await looked() // what the person looks at is read before it is counted
     await refresh()
-    const fresh = items.filter((x) => x.place !== lookedPlace && x.popup !== false) // spec 017: a quiet follow is listed, never popped up
+    const fresh = items.filter((x) => x.place !== lookedPlace && x.popup !== false)
     if (!fresh.length || !Notification.isSupported()) return
     const title = (x) => (notes.apps.find((a) => a.key === x.app)?.title || 'HyperBrowser')
     const show = (place, head, body, item) => {
@@ -196,18 +182,17 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       popups.set(place, n)
       popupsShown++
     }
-    if (summary) return show('*', 'HyperBrowser', summary.count + ' new notifications', null) // a catch-up: one popup
+    if (summary) return show('*', 'HyperBrowser', summary.count + ' new notifications', null)
     const byPlace = new Map()
     for (const x of fresh) byPlace.set(x.place, [...(byPlace.get(x.place) || []), x])
-    for (const [place, list] of byPlace) { // one popup per conversation, its newest
+    for (const [place, list] of byPlace) {
       const x = list[0]
-      const shown = notes.items.find((i) => i.id === x.id) || x // with the person's "hide content" applied
+      const shown = notes.items.find((i) => i.id === x.id) || x
       const who = shown.name || shortKey(shown.author)
       show(place, title(x) + ': ' + who, (shown.text || 'New message') + (list.length > 1 ? ` (+${list.length - 1})` : ''), x)
     }
   }
 
-  // A notification's place: its conversation (and where in it), or Contacts for a friend request.
   function openItem (x) {
     if (x.app === 'contacts') return contacts ? openKey(contacts, '?person=' + x.author) : null
     openKey(x.place, x.open || '')
@@ -228,15 +213,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     push()
   }
 
-  // spec 025: the IDE's preview, a site (a project's draft) shown beside the IDE's view in its tab; the same key
-  // again reloads it (a save). The tab's own view keeps the keyboard; the preview is a site view like any.
   function dock (wc, key) {
     const tab = tabs.find((t) => t.wc === wc)
     if (!tab) return false
-    // spec 028: a (re)load of the preview never takes the keyboard from the page that asked (the IDE, typing): it is
-    // given back as soon as the preview takes it, the page's caret where it was
+    // A (re)load of the preview must not take the keyboard from the IDE: give it back, while loading and 300ms after.
     const had = wc.isFocused()
-    // only while it loads (and 300ms after): a click into the preview afterwards keeps it there
     const keep = (side) => {
       if (!had) return
       let done = false
@@ -289,7 +270,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     return true
   }
 
-  // spec 027: where the line between the IDE and its preview is (px from the left), at least SPLIT_MIN for each
   function splitAt (width) {
     if (width < 2 * SPLIT_MIN) return Math.round(width / 2)
     return Math.min(width - SPLIT_MIN, Math.max(SPLIT_MIN, Math.round(width * data.settings.split)))
@@ -301,7 +281,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     layout()
   }
 
-  // What the handle says (split.html): a drag (start, move, end), a key (step: ±1 = 24px, ±5, ±100), leave (F6, Escape).
   ipcMain.on('split', (evt, msg) => {
     const tab = tabs.find((t) => t.side?.handle?.webContents === evt.sender)
     if (!tab || !msg || typeof msg !== 'object') return
@@ -314,14 +293,13 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     if (msg.op === 'leave') tab.wc?.focus()
   })
 
-  // `query`: for the shell's own calls (spec 013: Contacts on one person, '?person=<key>')
   function openKey (input, query = '') {
     const a = parseAddress(input)
     if (a.error) return { error: { code: 'INVALID_KEY', message: a.error } }
     if (a.name) return openName(a.name, query)
     const have = tabs.find((t) => t.key === a.key)
     if (have) {
-      const at = have.key !== have.site ? '?instance=' + have.key + (query.startsWith('#') ? query : '') : query // an instance's tab keeps its ?instance=
+      const at = have.key !== have.site ? '?instance=' + have.key + (query.startsWith('#') ? query : '') : query
       if (query && have.wc) have.wc.loadURL('hyper://' + have.site + '/' + at)
       select(have.id)
       show()
@@ -335,7 +313,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     return { result: tab.id }
   }
 
-  // spec 022: name@authority, looked up by the engine (HyperDNS), then opened as its key; the tab keeps the name.
   function openName (name, query) {
     const have = tabs.find((t) => t.name === name)
     if (have) {
@@ -350,7 +327,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     rpc.request('names.resolve', { address: name }).then(({ key }) => {
       if (!tabs.includes(tab)) return
       const open = tabs.find((t) => t !== tab && t.key === key)
-      if (open) { // already open: that tab takes the name, as a typed key selects its tab
+      if (open) {
         open.name = name
         closeTab(tab.id)
         select(open.id)
@@ -373,7 +350,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   function loadTab (tab, key, query) {
     openSite(key, query).then((v) => {
       if (!tabs.includes(tab)) return v.close() // closed while opening
-      // key: the address (an app's instance shows its own key, spec 009); site: the site whose pages run
       Object.assign(tab, { key: v.instance || v.key, site: v.key, title: v.manifest.title, status: 'ready', view: v.view, wc: v.webContents, close: v.close })
       const sync = () => {
         // canGoBack() answers false here while there is a page to go back to (Electron 42, Windows)
@@ -424,7 +400,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       return true
     }
     if (input.key === 'F5' || (mod && input.key.toLowerCase() === 'r')) { tabOf(current)?.wc?.reload(); return true }
-    // spec 027: F6 between the IDE, the line beside its preview (arrows move it) and back
     if (input.key === 'F6' && tabOf(current)?.side?.handle && wc !== tabOf(current).side.handle.webContents) { tabOf(current).side.handle.webContents.focus(); return true }
     if (input.alt && input.key === 'ArrowLeft') { go(-1); return true }
     if (input.alt && input.key === 'ArrowRight') { go(1); return true }
@@ -451,9 +426,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   }
   const timer = setInterval(poll, POLL)
 
-  // Installed = kept whole here and served (SwarmFS site.keep, remembered by SwarmFS); the icon's `kept` says
-  // the engine confirmed it, so a site that couldn't be reached is tried again at the next launch. An app's
-  // instance (spec 009) installs its app: the instance itself always stays joined.
+  // `kept` means the engine confirmed it, so a site that couldn't be reached is tried again at the next launch.
   function keepSite (key, on) {
     rpc.request('site.open', { key })
       .then(({ key: site }) => rpc.request('site.keep', { key: site, keep: on, timeout: 30000 }).then(() => site).finally(() => rpc.request('site.close', { key: site }).catch(() => {})))
@@ -465,8 +438,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       }, (err) => console.error('could not ' + (on ? 'install ' : 'uninstall ') + key + ':', err.message))
   }
 
-  // Installs follow the person (spec 012): a site installed on another of their devices is installed here
-  // too, one uninstalled there is a bookmark here. `site`: the key keepSite installed (an instance's app).
   async function follow () {
     const r = await rpc.request('site.installed').catch(() => null)
     if (!r) return
@@ -484,12 +455,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   }
   const following = setInterval(follow, HELD)
 
-  // The Devices window's calls (spec 012): the engine's devices.*, its errors as they are.
   const engine = (method, params) => rpc.request(method, params).then((result) => ({ result }), (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
 
-  // --- circles (spec 018) ---
-
-  // Q8's notice, once, on the first circle made or joined: OK goes on, Not now does nothing.
   async function circleNotice () {
     if (data.settings.circleNoticed) return true
     const h = await rpc.request('holding.get').catch(() => ({ bytes: 1e9 }))
@@ -503,9 +470,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     return true
   }
 
-  // A circle's invite from a page (Chat's Join button, main.js asked): the notice the first time, else the person's
-  // yes; then the join. The name comes from the page: said so. pasted (spec 019, the circles window's Join with a
-  // link…): pasting was the yes, only the notice; errors go back to the window. → { joined, name?, error? }
+  // The name comes from the page, so the question says so. A pasted link needs no question: pasting was the yes.
   async function joinCircle (link, name, { pasted = false } = {}) {
     if (!pasted) show()
     const named = name ? `"${name.slice(0, 64)}"` : 'this circle'
@@ -522,12 +487,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     }
   }
 
-  // spec 019: Invite contacts…: the person's friends, those already in the circle marked
   async function invitees (key) {
     const [friends, members] = await Promise.all([rpc.request('contacts.list'), rpc.request('circles.members', { key })])
     return inviteRows(friends, members)
   }
-  // Each ticked friend their own one-use invite in Chat, one at a time (each makes an invite in the circle) → the line
+  // One at a time: each makes an invite in the circle.
   async function inviteContacts (key, friends) {
     const results = []
     for (const f of Array.isArray(friends) ? friends : []) {
@@ -538,7 +502,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   }
 
   async function createCircle (name) {
-    if (!(await circleNotice())) return { result: null } // Not now: nothing made
+    if (!(await circleNotice())) return { result: null }
     return engine('circles.create', { name })
   }
 
@@ -604,13 +568,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         join(a.code.trim())
         return { result: true }
       case 'cover': cover = !!a.full; layout(); return { result: true }
-      // spec 018: Configuration's Circles and the circles window
       case 'circles.create': return createCircle(a.name)
       case 'circles.invitees': return invitees(a.key).then((result) => ({ result }), (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
       case 'circles.inviteContacts': return inviteContacts(a.key, a.friends).then((result) => ({ result }))
       case 'circles.join': return joinCircle(typeof a.link === 'string' ? a.link.trim() : '', null, { pasted: true }).then((result) => ({ result }))
       case 'share.check': return rpc.request('holding.get').then((h) => { const r = checkShare(a.text, h); return r.error ? { error: { code: 'INVALID_PARAMS', message: r.error } } : { result: r } }, (err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
-      // spec 016: the list's rows and the Configuration page
       case 'notify.open': {
         const x = notes.items.find((i) => i.id === a.id)
         if (!x) return { error: { code: 'NOT_FOUND', message: 'no such notification' } }
@@ -629,7 +591,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         if (Number.isFinite(a.height) && a.height > 0 && a.height < 400) bars = Math.ceil(a.height)
         layout()
         return { result: true }
-      // spec 021: Members' numbers, as the window shows them
       case 'circles.members': return engine(op, a).then((r) => (r.result ? { result: r.result.map((m) => ({ ...m, held: storageText(m) })) } : r))
       case 'circles.list': return engine(op, a).then((r) => (r.result ? { result: r.result.map((c) => ({ ...c, totalLine: totalText(c.total) })) } : r))
       default: return CIRCLES.has(op) ? engine(op, a) : { error: { code: 'UNKNOWN_METHOD', message: 'unknown op ' + op } }
@@ -646,9 +607,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   })
   fwc.on('before-input-event', (e, input) => { if (DEV && input.type === 'keyDown' && (input.key === 'F12' || ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i'))) { e.preventDefault(); fwc.toggleDevTools() } })
 
-  // The tray (spec 010): while there is one, closing the window hides it; the engine, the open tabs and their
-  // views stay (the window comes back as it was, and Chromium throttles hidden pages). Quit destroys the
-  // window: 'closed' below, then main.js's window-all-closed stops the engine and quits, as without a tray.
+  // Hidden to the tray, its views kept (Chromium throttles hidden pages). Quit destroys it: window-all-closed then stops the engine.
   let tray = null
   let notices = 0
   const TRAY = hasTray()
@@ -689,19 +648,17 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   })
   layout()
 
-  // an install (or uninstall) the engine never confirmed: again (a site unreachable then, a desktop from 002)
+  // an install (or uninstall) the engine never confirmed: again (a site unreachable then, a desktop from an older version)
   for (const i of data.desktop.icons) if (i.key && !!i.kept !== (i.kind === 'installed')) keepSite(i.key, i.kind === 'installed')
   if (open) openKey(open)
   follow()
   refresh()
-  // for the frame check (npm run test:sandbox): where everything is
   const side = () => tabOf(current)?.side
   const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => t.view.getBounds()),
     wcs: tabs.filter((t) => t.wc).map((t) => t.wc), side: side()?.view?.getBounds() || null, handle: side()?.handle || null, sideWc: side()?.wc || null, split: data.settings.split, ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
-  const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') } // the engine's 'devices' event
-  const circlesChanged = () => { if (!fwc.isDestroyed()) fwc.send('frame-circles', {}) } // the engine's 'circles' event
-  // After a join (or a failed one, back on the old folder): another engine, maybe another identity. The open
-  // tabs were the old engine's; installed icons are installed again on this one.
+  const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') }
+  const circlesChanged = () => { if (!fwc.isDestroyed()) fwc.send('frame-circles', {}) }
+  // Another engine, maybe another identity: the open tabs were the old engine's.
   function joinedNow ({ identity: id, said }) {
     identity = id
     joined = { said, n: (joined?.n || 0) + 1 }
@@ -710,7 +667,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     for (const i of data.desktop.icons) if (i.key && i.kind === 'installed') keepSite(i.key, true)
     follow()
   }
-  // hyper.apps (spec 014, main.js asked the person): the same install as the desktop's right-click
   const installed = (key) => data.desktop.icons.some((i) => (i.key === key || i.site === key) && i.kind === 'installed')
   function install (key, title) {
     const icon = iconOf(key)

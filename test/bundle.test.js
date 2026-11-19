@@ -1,6 +1,3 @@
-// Bundled apps (spec 015): snapshots of the apps' own data packed from an owner's engine folder; a fresh
-// engine with nobody online opens every page; the next start doesn't import again; an edit published after
-// the build reaches it from a peer. A changed snapshot is refused (the start goes on).
 import test from 'brittle'
 import fs from 'fs'
 import path from 'path'
@@ -13,7 +10,6 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const files = (dir, at = '') => fs.readdirSync(path.join(dir, at), { withFileTypes: true })
   .flatMap((e) => e.isDirectory() ? files(dir, at + e.name + '/') : [at + e.name])
 
-// An owner's engine folder with Contacts (a copy, edited later) and the forum app with its instance.
 async function owner (t) {
   const contacts = path.join(tmpDir(t, 'contacts-src'), 'contacts')
   fs.cpSync(path.join(ROOT, 'sites', 'contacts'), contacts, { recursive: true })
@@ -54,7 +50,7 @@ test('a fresh engine opens every bundled page with nobody online; the next start
   t.is(fs.statSync(marker).mtimeMs, at, 'not imported again')
   t.is(await readAll(again, o.keys.contacts, o.contacts), null, 'still there')
 
-  fs.writeFileSync(path.join(o.contacts, 'index.html'), '<h1>Contacts 2</h1>') // published after the build
+  fs.writeFileSync(path.join(o.contacts, 'index.html'), '<h1>Contacts 2</h1>')
   await engine(t, { dir: o.dir }) // the owner online: its linked folder's edit published
   t.ok(await eventually(async () => {
     const r = await again.rpc.request('site.read', { key: o.keys.contacts, path: 'index.html', timeout: 2000 }).catch(() => null)

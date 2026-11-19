@@ -1,8 +1,4 @@
-// The sandbox self-test and its control run, as a test (spec 001 US3, SC-002), then the frame check
-// (spec 002 US6, FR-010, FR-013), then the textures check at 100, 125, 150 % (spec 008), then the tray
-// (spec 010: close to the tray, one HyperBrowser a data folder, Quit, the setting). Node only (it starts
-// Electron): `npm run test:sandbox`. The guarded run must pass every check; the control run (--no-guards)
-// must fail, and fail exactly where a guard of ours does the work.
+// The guarded run must pass every check; the control run (--no-guards) must fail, exactly where a guard does the work.
 import test from 'brittle'
 import fs from 'fs'
 import os from 'os'
@@ -12,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const ELECTRON = createRequire(import.meta.url)('electron') // the binary's path, from Node
+const ELECTRON = createRequire(import.meta.url)('electron')
 
 function selftest (...args) {
   return run(['.', ...(args.includes('--framecheck') ? [] : ['--selftest']), ...args])
@@ -20,7 +16,6 @@ function selftest (...args) {
 
 const run = (args) => launch(args).done
 
-// → { done: Promise<{ code, out }>, saw(text): resolves once the output has it (or the process ended) }
 function launch (args) {
   const p = spawn(ELECTRON, args, { cwd: ROOT })
   let out = ''
@@ -56,26 +51,26 @@ test('the control run (guards off) fails where our guards work', { timeout: 1500
     'no web: <img src=https://...> fails to load (needs internet to mean anything)',
     'the page names no space: hyper.subspace(<other site>) is refused',
     'the page names no space: hyper.instance(<other site>) is refused',
-    'people: opening a chat without a click opens nothing', // spec 013
+    'people: opening a chat without a click opens nothing',
     'people: a friend request the person refused is NOT_ALLOWED',
     'hyper.people: nothing opened without a click',
     'hyper.people: a request the person refused sent nothing',
-    'apps: installing a site without a click installs nothing', // spec 014
+    'apps: installing a site without a click installs nothing',
     'apps: opening a site without a click opens nothing',
     'hyper.apps: nothing installed or opened without a click',
     "hyper.apps: a click and the person's no install nothing",
     "a page can't stop another page's subscription",
-    "notifications: a page's viewing can't mark another app's conversation read", // spec 016
-    "notifications: a page can't read another app's counts", // spec 017
+    "notifications: a page's viewing can't mark another app's conversation read",
+    "notifications: a page can't read another app's counts",
     "notifications: a page can't read another app's follows",
     "notifications: a page can't remove another app's follow",
     "notifications: a page can't follow another app's places",
     "notifications: a page doesn't hear another app's counts",
-    'copies: hyper.subspace(<other site>).copies() is refused', // spec 018
+    'copies: hyper.subspace(<other site>).copies() is refused',
     'circles: joining without a click joins nothing',
     "copies: a page can't read another app's instance's copies",
     "rotateKey: a page can't change another app's instance's key",
-    "secure: a page can't renew another app's instance", // spec 023
+    "secure: a page can't renew another app's instance",
     "trimHistory: a page can't trim another app's instance",
     "circles: a click and the person's Not now join nothing"
   ]) t.ok(failed.has(check), 'fails without guards: ' + check)
