@@ -49,7 +49,7 @@ It syncs with your other computers while they are online.
   - **New file**, **New folder** and **Upload** are above the tree.
   - Files changed since your last git commit are marked •.
   - The line under the title shows the git branch and how many files changed. The IDE reads git; it never runs it.
-- **Hide the list** (top right) gives the editor the whole width; **Show the list** brings it back. Remembered.
+- **Hide file explorer** (top right) gives the editor the whole width; **Show file explorer** brings it back. Remembered.
 - **…** → **Editor settings**: wrap long lines, line numbers, tab size (2, 4, 8), text size (12 to 20 px). Saved for
   you, on all your devices.
 - Code opens in an editor with search (Ctrl+F), undo and redo. It knows JS, HTML, CSS, JSON and Markdown/HyperMD.

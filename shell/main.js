@@ -877,11 +877,11 @@ async function checkIde (win, views, out, tmp, chat) {
   const pasted = await waitFor(() => run(`!!${item('_layout copy.hmd')}`), 10000)
   pass('ide: copy, then paste: a copy under a free name', pasteItem.includes('Paste _layout.hmd') && pasted)
   // spec 026 I2, I3: the list hidden (remembered), the editor's settings
-  await run(`${button('Hide the list')}.click(); 0`)
+  await run(`${button('Hide file explorer')}.click(); 0`)
   const hidden = await waitFor(() => run("!document.querySelector('nav[aria-label=Files]') && !!document.querySelector('#editor')"), 5000)
   const remembered = await waitFor(() => run('window.hyper.mine.all().then((m) => m.tree === false)'), 5000) // saved in the background
-  pass('ide: Hide the list gives the editor the room, and is remembered', hidden && remembered)
-  await run(`${button('Show the list')}.click(); 0`)
+  pass('ide: Hide file explorer gives the editor the room, and is remembered', hidden && remembered)
+  await run(`${button('Show file explorer')}.click(); 0`)
   await run(`${menu}.querySelector('button').click(); 0`)
   await run(`${button('Editor settings')}.click(); 0`)
   await waitFor(() => run("!!document.querySelector('[role=main] input[type=checkbox]')"), 5000)
@@ -904,7 +904,7 @@ async function checkIde (win, views, out, tmp, chat) {
   })()`
   const fills = []
   for (const shown of [true, false]) {
-    if (!shown) await run(`${button('Hide the list')}.click(); 0`)
+    if (!shown) await run(`${button('Hide file explorer')}.click(); 0`)
     for (const width of [1400, 900, 600]) {
       v.view.setBounds({ x: 0, y: 0, width, height: 700 })
       await wait(400)
@@ -912,7 +912,7 @@ async function checkIde (win, views, out, tmp, chat) {
       if (r !== 'ok') fills.push(`${shown ? 'list' : 'no list'} ${width}: ${r}`)
     }
   }
-  await run(`${button('Show the list')}.click(); 0`)
+  await run(`${button('Show file explorer')}.click(); 0`)
   pass('ide: the editor fills the space left over, the list shown or hidden, at 1400, 900, 600 px' + (fills.length ? ' (' + fills.join('; ') + ')' : ''), !fills.length)
   // spec 029: a file with a long line: the editor scrolls inside, its right border stays inside the window
   await run("window.hyper.projects.list().then(([p]) => window.hyper.projects.write(p.key, 'long.js', '// ' + 'x'.repeat(3000) + '\\n')).then(() => 0)")
