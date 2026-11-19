@@ -765,7 +765,7 @@ async function checkIde (win, views, out, tmp, chat) {
   win.contentView.addChildView(v.view)
   v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
   const run = (s) => v.webContents.executeJavaScript(s, true)
-  const started = await waitFor(() => run("document.querySelector('h1')?.textContent === 'IDE' && !!document.querySelector('form')"), 30000)
+  const started = await waitFor(() => run("document.querySelector('h1')?.textContent === 'Hyper IDE' && !!document.querySelector('form')"), 30000)
   const start = performance.now() - t0
   pass('ide: it opens (its projects asked for once)', started)
   // spec 029: a "…" menu is drawn inside the window (the home page's one opened half off it, on the left)

@@ -235,7 +235,7 @@ function draw () {
 
 function home () {
   return h('div', { style: 'overflow:auto; flex:1; min-height:0; padding:8px' },
-    h('h1', {}, 'IDE'),
+    h('h1', {}, 'Hyper IDE'),
     notice ? h('p', { role: 'alert' }, notice) : null,
     h('section', {}, h('h2', {}, 'Your projects'), list.length
       ? h('ul', {}, list.map((p) => h('li', {}, h('button', { onclick: () => act(() => openProject(p)) }, p.name), ' ',
