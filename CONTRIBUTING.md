@@ -13,6 +13,9 @@ P2P/
 Run `npm install` in each, in that order, then `npm start` in `HyperBrowser`. The [README](README.md) has the
 big picture; [docs/](docs/README.md) explains each part.
 
+`npm run typecheck` reads the siblings' own types: run `npm run types` in each of them too (they build
+`dist/types/`, which a `file:` link doesn't make).
+
 ## Test
 
 ```bash
