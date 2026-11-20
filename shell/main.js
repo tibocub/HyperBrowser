@@ -10,33 +10,52 @@ import { connect, pair } from '../engine/protocol.js'
 import { createSiteView } from './views.js'
 import { startFrame } from './frame.js'
 
+/**
+ * @typedef {import('electron').WebContents} WebContents
+ * @typedef {import('electron').BaseWindow} BaseWindowT
+ * @typedef {import('../engine/protocol.js').Rpc} Rpc
+ * @typedef {import('../engine/manifest.js').Manifest} Manifest
+ * @typedef {import('./frame.js').SiteView} SiteView
+ * @typedef {ReturnType<typeof startFrame>} Frame
+ * @typedef {import('./ui/frame.js').Note} Note
+ * @typedef {{ site: string, name: string, pass: boolean }} Check A self-test line.
+ * @typedef {(name: string, ok: unknown) => unknown} Pass
+ * @typedef {{ code?: string, message: string }} Thrown
+ * @typedef {{ manifest: Manifest, dynamic: boolean }} Opened
+ */
+
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SELFTEST = process.argv.includes('--selftest')
 const FRAMECHECK = process.argv.includes('--framecheck')
 const GUARDS = !process.argv.includes('--no-guards')
 const TRAYCHECK = process.argv.includes('--traycheck') ? process.argv[process.argv.indexOf('--traycheck') + 1] : null
 const HEARTBEAT = 2000
+/** @param {string} name */
 const arg = (name) => { const i = process.argv.indexOf(name); return i === -1 ? null : process.argv[i + 1] }
 
+/** @type {Record<string, string | undefined>} */
 const TYPES = {
   html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8', js: 'text/javascript', mjs: 'text/javascript',
   css: 'text/css', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg',
   jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon', woff2: 'font/woff2',
   txt: 'text/plain; charset=utf-8', md: 'text/markdown; charset=utf-8', wasm: 'application/wasm'
 }
-const typeOf = (p) => TYPES[p.split('.').pop().toLowerCase()] || 'application/octet-stream'
+/** @param {string} p */
+const typeOf = (p) => TYPES[/** @type {string} */ (p.split('.').pop()).toLowerCase()] || 'application/octet-stream'
 const PKG = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf-8'))
+/** @type {import('./model.js').Icon[]} */
 const PRESET = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
 const APPS = { chat: PRESET.find((p) => p.id === 'preset:chat')?.key || null, contacts: PRESET.find((p) => p.id === 'preset:contacts')?.key || null }
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 
 // An installed HyperBrowser has no console: what it says also goes to <data folder>/hyperbrowser.log.
 const LOG = app.isPackaged ? path.join(app.getPath('userData'), 'hyperbrowser.log') : null
+/** @param {string} line */
 function log (line) {
   console.log(line)
   if (!LOG) return
   try {
-    if (fs.statSync(LOG, { throwIfNoEntry: false })?.size > 1e6) fs.rmSync(LOG) // shortcut: one file, cut at 1 MB
+    if (/** @type {number} */ (fs.statSync(LOG, { throwIfNoEntry: false })?.size) > 1e6) fs.rmSync(LOG) // shortcut: one file, cut at 1 MB
     fs.appendFileSync(LOG, new Date().toISOString() + ' ' + line + '\n')
   } catch {}
 }
@@ -44,6 +63,7 @@ function log (line) {
 // One HyperBrowser per data folder: two engines on one folder would conflict.
 const FIRST = SELFTEST || FRAMECHECK || !!arg('--dir') || app.requestSingleInstanceLock()
 if (!FIRST) app.quit()
+/** @type {Frame | null} */
 let ui = null
 let engineErred = false
 app.on('second-instance', () => ui?.show())
@@ -54,35 +74,58 @@ if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('org.h
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'hyper', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
 
-let rpc = null
+// null before startEngine and after stopEngine; what may run then checks (rpc?.)
+let rpc = /** @type {Rpc} */ (/** @type {unknown} */ (null))
+/** @type {ReturnType<typeof PearRuntime.run> | null} */
 let worker = null
+/** @type {ReturnType<typeof PearRuntime.run> | null} */
 let updater = null
+/** @type {string | null} */
 let update = null
 let quitting = false
+/** @type {Rpc | null} */
 let stopping = null
+/** @type {Map<string, Opened>} */
 const sites = new Map()
+/** @type {Map<number, string>} webContents id -> its site's key */
 const viewOf = new Map()
+/** @type {Map<number, WebContents>} */
 const subscribers = new Map()
+/** @type {Map<number, unknown[]>} */
 const early = new Map()
+/** @type {WeakMap<WebContents, number>} */
 const pages = new WeakMap()
+/** @type {Map<string, Promise<void>>} */
 const asking = new Map()
+/** @type {string[]} */
 const asked = []
+/** @type {Map<string, Promise<unknown>>} */
 const permits = new Map()
+/** @type {Map<string, Promise<unknown>>} */
 const notifyAsks = new Map()
+/** @type {WeakMap<WebContents, string | null>} */
 const viewed = new WeakMap()
+/** @type {string[]} */
 const marked = []
+/** @type {string[]} */
 const peopleOpened = []
+/** @type {Set<string>} */
 const appsInstalled = new Set()
+/** @type {string[]} */
 const appsOpened = []
+/** @type {number[]} */
 const heard = []
 let selftestYes = false
+/** @type {{ bootstrap: Array<{ host: string, port: number }>, destroy (): Promise<void> } | null} */
 let testnet = null
 
+/** @param {string} key @param {string} p */
 async function serve (key, p) {
   const { bytes, path: real } = await rpc.request('site.read', { key, path: p })
   return { bytes, type: typeOf(real) }
 }
 
+/** @param {string} event @param {any} data the engine's, per event */
 function onEvent (event, data) {
   if (event === 'devices') return ui?.devices()
   if (event === 'circles') return ui?.circles()
@@ -105,29 +148,32 @@ function onEvent (event, data) {
   else if (!wc.isDestroyed()) wc.send('hyper-event', { id: data.id, data: out })
 }
 
+/** @param {string} key */
 function ask (key) {
   if (!asking.has(key)) {
     asked.push(key)
-    const title = sites.get(key).manifest.title
+    const title = /** @type {Opened} */ (sites.get(key)).manifest.title
     const answer = SELFTEST
       ? Promise.resolve(true)
       : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 1, cancelId: 1, message: `Let "${title}" use your identity?`, detail: 'It will read and write in its own space as you. You can change this later.' }).then((r) => r.response === 0)
     asking.set(key, answer.then(async (allow) => {
       await rpc.request('site.consent', { key, allow })
-      if (allow && declares(sites.get(key).manifest)) askNotify(key)
+      if (allow && declares(/** @type {Opened} */ (sites.get(key)).manifest)) askNotify(key)
     }).finally(() => asking.delete(key)))
   }
   return asking.get(key)
 }
 
+/** @type {Record<string, [string, string]>} */
 const QUESTIONS = {
   contacts: ['see and manage your contacts', 'It will list your friends and requests, accept or remove them, and send requests. Only HyperBrowser\'s Contacts and Chat need this.'],
   projects: ['edit and publish your projects', 'It will read and change the files of your projects, publish their sites, preview them and invite co-authors. Nothing outside your projects. Only an editor like HyperBrowser\'s IDE needs this.']
 }
+/** @param {string} key */
 function askPermit (key, permission = 'contacts') {
   const id = key + ' ' + permission
   if (!permits.has(id)) {
-    const title = sites.get(key).manifest.title
+    const title = /** @type {Opened} */ (sites.get(key)).manifest.title
     const [what, detail] = QUESTIONS[permission]
     const answer = SELFTEST
       ? Promise.resolve(true)
@@ -137,9 +183,10 @@ function askPermit (key, permission = 'contacts') {
   return permits.get(id)
 }
 
+/** @param {string} key */
 function askNotify (key) {
   if (!notifyAsks.has(key)) {
-    const title = sites.get(key).manifest.title
+    const title = /** @type {Opened} */ (sites.get(key)).manifest.title
     const answer = SELFTEST
       ? Promise.resolve(true)
       : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 0, cancelId: 1, message: `Let "${title}" notify you?`, detail: 'HyperBrowser watches what it says (new messages, mentions), even while it is closed, and tells you. You can change this in Configuration.' }).then((r) => r.response === 0)
@@ -147,9 +194,11 @@ function askNotify (key) {
   }
   return notifyAsks.get(key)
 }
+/** @param {Manifest} manifest */
 const declares = (manifest) => manifest.permissions.includes('notifications') && !!manifest.notifications?.length
 
 // Marked read for the page's own app only (the engine checks); the frame calls it only for the current, focused tab.
+/** @param {WebContents} wc */
 async function readViewed (wc) {
   const place = viewed.get(wc)
   const key = viewOf.get(wc.id)
@@ -160,6 +209,7 @@ async function readViewed (wc) {
 }
 
 // Events on their way land in `early` meanwhile; the engine's answer comes after them.
+/** @param {number} id */
 async function unsubscribe (id) {
   subscribers.delete(id)
   await rpc?.request('site.off', { id }).catch(() => {})
@@ -167,18 +217,20 @@ async function unsubscribe (id) {
   return true
 }
 
+/** @param {WebContents} wc */
 function stopAll (wc) {
   for (const [id, x] of subscribers) if (x === wc) unsubscribe(id)
   return true
 }
 
+/** @param {WebContents} wc @param {any} msg the page's: each field checked by the engine */
 async function bridge (wc, msg) {
   if (msg.op === 'page') { // a real load: a hash change runs no preload, a cancelled navigation doesn't get here
     pages.set(wc, (pages.get(wc) || 0) + 1)
     return stopAll(wc)
   }
   const page = pages.get(wc)
-  let key = viewOf.get(wc.id)
+  let key = /** @type {string} */ (viewOf.get(wc.id)) // the ipc handler checked it is a site's view
   let sub = msg.sub ?? null
   let instance = msg.instance ?? null // one of the app's instances: the engine checks it is
   if (!GUARDS && sites.has(sub)) { key = sub; sub = null } // control run: trusts a key from the page
@@ -191,7 +243,7 @@ async function bridge (wc, msg) {
     return true
   }
   if (msg.op === 'off') return !GUARDS || subscribers.get(msg.id) === wc ? unsubscribe(msg.id) : false // only this page's own
-  const method = { call: 'site.call', live: 'site.live', on: 'site.on' }[msg.op]
+  const method = /** @type {Record<string, string | undefined>} */ ({ call: 'site.call', live: 'site.live', on: 'site.on' })[msg.op]
   if (!method) throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
   // only the fields of that call; the key is the view's
   const params = { key, sub, instance, method: msg.method, args: msg.args, chain: msg.chain, opts: msg.opts, event: msg.event }
@@ -201,10 +253,11 @@ async function bridge (wc, msg) {
   let result
   try {
     result = await rpc.request(method, params)
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Thrown} */ (e)
     if (err.code !== 'NEEDS_CONSENT' && err.code !== 'NEEDS_PERMISSION') throw err
     await (err.code === 'NEEDS_CONSENT' ? ask(key) : askPermit(key, permission))
-    result = await rpc.request(method, params).catch(async (err) => { // the identity first, then the contacts or projects
+    result = await rpc.request(method, params).catch(async (/** @type {Thrown} */ err) => { // the identity first, then the contacts or projects
       if (err.code !== 'NEEDS_PERMISSION') throw err
       await askPermit(key, permission)
       return rpc.request(method, params)
@@ -224,6 +277,7 @@ async function bridge (wc, msg) {
 }
 
 async function pickFolder () {
+  /** @type {import('electron').OpenDialogOptions} */
   const o = { title: 'Open a folder as a project', properties: ['openDirectory'] }
   const r = await (ui?.win ? dialog.showOpenDialog(ui.win, o) : dialog.showOpenDialog(o))
   if (r.canceled || !r.filePaths[0]) throw Object.assign(new Error('no folder picked'), { code: 'CANCELLED' })
@@ -234,16 +288,18 @@ ipcMain.handle('site', async (evt, msg) => {
   if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
   try {
     return { result: await bridge(evt.sender, msg || {}) }
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Thrown} */ (e)
     return { error: { code: err.code || 'ERROR', message: err.message } }
   }
 })
 
 // Opening needs a click on the page (the preload says whether one is running); a request, the person's yes.
+/** @param {WebContents} wc @param {any} msg the page's: checked here */
 async function people (wc, { op, identity, name, activated }) {
   if (typeof identity !== 'string' || !KEY.test(identity)) throw Object.assign(new Error('not a person\'s key'), { code: 'INVALID_PARAMS' })
   if (op === 'request') {
-    const site = sites.get(viewOf.get(wc.id)).manifest.title
+    const site = /** @type {Opened} */ (sites.get(/** @type {string} */ (viewOf.get(wc.id)))).manifest.title
     const who = (typeof name === 'string' && name.trim() ? `"${name.trim().slice(0, 64)}" ` : '') + `(key ${identity.slice(0, 8)}…)`
     const yes = !GUARDS || (!SELFTEST && (await dialog.showMessageBox({ type: 'question', buttons: ['Send', 'Cancel'], defaultId: 1, cancelId: 1, message: `Send a friend request to ${who}?`, detail: `"${site}" asks. The name comes from that site: check the key if it matters.` })).response === 0)
     if (!yes) throw Object.assign(new Error('the person said no'), { code: 'NOT_ALLOWED' })
@@ -263,12 +319,14 @@ ipcMain.handle('people', async (evt, msg) => {
   if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
   try {
     return { result: await people(evt.sender, msg || {}) }
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Thrown} */ (e)
     return { error: { code: err.code || 'ERROR', message: err.message } }
   }
 })
 
 // Both need a click on the page; installing, the person's yes to a question naming the app by its own title.
+/** @param {WebContents} wc @param {any} msg the page's: checked here */
 async function apps (wc, { op, key, activated }) {
   if (typeof key !== 'string' || !KEY.test(key)) throw Object.assign(new Error("not a site's key"), { code: 'INVALID_PARAMS' })
   const installed = () => SELFTEST ? appsInstalled.has(key) : !!ui?.installed(key)
@@ -283,11 +341,11 @@ async function apps (wc, { op, key, activated }) {
   if (installed()) return true
   const { manifest, key: real } = await rpc.request('site.open', { key }) // its own title, not the page's words
   rpc.request('site.close', { key: real }).catch(() => {})
-  const site = sites.get(viewOf.get(wc.id)).manifest.title
+  const site = /** @type {Opened} */ (sites.get(/** @type {string} */ (viewOf.get(wc.id)))).manifest.title
   const yes = !GUARDS || (SELFTEST ? selftestYes : (await dialog.showMessageBox({ type: 'question', buttons: ['Install', 'Cancel'], defaultId: 1, cancelId: 1, message: `Install "${manifest.title}"?`, detail: `Key ${key.slice(0, 8)}…, from "${site}". Installed, it stays on your desktop, works offline, and your computer serves it to others.` })).response === 0)
   if (!yes) throw Object.assign(new Error('the person said no'), { code: 'NOT_ALLOWED' })
   if (SELFTEST) appsInstalled.add(key)
-  else ui.install(key, manifest.title)
+  else /** @type {Frame} */ (ui).install(key, manifest.title)
   return true
 }
 
@@ -295,30 +353,34 @@ ipcMain.handle('apps', async (evt, msg) => {
   if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
   try {
     return { result: await apps(evt.sender, msg || {}) }
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Thrown} */ (e)
     return { error: { code: err.code || 'ERROR', message: err.message } }
   }
 })
 
 // Only HyperBrowser joins a circle, after a click and the person's yes: a page has no circles.* call.
+/** @param {WebContents} wc @param {any} msg the page's: checked here */
 async function circles (wc, { op, link, name, activated }) {
   if (op !== 'join') throw Object.assign(new Error('unknown call'), { code: 'UNKNOWN_METHOD' })
   if (typeof link !== 'string' || !link.startsWith('hg:')) throw Object.assign(new Error('an invite link (hg:...)'), { code: 'INVALID_PARAMS' })
   if (GUARDS && !activated) return { joined: false }
   if (!GUARDS) return { joined: !!(await rpc.request('circles.join', { link })) } // control run: no question
   if (SELFTEST) return { joined: false } // the person's Not now
-  return { joined: (await ui.joinCircle(link, typeof name === 'string' ? name : '')).joined } // the page learns no more
+  return { joined: (await /** @type {Frame} */ (ui).joinCircle(link, typeof name === 'string' ? name : '')).joined } // the page learns no more
 }
 
 ipcMain.handle('circles', async (evt, msg) => {
   if (!viewOf.has(evt.sender.id)) return { error: { code: 'NOT_ALLOWED', message: 'not a site' } }
   try {
     return { result: await circles(evt.sender, msg || {}) }
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Thrown} */ (e)
     return { error: { code: err.code || 'ERROR', message: err.message } }
   }
 })
 
+/** @param {string} key @returns {Promise<SiteView>} */
 async function openSite (key, query = '') {
   const { manifest, dynamic, key: real, instance = null, ...rest } = await rpc.request('site.open', { key })
   sites.set(real, { manifest, dynamic })
@@ -335,8 +397,9 @@ async function openSite (key, query = '') {
 
 const IMAGES = new Set(['png', 'gif', 'svg', 'webp', 'jpg', 'jpeg', 'ico'])
 
+/** @param {string} key @param {Manifest} manifest */
 async function readIcon (key, manifest) {
-  if (!manifest.icon || !IMAGES.has(manifest.icon.split('.').pop().toLowerCase())) return null
+  if (!manifest.icon || !IMAGES.has(/** @type {string} */ (manifest.icon.split('.').pop()).toLowerCase())) return null
   const { bytes, type } = await serve(key, manifest.icon)
   return 'data:' + type + ';base64,' + Buffer.from(bytes).toString('base64')
 }
@@ -352,13 +415,15 @@ async function stopEngine () {
   stopping = r // its stream's end is expected (startEngine's onclose)
   if (r) await r.request('close').catch(() => {})
   if (w) {
-    const exited = new Promise((resolve) => { if (w._exited) resolve(); else w.once('exit', resolve) })
+    /** @type {Promise<void>} */
+    const exited = new Promise((resolve) => { if (/** @type {{ _exited?: boolean }} */ (/** @type {unknown} */ (w))._exited) resolve(); else w.once('exit', /** @type {() => void} */ (resolve)) })
     w.destroy() // kills it if it didn't exit by itself
     await exited
   }
-  if (rpc === r) rpc = worker = null
+  if (rpc === r) rpc = /** @type {Rpc} */ (/** @type {unknown} */ (worker = null))
 }
 
+/** @param {BaseWindowT} win @param {SiteView[]} views */
 function layout (win, views) {
   const place = () => {
     const { width, height } = win.getContentBounds()
@@ -370,17 +435,21 @@ function layout (win, views) {
   win.on('resize', place)
 }
 
+/** @param {string} dir */
 async function selftest (dir) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-selftest-'))
+  /** @param {string} name @param {object} manifest */
   const folder = (name, manifest) => {
     const dir = path.join(tmp, name)
     fs.cpSync(path.join(HERE, 'selftest', 'site'), dir, { recursive: true })
     fs.writeFileSync(path.join(dir, 'site.json'), JSON.stringify(manifest))
     return dir
   }
+  /** @type {string[]} */
   const keys = []
+  /** @param {string} title */
   const dyn = (title) => ({ title, permissions: ['space', 'notifications'], types: { note: { fields: { text: 'string' } } } }) // no watch, so no question
-  for (const [name, manifest] of [['a', dyn('Site A')], ['b', dyn('Site B')], ['c', { title: 'Static C' }]]) {
+  for (const [name, manifest] of /** @type {Array<[string, object]>} */ ([['a', dyn('Site A')], ['b', dyn('Site B')], ['c', { title: 'Static C' }]])) {
     keys.push((await rpc.request('site.publish', { folder: folder(name, manifest) })).key)
   }
   const [a, b, c] = keys
@@ -394,6 +463,7 @@ async function selftest (dir) {
     console.log('SELFTEST TIMEOUT')
     app.exit(2)
   }, 90000)
+  /** @type {Array<Check[] | null>} */
   let results
   for (;;) {
     results = await Promise.all(views.map((v) => v.webContents.executeJavaScript('window.__results || null').catch(() => null)))
@@ -401,7 +471,8 @@ async function selftest (dir) {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   clearTimeout(timeout)
-  const out = results.flat()
+  /** @type {Check[]} */
+  const out = /** @type {Check[][]} */ (results).flat()
   out.push({ site: 'shell', name: 'the identity question: asked once per dynamic site, never for the static one', pass: asked.length === 2 && asked.includes(a) && asked.includes(b) })
   out.push({ site: 'shell', name: 'hyper.people: nothing opened without a click', pass: peopleOpened.length === 0 })
   out.push({ site: 'shell', name: 'hyper.people: a request the person refused sent nothing', pass: (await rpc.request('contacts.get', { identity: b })) === null })
@@ -444,12 +515,17 @@ async function selftest (dir) {
   app.exit(ok ? 0 : 1)
 }
 
+/** @param {number} ms */
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+/** @param {() => Promise<unknown>} f */
 const until = async (f) => { for (let n = 0; n < 100; n++) { if (await f().catch(() => false)) return true; await wait(100) } return false }
 
+/** @param {SiteView[]} views @param {Check[]} out */
 async function checkLoads ([a, b], out) {
+  /** @type {Pass} */
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const wc = b.webContents
+  /** @param {string} s */
   const run = (s) => wc.executeJavaScript(s)
   const mine = (w = wc) => [...subscribers].filter(([, x]) => x === w).map(([id]) => id)
   const got = () => run('window.__got')
@@ -468,7 +544,7 @@ async function checkLoads ([a, b], out) {
   await until(async () => (await got()) > 0)
   await a.webContents.executeJavaScript("window.hyper.query('profile').live(() => {}); 0")
   await until(async () => mine(a.webContents).length > 0)
-  const other = mine(a.webContents).at(-1)
+  const other = /** @type {number} */ (mine(a.webContents).at(-1)) // subscribed: waited for above
 
   const before = mine()
   await run("location.hash = '#x'; 0")
@@ -497,10 +573,13 @@ async function checkLoads ([a, b], out) {
   pass("a page can't stop another page's subscription", await until(async () => heard.slice(mark).includes(other)))
 }
 
+/** @param {SiteView[]} views @param {Check[]} out */
 async function checkNotifications ([a, b], out) {
+  /** @type {Pass} */
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const own = await rpc.request('site.call', { key: a.key, method: 'instances.create', args: ['mine'] })
   const other = await rpc.request('site.call', { key: b.key, method: 'instances.create', args: ['theirs'] })
+  /** @param {string} k */
   const viewing = (k) => a.webContents.executeJavaScript(`window.hyper.notifications.viewing(${JSON.stringify(k)}).then(String, (e) => e.code)`)
   await viewing(other.key)
   await readViewed(a.webContents)
@@ -515,16 +594,18 @@ async function checkNotifications ([a, b], out) {
 }
 
 // Each check names B's site as the instance, which the control run takes for the page's site: there it reads and changes B's.
+/** @param {SiteView} a @param {SiteView} b @param {{ key: string }} own @param {{ key: string }} other @param {Pass} pass */
 async function checkOwnCounts (a, b, own, other, pass) {
+  /** @param {string} method @param {unknown[]} [args] */
   const ask = (method, args = []) => bridge(a.webContents, { op: 'call', instance: b.key, method, args }).then((r) => r, (e) => ({ error: e.code }))
   const counts = await ask('notifications.unread')
   pass("notifications: a page can't read another app's counts", !counts.error && own.key in counts && !(other.key in counts))
   const theirs = await rpc.request('site.call', { key: b.key, method: 'notifications.follow', args: [{ place: other.key, type: 'note', says: 'a note' }] })
   const listed = await ask('notifications.follows')
-  pass("notifications: a page can't read another app's follows", Array.isArray(listed) && !listed.some((f) => f.id === theirs.id))
+  pass("notifications: a page can't read another app's follows", Array.isArray(listed) && !listed.some((/** @type {{ id: string }} */ f) => f.id === theirs.id))
   await ask('notifications.unfollow', [theirs.id])
   const still = await rpc.request('site.call', { key: b.key, method: 'notifications.follows', args: [] })
-  pass("notifications: a page can't remove another app's follow", still.some((f) => f.id === theirs.id))
+  pass("notifications: a page can't remove another app's follow", still.some((/** @type {{ id: string }} */ f) => f.id === theirs.id))
   const made = await ask('notifications.follow', [{ place: other.key, type: 'note', says: 'a note' }])
   pass("notifications: a page can't follow another app's places", made.error === 'NOT_ALLOWED')
   const gone = await rpc.request('site.call', { key: b.key, method: 'instances.create', args: ['gone'] })
@@ -538,9 +619,12 @@ async function checkOwnCounts (a, b, own, other, pass) {
 }
 
 // Each check names B's site with B's private instance, which the control run takes for the page's site.
+/** @param {SiteView[]} views @param {Check[]} out */
 async function checkCircles ([a, b], out) {
+  /** @type {Pass} */
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const theirs = await rpc.request('site.call', { key: b.key, method: 'instances.create', args: ['Theirs', { private: true }] })
+  /** @param {string} method */
   const ask = (method) => bridge(a.webContents, { op: 'call', site: b.key, instance: theirs.key, method, args: [] }).then(() => 'done', (e) => e.code)
   pass("copies: a page can't read another app's instance's copies", (await ask('copies')) === 'NOT_ALLOWED')
   pass("rotateKey: a page can't change another app's instance's key", (await ask('rotateKey')) === 'NOT_ALLOWED')
@@ -554,7 +638,9 @@ async function checkCircles ([a, b], out) {
   pass("circles: a click and the person's Not now join nothing", clicked === '{"joined":false}')
 }
 
+/** @param {BaseWindowT} win @param {SiteView[]} views @param {Check[]} out @param {string} tmp */
 async function checkChat (win, views, out, tmp) {
+  /** @type {Pass} */
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const folder = path.join(tmp, 'chat') // a copy: publishing links a folder both ways with the engine
   fs.cpSync(path.join(HERE, '..', 'sites', 'chat'), folder, { recursive: true })
@@ -563,6 +649,7 @@ async function checkChat (win, views, out, tmp) {
   views.push(chat)
   win.contentView.addChildView(chat.view)
   chat.view.setBounds({ x: 0, y: 0, width: 500, height: 800 })
+  /** @param {string} s */
   const run = (s) => chat.webContents.executeJavaScript(s)
   await until(() => run("!!document.querySelector('input[name=name]')"))
   await run("(() => { const i = document.querySelector('input[name=name]'); i.value = 'Scroll'; i.form.requestSubmit(); return 0 })()")
@@ -570,6 +657,7 @@ async function checkChat (win, views, out, tmp) {
   const list = "document.querySelector('main div[style*=overflow]')"
   const box = "document.querySelector('textarea[name=text]')"
   let shown = 0
+  /** @param {number} lines */
   const say = async (lines) => {
     await run(`window.hyper.instance(new URLSearchParams(location.search).get('instance')).put('message', { text: ${JSON.stringify('line\n'.repeat(lines))} }).then(() => 0)`)
     return until(async () => (await run(`${list}.children.length`)) === shown + 1).then((ok) => { shown++; return ok })
@@ -590,21 +678,25 @@ async function checkChat (win, views, out, tmp) {
   return { key, view: chat }
 }
 
+/** @param {() => Promise<unknown>} f */
 const waitFor = async (f, ms = 60000) => { for (const end = Date.now() + ms; Date.now() < end; await wait(250)) if (await f().catch(() => false)) return true; return false }
 
 // Ann: a second engine in this process, on the self-test's own DHT.
+/** @param {{ key: string, view: SiteView }} chat @param {Check[]} out @param {string} tmp */
 async function checkChatLine ({ key, view }, out, tmp) {
+  /** @type {Pass} */
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const { start } = await import('../engine/index.js')
   const [x, y] = pair()
   start(x)
   const ann = connect(y, {})
   try {
-    await ann.request('init', { dir: path.join(tmp, 'ann'), bootstrap: testnet.bootstrap })
+    await ann.request('init', { dir: path.join(tmp, 'ann'), bootstrap: /** @type {NonNullable<typeof testnet>} */ (testnet).bootstrap })
     await ann.request('site.open', { key, timeout: 60000 })
     await ann.request('site.consent', { key, allow: true })
+    /** @param {Rpc} e @param {string} method @param {unknown[]} [args] @param {string | null} [instance] */
     const as = (e, method, args = [], instance = null) => e.request('site.call', { key, instance, method, args })
-    for (const [e, name] of [[rpc, 'Bob'], [ann, 'Ann']]) {
+    for (const [e, name] of /** @type {Array<[Rpc, string]>} */ ([[rpc, 'Bob'], [ann, 'Ann']])) {
       await e.request('apps.set', { chat: key })
       await e.request('site.permit', { key, permission: 'contacts', allow: true })
       await e.request('site.permit', { key, permission: 'notifications', allow: true })
@@ -612,13 +704,15 @@ async function checkChatLine ({ key, view }, out, tmp) {
     }
     const annId = (await as(ann, 'info')).identity
     await as(rpc, 'contacts.add', [(await as(ann, 'contacts.link')).link])
+    /** @type {string | null} */
     let direct = null
-    await waitFor(async () => (direct = (await as(rpc, 'contacts.list')).find((c) => c.identity === annId && c.state === 'friend')?.chat))
+    await waitFor(async () => (direct = (await as(rpc, 'contacts.list')).find((/** @type {{ identity: string, state: string }} */ c) => c.identity === annId && c.state === 'friend')?.chat))
     const group = (await as(ann, 'instances.create', ['Line', { private: true }])).key
     await as(rpc, 'instances.join', [await as(ann, 'createInvite', [{ role: 'member' }], group)])
+    /** @param {string} s */
     const run = (s) => view.webContents.executeJavaScript(s)
     const list = "document.querySelector('main div[style*=overflow]')"
-    for (const [kind, place] of [['a group', group], ['a direct conversation', direct]]) {
+    for (const [kind, place] of /** @type {Array<[string, string | null]>} */ ([['a group', group], ['a direct conversation', direct]])) {
       if (!place) { pass(`chat: ${kind}: there`, false); continue }
       const count = async () => (await as(rpc, 'notifications.unread'))[place]?.count ?? -1
       await wait(3000) // the engine's first look at a place just joined: what was there is history
@@ -646,12 +740,12 @@ async function checkChatLine ({ key, view }, out, tmp) {
     const { link } = await ann.request('circles.invite', { key: ring.key })
     const before = (await rpc.request('hosting')).sites
     const said = await run(`window.hyper.instances.join(${JSON.stringify(link)}).then(() => 'joined', (e) => e.code)`)
-    pass("circles: a page's instances.join of a circle link leaves the person out of it", said === 'NOT_ALLOWED' && (await rpc.request('hosting')).sites === before && !(await rpc.request('circles.list')).some((c) => c.key === ring.key))
+    pass("circles: a page's instances.join of a circle link leaves the person out of it", said === 'NOT_ALLOWED' && (await rpc.request('hosting')).sites === before && !(await rpc.request('circles.list')).some((/** @type {{ key: string }} */ c) => c.key === ring.key))
     await as(ann, 'contacts.inviteToCircle', [(await as(rpc, 'contacts.me')).identity, ring.key])
     await run(`location.search = '?instance=${direct}'; 0`)
     const button = "[...document.querySelectorAll('main button')].find((b) => b.textContent.startsWith('Accept Ann\\'s invitation to ') && b.textContent.includes('Ann only'))"
     const shown = await waitFor(() => run(`!!${button}`), 30000)
-    const asked = shown && await view.webContents.executeJavaScript(`${button}.click(); 0`, true).then(() => waitFor(async () => !(await rpc.request('circles.list')).some((c) => c.key === ring.key), 3000))
+    const asked = shown && await view.webContents.executeJavaScript(`${button}.click(); 0`, true).then(() => waitFor(async () => !(await rpc.request('circles.list')).some((/** @type {{ key: string }} */ c) => c.key === ring.key), 3000))
     pass("chat: a circle's invite shows Accept Ann's invitation; its click asks HyperBrowser, nothing joined on Not now", shown && asked)
   } finally {
     await ann.request('close').catch(() => {})
@@ -659,6 +753,7 @@ async function checkChatLine ({ key, view }, out, tmp) {
 }
 
 // Every element's box before and after opening, except the menu's own content.
+/** @param {(s: string) => Promise<any>} run @param {string} menu @param {string} open */
 async function moves (run, menu, open) {
   const places = `((m) => [...document.body.querySelectorAll('*')].filter((e) => !(m.contains(e) && !e.matches('summary, [aria-haspopup]'))).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join() }).join('|'))(${menu})`
   await run('document.fonts.ready.then(() => 0)') // the theme's font loading late moved text (a false "moved")
@@ -668,8 +763,11 @@ async function moves (run, menu, open) {
   return before !== await run(places)
 }
 
+/** @param {BaseWindowT} win @param {SiteView[]} views @param {Check[]} out @param {string} tmp @param {{ key: string, view: SiteView }} chat */
 async function checkMenus (win, views, out, tmp, chat) {
+  /** @type {Pass} */
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
+  /** @param {string} name */
   const page = async (name, query = '') => {
     const folder = path.join(tmp, name)
     fs.cpSync(path.join(HERE, '..', 'sites', name), folder, { recursive: true })
@@ -678,7 +776,7 @@ async function checkMenus (win, views, out, tmp, chat) {
     views.push(v)
     win.contentView.addChildView(v.view)
     v.view.setBounds({ x: 0, y: 0, width: 700, height: 800 })
-    return { key, v, run: (s) => v.webContents.executeJavaScript(s) }
+    return { key, v, run: (/** @type {string} */ s) => v.webContents.executeJavaScript(s) }
   }
   const contacts = await page('contacts')
   const run = contacts.run
@@ -696,7 +794,7 @@ async function checkMenus (win, views, out, tmp, chat) {
   pass('contacts: a click outside closes it', await run(`!${friend}.querySelector('[role=menu]')`))
 
   const msg = "document.querySelector('summary[aria-label=\"Message actions\"]').parentElement"
-  pass('chat: a message\'s "…" opens without moving anything', await chat.view.webContents.executeJavaScript(`!!${msg}`) && !(await moves((s) => chat.view.webContents.executeJavaScript(s), msg, `${msg}.querySelector('summary').click()`)))
+  pass('chat: a message\'s "…" opens without moving anything', await chat.view.webContents.executeJavaScript(`!!${msg}`) && !(await moves((/** @type {string} */ s) => chat.view.webContents.executeJavaScript(s), msg, `${msg}.querySelector('summary').click()`)))
 
   const forum = await page('forum')
   await waitFor(() => forum.run("!!document.querySelector('.desk')"), 30000)
@@ -705,6 +803,7 @@ async function checkMenus (win, views, out, tmp, chat) {
   const fm = "document.querySelector('details.menu')"
   const shown = await waitFor(() => forum.run(`!!${fm}`), 30000)
   pass('forum: a forum\'s "…" opens without moving anything', shown && !(await moves(forum.run, fm, `${fm}.querySelector('summary').click()`)))
+  /** @param {string} label */
   const button = (label) => `[...document.querySelectorAll('details.menu button')].find((b) => b.textContent === ${JSON.stringify(label)})`
   const both = await waitFor(() => forum.run(`!!${button('Secure this place…')} && !!${button('Trim history…')}`), 20000)
   pass('forum: its owner\'s "…" has Secure this place… and Trim history…', both)
@@ -716,7 +815,9 @@ async function checkMenus (win, views, out, tmp, chat) {
 }
 
 // Prints PERF lines that perf/ide.mjs records: start, the editor's load, memory, a preview's reload.
+/** @param {BaseWindowT} win @param {SiteView[]} views @param {Check[]} out @param {string} tmp @param {{ key: string, view: SiteView }} chat */
 async function checkIde (win, views, out, tmp, chat) {
+  /** @type {Pass} */
   const pass = (name, ok) => out.push({ site: 'shell', name, pass: !!ok })
   const folder = path.join(tmp, 'ide')
   fs.cpSync(path.join(HERE, '..', 'sites', 'ide'), folder, { recursive: true })
@@ -726,16 +827,19 @@ async function checkIde (win, views, out, tmp, chat) {
   views.push(v)
   win.contentView.addChildView(v.view)
   v.view.setBounds({ x: 0, y: 0, width: 900, height: 800 })
+  /** @param {string} s */
   const run = (s) => v.webContents.executeJavaScript(s, true)
   const started = await waitFor(() => run("document.querySelector('h1')?.textContent === 'Hyper IDE' && !!document.querySelector('form')"), 30000)
   const start = performance.now() - t0
   pass('ide: it opens (its projects asked for once)', started)
+  /** @param {string} sel */
   const inside = (sel) => `(() => { const r = document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect(); return !!r && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight })()`
   await run("document.querySelector('[data-menu=home] > button').click(); 0")
   const homeMenu = await waitFor(() => run(inside('[data-menu=home] [role=menu]')), 3000)
   await run("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); 0")
   pass('ide: the home page\'s "…" menu is inside the window', homeMenu)
   const memory = () => (app.getAppMetrics().find((m) => m.pid === v.webContents.getOSProcessId())?.memory.workingSetSize || 0) / 1024 // MB
+  /** @param {string} label */
   const button = (label) => `[...document.querySelectorAll('button')].find((b) => b.textContent === ${JSON.stringify(label)})`
   await run("(() => { const f = document.querySelector('form'); f.name.value = 'Self-test site'; f.kind.value = 'hypermd'; f.requestSubmit(); return 0 })()")
   const made = await waitFor(() => run("document.querySelector('nav[aria-label=Pages]')?.textContent.includes('Self-test site')"), 30000)
@@ -755,6 +859,7 @@ async function checkIde (win, views, out, tmp, chat) {
     return t.right <= nav.right + 0.5 && box.right <= main.right + 0.5 && box.right <= innerWidth && nav.right <= innerWidth && document.scrollingElement.scrollWidth <= innerWidth &&
       b.scrollWidth <= b.clientWidth && b.scrollHeight <= b.clientHeight // the box itself never scrolls: its text area does
   })()`
+  /** @type {number[]} */
   const pageEdges = []
   for (const width of [1400, 770]) {
     v.view.setBounds({ x: 0, y: 0, width, height: 700 })
@@ -778,6 +883,7 @@ async function checkIde (win, views, out, tmp, chat) {
   const before = memory()
   const t1 = performance.now()
   await run(`${button('Show the files')}.click(); 0`)
+  /** @param {string} p */
   const item = (p) => `document.querySelector('[role=treeitem][data-path=${JSON.stringify(p)}]')`
   await waitFor(() => run(`!!${item('index.hmd')}`), 5000)
   await run(`${item('index.hmd')}.click(); 0`)
@@ -791,6 +897,7 @@ async function checkIde (win, views, out, tmp, chat) {
     const fit = (e) => !!e && e.scrollWidth <= e.clientWidth
     return [fit(nav), fit(box), fit(sc)].join()
   })()`
+  /** @type {string[]} */
   const loose = []
   for (const width of [1400, 770]) {
     v.view.setBounds({ x: 0, y: 0, width, height: 700 })
@@ -855,6 +962,7 @@ async function checkIde (win, views, out, tmp, chat) {
     const ok = Math.abs(b.right - right) <= 2 && Math.abs(c.width - box.clientWidth) <= 2 && Math.abs(c.height - box.clientHeight) <= 2
     return ok ? 'ok' : JSON.stringify({ box: [b.left, b.right], right, cm: [c.width, c.height], inner: [box.clientWidth, box.clientHeight] })
   })()`
+  /** @type {string[]} */
   const fills = []
   for (const shown of [true, false]) {
     if (!shown) await run(`${button('Hide file explorer')}.click(); 0`)
@@ -871,6 +979,7 @@ async function checkIde (win, views, out, tmp, chat) {
   await waitFor(() => run(`!!${item('long.js')}`), 10000)
   await run(`${item('long.js')}.click(); 0`)
   await waitFor(() => run("document.querySelector('#editor')?.shadowRoot?.querySelector('.cm-content')?.textContent.length > 2000"), 10000)
+  /** @type {string[]} */
   const codeEdges = []
   for (const width of [1400, 770]) {
     v.view.setBounds({ x: 0, y: 0, width, height: 700 })
@@ -882,6 +991,7 @@ async function checkIde (win, views, out, tmp, chat) {
   pass('ide: a long line scrolls inside the editor, its right border inside the window (1400, 770px)' + (codeEdges.length ? ' (' + codeEdges.join('; ') + ')' : ''), !codeEdges.length)
   pass('ide: buttons keep their shadow\'s room (2px right and below)', await run("(() => { const c = getComputedStyle(document.querySelector('button')); return c.marginRight === '2px' && c.marginBottom === '2px' })()"))
   const sizes = [[1400, 800], [1000, 700], [700, 500], [480, 360]]
+  /** @param {SiteView} v */
   const fitsAll = async (v) => {
     for (const [width, height] of sizes) {
       v.view.setBounds({ x: 0, y: 0, width, height })
@@ -898,6 +1008,7 @@ async function checkIde (win, views, out, tmp, chat) {
   const chatStuck = await fitsAll(c)
   pass('chat: no page scrollbar at those sizes' + (chatStuck ? ' (scrolls at ' + chatStuck + ')' : ''), !chatStuck)
   c.view.setBounds({ x: 0, y: 0, width: 700, height: 500 })
+  /** @param {string} js */
   const crun = (js) => c.webContents.executeJavaScript(js, true)
   const link = 'hg:' + 'x'.repeat(297)
   await crun(`(() => { const t = document.querySelector('textarea[name=text]'); t.value = ${JSON.stringify(link)}; t.closest('form').requestSubmit(); return 0 })()`)
@@ -910,6 +1021,7 @@ async function checkIde (win, views, out, tmp, chat) {
   const f = await openSite(fkey)
   views.push(f)
   win.contentView.addChildView(f.view)
+  /** @param {string} s */
   const frun = (s) => f.webContents.executeJavaScript(s)
   await waitFor(() => frun("!!document.querySelector('.desk')"), 30000)
   const fit = await frun("window.hyper.instances.create('Fit', { private: true }).then((i) => i.key, (e) => 'error ' + e.code)")
@@ -923,11 +1035,13 @@ async function checkIde (win, views, out, tmp, chat) {
   views.push(pv)
   await waitFor(() => pv.webContents.executeJavaScript("document.readyState === 'complete'"), 15000)
   const t2 = performance.now()
-  const loaded = new Promise((resolve) => pv.webContents.once('did-finish-load', resolve))
+  /** @type {Promise<void>} */
+  const loaded = new Promise((resolve) => pv.webContents.once('did-finish-load', /** @type {() => void} */ (resolve)))
   pv.webContents.reload()
   await loaded
   const reload = performance.now() - t2
   pass('ide: the preview shows the project', await pv.webContents.executeJavaScript("document.body.innerText.includes('Self-test site')"))
+  /** @param {number} x */
   const ms = (x) => Math.round(x)
   console.log(`PERF ide.start ${ms(start)} ms`)
   console.log(`PERF ide.editor ${ms(editorLoad)} ms`)
@@ -936,18 +1050,29 @@ async function checkIde (win, views, out, tmp, chat) {
   console.log(`PERF ide.preview.reload ${ms(reload)} ms`)
 }
 
+/**
+ * @param {BaseWindowT} win
+ * @param {Frame['inspect']} inspect
+ * @param {Frame['dock']} dock
+ * @param {Frame['undock']} undock
+ * @param {string} key
+ * @param {string} file
+ * @returns {Promise<Array<[string, boolean]>>}
+ */
 async function checkSplit (win, inspect, dock, undock, key, file) {
+  /** @type {Array<[string, boolean]>} */
   const out = []
-  const wc = inspect().wcs.find((w) => w.getURL().startsWith('hyper://' + key))
+  const wc = /** @type {WebContents} */ (inspect().wcs.find((w) => w.getURL().startsWith('hyper://' + key)))
   dock(wc, key)
-  await waitFor(async () => !!inspect().side && !!inspect().handle && !inspect().handle.webContents.isLoading(), 15000)
+  await waitFor(async () => !!inspect().side && !!inspect().handle && !(/** @type {import('electron').WebContentsView} */ (inspect().handle)).webContents.isLoading(), 15000)
   await wait(300)
   const { width } = win.getContentBounds()
+  /** @param {ReturnType<Frame['inspect']>} i */
   const meet = (i) => !!i.side && i.views[0].width === i.side.x && i.side.x + i.side.width === width && i.views[0].y === i.side.y
   let i = inspect()
   out.push(['spec 027: the preview docks beside the site, the two meeting at the line (55% at first)', meet(i) && Math.abs(i.views[0].width - Math.round(width * 0.55)) <= 1])
-  const h = i.handle.webContents
-  const hb = i.handle.getBounds()
+  const h = /** @type {import('electron').WebContentsView} */ (i.handle).webContents // docked: waited for above
+  const hb = /** @type {import('electron').WebContentsView} */ (i.handle).getBounds()
   out.push(["the line's handle: a 6px strip over the line, a focusable separator", hb.width === 6 && hb.x === i.views[0].width - 3 &&
     await h.executeJavaScript("document.getElementById('h').tabIndex === 0 && document.getElementById('h').getAttribute('role') === 'separator'")])
   const before = i.views[0].width
@@ -960,8 +1085,9 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
   await wait(300)
   i = inspect()
   out.push(['the arrow keys move the line (24px a step)', i.views[0].width === before - 48 && meet(i)])
+  /** @param {number} x */
   const drag = async (x) => {
-    const at = i.handle.getBounds().width === 6 ? 3 : i.views[0].width
+    const at = /** @type {import('electron').WebContentsView} */ (i.handle).getBounds().width === 6 ? 3 : i.views[0].width
     h.sendInputEvent({ type: 'mouseDown', x: at, y: 100, button: 'left', clickCount: 1 })
     await wait(250)
     h.sendInputEvent({ type: 'mouseMove', x, y: 100, button: 'left' })
@@ -971,7 +1097,7 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
     i = inspect()
   }
   await drag(400)
-  out.push(['a drag moves the line (to 400px); the handle a strip again after it', Math.abs(i.views[0].width - 400) <= 1 && meet(i) && i.handle.getBounds().width === 6])
+  out.push(['a drag moves the line (to 400px); the handle a strip again after it', Math.abs(i.views[0].width - 400) <= 1 && meet(i) && /** @type {import('electron').WebContentsView} */ (i.handle).getBounds().width === 6])
   await drag(10)
   out.push(['each side keeps at least 240px', i.views[0].width === 240 && meet(i)])
   const saved = JSON.parse(fs.readFileSync(file, 'utf-8')).settings.split
@@ -986,7 +1112,9 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
   await wc.executeJavaScript("(() => { const t = document.createElement('textarea'); t.id = 'typing'; document.body.append(t); t.focus(); return 0 })()")
   win.focus()
   wc.focus()
+  /** @param {string} text */
   const type = (text) => { for (const c of text) { wc.sendInputEvent({ type: 'keyDown', keyCode: c }); wc.sendInputEvent({ type: 'char', keyCode: c }); wc.sendInputEvent({ type: 'keyUp', keyCode: c }) } }
+  /** @type {boolean[]} */
   const kept = []
   type('abc')
   for (const more of ['def', 'ghi', 'jkl']) {
@@ -1003,8 +1131,10 @@ async function checkSplit (win, inspect, dock, undock, key, file) {
   return out
 }
 
+/** @param {Frame['inspect']} inspect */
 const tabOfSide = (inspect) => inspect().sideWc
 
+/** @param {string} dir */
 async function framecheck (dir) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-framecheck-'))
   fs.cpSync(path.join(HERE, '..', 'sites', 'demo'), path.join(tmp, 'site'), { recursive: true })
@@ -1024,7 +1154,7 @@ async function framecheck (dir) {
     return { top: region('#top'), clickable: ['#tabs', '#plus', '#hb', '#w-min', '#w-max', '#w-close'].map(region), bars: document.getElementById('bars').offsetHeight,
       glyphs: paths.length === document.querySelectorAll('[data-g]').length && paths.every((p) => p.getAttribute('d')), plus: document.querySelector('#plus path').getAttribute('d') }
   })()`)
-  const site = await openSiteOf(key).executeJavaScript('typeof window.frame')
+  const site = await /** @type {WebContents} */ (openSiteOf(key)).executeJavaScript('typeof window.frame')
   await i.fwc.executeJavaScript("document.getElementById('hb').click(); document.getElementById('m-config').click(); document.getElementById('cf-devices').click()")
   const listed = await until(() => i.fwc.executeJavaScript("document.querySelectorAll('#dv-list li').length === 1 && document.querySelector('#dv-list li').textContent.includes('(this computer)')"))
   await i.fwc.executeJavaScript("document.getElementById('dv-add').click()")
@@ -1038,11 +1168,12 @@ async function framecheck (dir) {
   clearTimeout(timeout)
   const b = win.getBounds()
   const c = win.getContentBounds()
+  /** @type {Array<[string, boolean]>} */
   const out = [
     ['no app menu (no File, Edit, View)', Menu.getApplicationMenu() === null],
     ['no OS frame: the window is all content', b.width === c.width && b.height === c.height],
     ['the taskbar row drags the window', css.top === 'drag'],
-    ['tabs, +, the menu and the window buttons stay clickable', css.clickable.every((r) => r === 'no-drag')],
+    ['tabs, +, the menu and the window buttons stay clickable', css.clickable.every((/** @type {string} */ r) => r === 'no-drag')],
     ['the site view starts right under the bars', i.views.length === 1 && i.views[0].y === i.bars && i.bars >= css.bars],
     ['over a site, the frame covers the bars only', i.frame.height === i.bars],
     ["a site's page has no door to the frame", site === 'undefined'],
@@ -1063,7 +1194,9 @@ async function framecheck (dir) {
   app.exit(ok ? 0 : 1)
 }
 
+/** @param {WebContents} fwc @returns {Promise<Array<[string, boolean]>>} */
 async function checkCirclesWindow (fwc) {
+  /** @param {string} s */
   const js = (s) => fwc.executeJavaScript(s)
   await js("document.getElementById('dv-close').click(); document.getElementById('hb').click(); document.getElementById('m-config').click()")
   const section = await until(() => js("document.getElementById('cf-held').textContent === 'You hold 0 GB of 1 GB (off)' && document.querySelector('[data-hold=\"off\"]').getAttribute('aria-pressed') === 'true' && document.getElementById('cf-share').value === '1'"))
@@ -1098,8 +1231,11 @@ async function checkCirclesWindow (fwc) {
   ]
 }
 
+/** @param {WebContents} fwc @param {string} key @returns {Promise<Array<[string, boolean]>>} */
 async function checkNames (fwc, key) {
+  /** @param {string} s */
   const js = (s) => fwc.executeJavaScript(s)
+  /** @param {string} text */
   const type = (text) => js(`(() => { const a = document.getElementById('address'); a.focus(); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })) })()`)
   await type('hyper://demo@frame')
   const lookingUp = await until(() => js("document.getElementById('panel-text').textContent === 'Looking up demo@frame …'"))
@@ -1116,13 +1252,21 @@ async function checkNames (fwc, key) {
   ]
 }
 
-const SCRIPT = { chat: PRESET.find((p) => p.id === 'preset:chat').key, forum: PRESET.find((p) => p.id === 'preset:forum').key, a: 'y'.repeat(52), b: 'b'.repeat(52) }
+const SCRIPT = { chat: /** @type {string} */ (/** @type {import('./model.js').Icon} */ (PRESET.find((p) => p.id === 'preset:chat')).key), forum: /** @type {string} */ (/** @type {import('./model.js').Icon} */ (PRESET.find((p) => p.id === 'preset:forum')).key), a: 'y'.repeat(52), b: 'b'.repeat(52) }
+/**
+ * An engine whose notify.* calls and one name are scripted; the rest goes to the real engine.
+ * @param {string} site
+ */
 function scripted (site) {
+  /** @type {Array<[string, Record<string, any>]>} */
   const calls = []
+  /** @type {Set<string>} */
   const read = new Set()
+  /** @param {number} n @param {string} app @param {string} place @param {string} text */
   const item = (n, app, place, text) => ({ app, place, id: 'r' + n, type: 'message', author: 'o'.repeat(52), name: 'Ann', text, open: null, stamp: n, at: n })
   const items = [item(3, SCRIPT.chat, SCRIPT.a, 'third'), item(2, SCRIPT.forum, SCRIPT.b, 'mentioned you'), item(1, SCRIPT.chat, SCRIPT.a, 'first')]
   const state = () => {
+    /** @type {import('./ui/frame.js').Unread} */
     const unread = { total: 0, byApp: {}, byPlace: {} }
     for (const x of items) {
       if (read.has(x.place)) continue
@@ -1138,6 +1282,7 @@ function scripted (site) {
     }
   }
   const fake = {
+    /** @param {string} method @param {Record<string, any>} [params] @returns {Promise<any>} */
     request (method, params = {}) {
       if (method === 'names.resolve') { // one name of a scripted authority (the engine's own call has its test)
         calls.push([method, params])
@@ -1153,10 +1298,19 @@ function scripted (site) {
   return { fake, calls }
 }
 
+/**
+ * @param {WebContents} fwc
+ * @param {Frame['inspect']} inspect
+ * @param {Frame['notify']} notify
+ * @param {Array<[string, Record<string, any>]>} calls
+ * @returns {Promise<Array<[string, boolean]>>}
+ */
 async function checkNotes (fwc, inspect, notify, calls) {
+  /** @param {string} s */
   const js = (s) => fwc.executeJavaScript(s)
   await js("document.querySelector('#tabs .tab').click()")
   const counted = await until(() => js("document.getElementById('bell-n').textContent === '3'"))
+  /** @param {string} key */
   const badge = (key) => `([...document.querySelectorAll('#grid .icon')].find((b) => b.title.endsWith(${JSON.stringify(key)}))?.querySelector('.badge')?.textContent || '')`
   const icons = await until(async () => (await js(badge(SCRIPT.chat))) === '2' && (await js(badge(SCRIPT.forum))) === '1')
   await js("document.getElementById('bell').click()")
@@ -1173,13 +1327,14 @@ async function checkNotes (fwc, inspect, notify, calls) {
   const blocked = await until(async () => calls.some(([m, p]) => m === 'notify.set' && p.app === SCRIPT.chat && p.allow === false))
   await js("document.getElementById('cf-close').click()")
   const before = inspect().popups
-  await notify({ items: [{ app: SCRIPT.chat, place: SCRIPT.a, id: 'n1' }, { app: SCRIPT.chat, place: SCRIPT.a, id: 'n2' }, { app: SCRIPT.forum, place: SCRIPT.b, id: 'n3' }], summary: null })
+  // notes with the fields popups read
+  await notify({ items: /** @type {Note[]} */ ([{ app: SCRIPT.chat, place: SCRIPT.a, id: 'n1' }, { app: SCRIPT.chat, place: SCRIPT.a, id: 'n2' }, { app: SCRIPT.forum, place: SCRIPT.b, id: 'n3' }]), summary: null })
   const perPlace = inspect().popups - before
-  await notify({ items: [{ app: SCRIPT.chat, place: SCRIPT.a, id: 'n4' }], summary: { count: 500 } })
+  await notify({ items: /** @type {Note[]} */ ([{ app: SCRIPT.chat, place: SCRIPT.a, id: 'n4' }]), summary: { count: 500 } })
   const summary = inspect().popups - before - perPlace
   const popups = !Notification.isSupported() || (perPlace === 2 && summary === 1)
   const loud = inspect().popups
-  await notify({ items: [{ app: SCRIPT.forum, place: SCRIPT.b, id: 'n5', popup: false }], summary: null })
+  await notify({ items: /** @type {Note[]} */ ([{ app: SCRIPT.forum, place: SCRIPT.b, id: 'n5', popup: false }]), summary: null })
   const quiet = inspect().popups === loud
   return [
     ['notifications: the counter between the address bar and the peers says 3 (spec 016)', counted],
@@ -1196,9 +1351,13 @@ async function checkNotes (fwc, inspect, notify, calls) {
 }
 
 // test:sandbox checks the process really ends: 'quit' (to the tray, launched again, then Quit) or 'off' (setting off, window closed).
+/** @param {Frame} frame @param {string} mode */
 async function traycheck ({ win, inspect, show }, mode) {
+  /** @param {string} name @param {unknown} pass */
   const ok = (name, pass) => console.log((pass ? 'PASS ' : 'FAIL ') + 'tray  ' + name)
+  /** @param {number} ms */
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  /** @param {() => unknown} f */
   const until = async (f, ms = 30000) => {
     for (const end = Date.now() + ms; Date.now() < end; await wait(100)) if (await f()) return true
     return false
@@ -1211,7 +1370,7 @@ async function traycheck ({ win, inspect, show }, mode) {
     ok('closing the window hides it; HyperBrowser keeps running', await until(() => !win.isVisible()) && !win.isDestroyed())
     await wait(HEARTBEAT * 2)
     ok('the engine still answers, past its heartbeat', await rpc.request('ping').catch(() => false))
-    ok('the tray says how many sites it hosts', await until(() => /^hosting \d+ sites?$/.test(inspect().tray.status())))
+    ok('the tray says how many sites it hosts', await until(() => /^hosting \d+ sites?$/.test(/** @type {NonNullable<ReturnType<Frame['inspect']>['tray']>} */ (inspect().tray).status())))
     ok('the first time: the notice', inspect().notices === 1 && inspect().settings.trayNoticed === true)
     show()
     win.close()
@@ -1219,7 +1378,8 @@ async function traycheck ({ win, inspect, show }, mode) {
     console.log('TRAYCHECK WAITING') // the test launches HyperBrowser again, on the same data folder
     ok('a second launch shows this window', await until(() => win.isVisible(), 60000))
     console.log('TRAYCHECK QUIT')
-    inspect().tray.item('Quit').click()
+    const quit = /** @type {import('electron').MenuItem} */ (/** @type {NonNullable<ReturnType<Frame['inspect']>['tray']>} */ (inspect().tray).item('Quit'))
+    quit.click()
   } else {
     ok('the notice was remembered: not shown again', inspect().settings.trayNoticed === true && inspect().notices === 0)
     await fwc.executeJavaScript("document.getElementById('hb').click(); document.getElementById('m-config').click(); document.querySelector('[data-tray=\"off\"]').click()")
@@ -1245,8 +1405,8 @@ function startUpdates () {
   updater = PearRuntime.run(fileURLToPath(new URL('./updater.js', import.meta.url)), args)
   let rest = ''
   updater.on('data', (d) => {
-    const lines = (rest + d).split('\n')
-    rest = lines.pop()
+    const lines = (rest + /** @type {Uint8Array} */ (d)).split('\n')
+    rest = /** @type {string} */ (lines.pop())
     for (const line of lines) {
       log('update: ' + line)
       if (!line.startsWith('ready ')) continue
@@ -1255,14 +1415,17 @@ function startUpdates () {
       incoming = folder.join(' ') || null
     }
   })
-  updater.stderr.on('data', (d) => log('updater: ' + String(d).trim()))
+  const stderr = /** @type {NonNullable<typeof updater.stderr>} */ (updater.stderr) // piped (the default)
+  stderr.on('data', (d) => log('updater: ' + String(d).trim()))
   updater.on('error', () => {})
 }
 
 // Windows can't replace the folder while HyperBrowser or its Bare workers run: a PowerShell step swaps it after the quit,
 // started through WMI so nothing that ends with HyperBrowser takes it along. If it never runs, the next launch updates again.
+/** @type {string | null} */
 let incoming = null
 let relaunch = false
+/** @param {string} s */
 const ps = (s) => "'" + s.replace(/'/g, "''") + "'"
 app.on('will-quit', () => {
   if (!incoming) return
@@ -1274,7 +1437,7 @@ app.on('will-quit', () => {
 $moved = $false
 for ($i = 0; $i -lt 120 -and -not $moved; $i++) { try { Rename-Item -LiteralPath ${ps(dir)} -NewName ${ps(path.basename(old))} -ErrorAction Stop; $moved = $true } catch { Start-Sleep -Milliseconds 500 } }
 if ($moved) {
-  try { Move-Item -LiteralPath ${ps(incoming)} -Destination ${ps(dir)} -ErrorAction Stop; Remove-Item -LiteralPath ${ps(old)} -Recurse -Force }
+  try { Move-Item -LiteralPath ${ps(/** @type {string} */ (incoming))} -Destination ${ps(dir)} -ErrorAction Stop; Remove-Item -LiteralPath ${ps(old)} -Recurse -Force }
   catch { if (-not (Test-Path -LiteralPath ${ps(dir)})) { Rename-Item -LiteralPath ${ps(old)} -NewName ${ps(path.basename(dir))} } }
 }
 ${start}`
@@ -1288,12 +1451,14 @@ function restart () {
   if (process.platform === 'linux') app.relaunch({ execPath: process.env.APPIMAGE, args: ['--appimage-extract-and-run', ...args.filter((a) => a !== '--appimage-extract-and-run')] })
   else if (process.platform === 'win32') relaunch = true // started by the swap, after the quit
   else app.relaunch()
-  ui.win.destroy() // the tray's Quit path: window-all-closed, shutdown(), app.quit()
+  ui?.win.destroy() // the tray's Quit path: window-all-closed, shutdown(), app.quit()
 }
 
+/** @param {string} dir @param {object} [more] init's other params */
 async function startEngine (dir, more = {}) {
   worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
-  worker.stderr.on('data', (d) => process.stderr.write('engine: ' + d))
+  const stderr = /** @type {NonNullable<typeof worker.stderr>} */ (worker.stderr) // piped (the default)
+  stderr.on('data', (d) => process.stderr.write('engine: ' + /** @type {Uint8Array} */ (d)))
   const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
   const projects = SELFTEST || FRAMECHECK ? path.join(dir, 'projects') : path.join(app.getPath('documents'), 'HyperBrowser')
@@ -1303,16 +1468,19 @@ async function startEngine (dir, more = {}) {
 }
 
 // Not a restart: closing an engine seconds after a join can hang in hypergraph.
+/** @param {string} dir @param {string} code */
 async function join (dir, code) {
   const aside = dir + '-before-join-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
   await stopEngine()
   await move(dir, aside)
   let said = 'joined'
+  /** @type {string} */
   let identity
   try {
     ({ identity } = await startEngine(dir, { joinCode: code, joinTimeout: 60000 }))
     log("joined another device's identity " + identity + '; the one before is in ' + aside)
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Thrown} */ (e)
     said = err.message + ' (' + (err.code || 'ERROR') + ')'
     log('could not join: ' + said)
     await stopEngine()
@@ -1320,19 +1488,21 @@ async function join (dir, code) {
     await move(aside, dir)
     ;({ identity } = await startEngine(dir))
   }
-  ui.joined({ identity, said })
+  /** @type {Frame} */ (ui).joined({ identity, said }) // the frame asked for this join
 }
 
 // A rename that waits for a just-ended worker to let go of its files (Windows: EBUSY, EPERM for a moment).
+/** @param {string} from @param {string} to */
 async function move (from, to) {
   for (let i = 0; ; i++) {
     try { return fs.renameSync(from, to) } catch (err) {
-      if (i >= 40 || !['EBUSY', 'EPERM', 'EACCES'].includes(err.code)) throw err
+      if (i >= 40 || !['EBUSY', 'EPERM', 'EACCES'].includes(/** @type {string} */ (/** @type {NodeJS.ErrnoException} */ (err).code))) throw err
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
   }
 }
 
+/** @param {string} key */
 const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContents.fromId(id)).find(Boolean)
 
 app.whenReady().then(async () => {
@@ -1345,8 +1515,8 @@ app.whenReady().then(async () => {
   if (SELFTEST) return selftest(dir)
   if (FRAMECHECK) return framecheck(dir)
   if (!TRAYCHECK) startUpdates()
-  const engine = { request: (method, params) => rpc ? rpc.request(method, params) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' })) }
-  ui = startFrame({ rpc: engine, openSite, readIcon, readViewed, contacts: APPS.contacts, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open'), update: () => update, restart, join: (code) => join(dir, code).catch((err) => { log('join: ' + err.message); app.exit(1) }) })
+  const engine = { request: (/** @type {string} */ method, /** @type {object | undefined} */ params) => rpc ? rpc.request(method, params) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' })) }
+  ui = startFrame({ rpc: engine, openSite, readIcon, readViewed, contacts: APPS.contacts, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open'), update: () => update, restart, join: (code) => join(dir, code).catch((/** @type {Error} */ err) => { log('join: ' + err.message); app.exit(1) }) })
   if (TRAYCHECK) traycheck(ui, TRAYCHECK)
 }).catch((err) => { console.error(err); app.exit(1) })
 

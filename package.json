@@ -22,6 +22,7 @@
     "test": "node scripts/test-runner.js",
     "test:bare": "node scripts/test-runner.js --bare",
     "test:sandbox": "node test/sandbox.electron.js",
+    "typecheck": "tsc -p jsconfig.json && tsc -p shell/jsconfig.json && tsc -p shell/ui/jsconfig.json && tsc -p sites/jsconfig.json",
     "home:build": "node node_modules/hypermd/bin/hypermd.js build sites/home --out out/home",
     "home:publish": "npm run home:build && node engine/cli.js publish out/home",
     "forum:publish": "node engine/cli.js publish sites/forum --instance HyperBrowser",
@@ -62,7 +63,8 @@
     "bare-url": "^2.5.5",
     "brittle": "^4.5.0",
     "electron": "^42.11.18",
-    "hypermd": "file:../HyperMD"
+    "hypermd": "file:../HyperMD",
+    "typescript": "~5.9.3"
   },
   "engines": {
     "bare": ">=1.27",

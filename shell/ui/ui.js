@@ -1,11 +1,24 @@
 // Built with DOM calls, never from HTML strings: titles come from sites.
 /* global frame */
 
+/**
+ * @typedef {import('./frame.js').FrameState} FrameState
+ * @typedef {import('./frame.js').TabView} TabView
+ * @typedef {import('./frame.js').Note} Note
+ * @typedef {import('./frame.js').Circle} Circle
+ * @typedef {import('./frame.js').CircleMember} CircleMember
+ * @typedef {import('../model.js').Icon} Icon
+ */
+
+/** @type {Record<string, { width: number, height: number, d: string }>} */
 let GLYPHS = {}
+/** @type {Record<string, string | undefined>} */
 const DARK_ACCENT = { '#1f4fd1': '#8fb0ff', '#c2410c': '#ff9a5c', '#0b7a52': '#4fd1a0' }
 const SVG = 'http://www.w3.org/2000/svg'
-const $ = (id) => document.getElementById(id)
+// every id ui.js asks for is in index.html
+const $ = /** @type {import('./frame.js').ById} */ (/** @type {unknown} */ ((/** @type {string} */ id) => document.getElementById(id)))
 
+/** @param {string} name */
 function glyph (name) {
   const g = GLYPHS[name] || GLYPHS.site || { width: 8, height: 8, d: '' }
   const svg = document.createElementNS(SVG, 'svg')
@@ -18,13 +31,22 @@ function glyph (name) {
   svg.append(p)
   return svg
 }
-function setGlyph (el, name) { el.replaceChildren(glyph(name)) }
+/** @param {Element | null} el @param {string} name */
+function setGlyph (el, name) { /** @type {Element} */ (el).replaceChildren(glyph(name)) }
+/**
+ * @template {keyof HTMLElementTagNameMap} K
+ * @param {K} tag
+ * @param {string} [cls]
+ * @param {string} [text]
+ * @returns {HTMLElementTagNameMap[K]}
+ */
 function el (tag, cls, text) {
   const e = document.createElement(tag)
   if (cls) e.className = cls
   if (text !== undefined) e.textContent = text
   return e
 }
+/** @param {string | null | undefined} src @param {string} name @returns {HTMLElement} */
 function picture (src, name) {
   if (!src) { const g = el('span', 'g'); g.append(glyph(name)); return g }
   const img = el('img')
@@ -34,16 +56,20 @@ function picture (src, name) {
   return img
 }
 
-let S = null
+let S = /** @type {FrameState} */ (/** @type {unknown} */ (null)) // set by the first state the shell sends
+/** @type {string | null} */
 let selected = null
+/** @type {string | null} */
 let note = null
+/** @param {string} op @param {object} [args] */
 const send = async (op, args) => {
   const r = await frame.send(op, args)
   if (r?.error) say(r.error.message)
   return r
 }
-const currentTab = () => S.tabs.find((t) => t.id === S.current)
+const currentTab = () => /** @type {TabView} */ (S.tabs.find((t) => t.id === S.current)) // the current tab is always listed
 
+/** @param {number} n */
 function size (n) {
   if (n < 1024) return n + ' B'
   const u = ['KB', 'MB', 'GB', 'TB']
@@ -52,10 +78,13 @@ function size (n) {
   return n.toFixed(n < 100 ? 1 : 0) + ' ' + u[i]
 }
 
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let saying
+/** @param {string} text */
 function say (text) {
   note = text
-  clearTimeout(say.t)
-  say.t = setTimeout(() => { note = null; render() }, 4000)
+  clearTimeout(saying)
+  saying = setTimeout(() => { note = null; render() }, 4000)
   render()
 }
 
@@ -64,6 +93,7 @@ function look () {
   document.documentElement.classList.toggle('dark', dark)
   const a = S.settings.accent
   // the frame is inverted in dark mode: give it the inverse of the light variant, so it shows that
+  /** @param {string} hex */
   const inv = (hex) => '#' + [1, 3, 5].map((i) => (255 - parseInt(hex.slice(i, i + 2), 16)).toString(16).padStart(2, '0')).join('')
   document.documentElement.style.setProperty('--accent', dark ? inv(DARK_ACCENT[a] || a) : a)
 }
@@ -152,7 +182,7 @@ function drawDesktop () {
     b.ondblclick = () => send('icon.open', { id: i.id })
     b.onkeydown = (e) => { if (e.key === 'Enter') send('icon.open', { id: i.id }) }
     b.oncontextmenu = (e) => { e.preventDefault(); selected = i.id; drawDesktop(); openCtx(i, e.clientX, e.clientY) }
-    b.ondragstart = (e) => { e.dataTransfer.setData('text/x-icon', i.id); e.dataTransfer.effectAllowed = 'move'; b.classList.add('dragging') }
+    b.ondragstart = (e) => { /** @type {DataTransfer} */ (e.dataTransfer).setData('text/x-icon', i.id); /** @type {DataTransfer} */ (e.dataTransfer).effectAllowed = 'move'; b.classList.add('dragging') }
     b.ondragend = () => b.classList.remove('dragging')
     li.append(b)
     return li
@@ -160,9 +190,9 @@ function drawDesktop () {
 }
 
 const grid = $('grid')
-$('desktop').ondragover = (e) => { if (e.dataTransfer.types.includes('text/x-icon')) e.preventDefault() }
+$('desktop').ondragover = (e) => { if (/** @type {DataTransfer} */ (e.dataTransfer).types.includes('text/x-icon')) e.preventDefault() }
 $('desktop').ondrop = (e) => {
-  const id = e.dataTransfer.getData('text/x-icon')
+  const id = /** @type {DataTransfer} */ (e.dataTransfer).getData('text/x-icon')
   if (!id) return
   e.preventDefault()
   const r = grid.getBoundingClientRect()
@@ -170,7 +200,9 @@ $('desktop').ondrop = (e) => {
 }
 $('desktop').onclick = (e) => { if (e.target === $('desktop') || e.target === grid) { selected = null; drawDesktop() } }
 
+/** @type {HTMLElement | null} */
 let menuOpen = null
+/** @param {HTMLElement} which @param {number} [x] @param {number} [y] */
 function showMenu (which, x, y) {
   closeMenus()
   menuOpen = which
@@ -178,7 +210,7 @@ function showMenu (which, x, y) {
   which.hidden = false
   if (x !== undefined) {
     which.style.left = Math.min(x, innerWidth - which.offsetWidth - 4) + 'px'
-    which.style.top = Math.min(y, innerHeight - which.offsetHeight - 4) + 'px'
+    which.style.top = Math.min(/** @type {number} */ (y), innerHeight - which.offsetHeight - 4) + 'px'
   }
   if (which === $('menu')) $('hb').setAttribute('aria-expanded', 'true')
   frame.send('cover', { full: true })
@@ -211,29 +243,33 @@ function drawMenu () {
     : [el('div', 'empty', 'Nothing installed yet')]))
   $('m-update').hidden = !S.update
   $('m-update').textContent = S.update ? 'Update ready (' + S.update + '): restart' : ''
-  for (const b of document.querySelectorAll('[data-theme]')) b.setAttribute('aria-pressed', String(b.dataset.theme === S.settings.theme))
-  for (const b of document.querySelectorAll('[data-tray]')) b.setAttribute('aria-pressed', String((b.dataset.tray === 'on') === S.settings.tray))
-  for (const b of document.querySelectorAll('[data-accent]')) {
+  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-theme]'))) b.setAttribute('aria-pressed', String(b.dataset.theme === S.settings.theme))
+  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-tray]'))) b.setAttribute('aria-pressed', String((b.dataset.tray === 'on') === S.settings.tray))
+  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-accent]'))) {
     b.setAttribute('aria-pressed', String(b.dataset.accent === S.settings.accent))
-    b.firstElementChild.style.background = b.dataset.accent
+    const swatch = /** @type {HTMLElement} */ (b.firstElementChild)
+    swatch.style.background = /** @type {string} */ (b.dataset.accent)
   }
 }
-for (const b of document.querySelectorAll('[data-theme]')) b.onclick = () => send('settings', { theme: b.dataset.theme })
-for (const b of document.querySelectorAll('[data-accent]')) b.onclick = () => send('settings', { accent: b.dataset.accent })
-for (const b of document.querySelectorAll('[data-tray]')) b.onclick = () => send('settings', { tray: b.dataset.tray === 'on' })
+for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-theme]'))) b.onclick = () => send('settings', { theme: b.dataset.theme })
+for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-accent]'))) b.onclick = () => send('settings', { accent: b.dataset.accent })
+for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-tray]'))) b.onclick = () => send('settings', { tray: b.dataset.tray === 'on' })
 $('m-open').onclick = () => { closeMenus(); toAddress() }
 $('m-config').onclick = () => { closeMenus(); openConfig() }
 $('m-update').onclick = () => { closeMenus(); send('restart') }
 $('m-about').onclick = () => { closeMenus(); say('HyperBrowser ' + S.version + ': sites live with their owner and their visitors.') }
 
+/** @type {Icon | null} */
 let ctxIcon = null
+/** @param {Icon} icon @param {number} x @param {number} y */
 function openCtx (icon, x, y) {
   ctxIcon = icon
-  $('ctx').querySelector('[data-act="kind"]').textContent = icon.kind === 'installed' ? 'Keep as a bookmark only' : 'Install (keep and seed)'
+  const kind = /** @type {Element} */ ($('ctx').querySelector('[data-act="kind"]'))
+  kind.textContent = icon.kind === 'installed' ? 'Keep as a bookmark only' : 'Install (keep and seed)'
   showMenu($('ctx'), x, y)
 }
 $('ctx').onclick = (e) => {
-  const act = e.target.dataset.act
+  const act = /** @type {HTMLElement} */ (e.target).dataset.act
   if (!act || !ctxIcon) return
   const id = ctxIcon.id
   closeMenus()
@@ -242,9 +278,13 @@ $('ctx').onclick = (e) => {
   if (act === 'remove') send('icon.remove', { id })
 }
 
+/** @param {number} n */
 const cap = (n) => n > 99 ? '99+' : String(n)
+/** @param {Icon} icon */
 const unreadOf = (icon) => !icon.key ? 0 : S.notes.unread.byPlace[icon.key] || S.notes.unread.byApp[icon.site || icon.key] || 0
+/** @param {string} app */
 const titleOf = (app) => S.notes.apps.find((a) => a.key === app)?.title || 'HyperBrowser'
+/** @param {Note} x */
 const placeName = (x) => S.notes.apps.find((a) => a.key === x.app)?.places.find((p) => p.key === x.place)?.name
 
 $('bell').onclick = () => menuOpen === $('notes') ? closeMenus() : (showMenu($('notes')), $('bell').setAttribute('aria-expanded', 'true'))
@@ -255,6 +295,7 @@ function drawNotes () {
   $('bell').classList.toggle('new', n > 0)
   $('bell').setAttribute('aria-label', n ? n + ' new notifications' : 'Notifications')
   if ($('notes').hidden) { $('bell').setAttribute('aria-expanded', 'false'); return }
+  /** @type {Map<string, Note>} */
   const rows = new Map()
   for (const x of S.notes.items) if (!rows.has(x.place)) rows.set(x.place, x)
   $('notes-list').replaceChildren(...(rows.size
@@ -284,6 +325,7 @@ $('cf-close').onclick = closeConfig
 $('cf-devices').onclick = () => { closeConfig(); openDevices() }
 $('cf-circles').onclick = () => { closeConfig(); openCircles() }
 
+/** @param {string} label @param {boolean} on @param {() => void} fn */
 function toggle (label, on, fn) {
   const b = el('button', 'choice', label)
   b.setAttribute('aria-pressed', String(on))
@@ -317,10 +359,14 @@ function drawConfig () {
   }))
 }
 
+/** @type {import('./frame.js').Devices | null} */
 let D = null
 const out = $('dv-out')
+/** @param {...(Node | string)} nodes */
 const show = (...nodes) => out.replaceChildren(...nodes)
+/** @param {string} text @param {string} [cls] */
 const line = (text, cls) => el('p', cls, text)
+/** @param {string} text @param {() => void} fn */
 function push (text, fn) {
   const b = el('button', 'push', text)
   b.onclick = fn
@@ -328,6 +374,7 @@ function push (text, fn) {
 }
 const password = () => $('dv-pass').value || undefined
 
+/** @param {string | null} [note] */
 function openDevices (note = null) {
   $('devices').hidden = false
   frame.send('cover', { full: true })
@@ -344,7 +391,7 @@ frame.onDevices(() => { if (!$('devices').hidden) devices() })
 async function devices () {
   const r = await frame.send('devices')
   if (r?.error) return
-  D = r.result
+  D = /** @type {import('./frame.js').Devices} */ (r.result)
   $('dv-note').hidden = !D.removed
   $('dv-note').textContent = 'This computer was removed from your identity: what it does no longer counts. Join with a code to use it again.'
   $('dv-pass-row').hidden = D.phrase !== 'protected'
@@ -391,6 +438,7 @@ $('dv-phrase').onclick = async () => {
   const r = await frame.send('devices.phrase', { password: password() })
   if (r?.error) return show(line(D?.phrase === 'protected' ? 'Type your password above first. (' + r.error.message + ')' : r.error.message))
   if (!r.result.words) return show(line('This computer no longer keeps the recovery phrase.'))
+  /** @type {HTMLElement[]} */
   const nodes = [line('Your recovery phrase: write these 24 words down. Anyone with them is you; adding or removing a device needs them.'), line(r.result.words, 'code')]
   if (D?.phrase === 'plain') {
     const box = el('input')
@@ -406,7 +454,9 @@ $('dv-phrase').onclick = async () => {
   show(...nodes)
 }
 
+/** @param {number} b */
 const gbs = (b) => (Math.round(b / 1e8) / 10) + ' GB' // hypergraph's GB: 1e9 bytes
+/** @type {import('./frame.js').Holding | null} */
 let H = null
 const holdOut = $('cf-hold-out')
 
@@ -414,12 +464,12 @@ const holdOut = $('cf-hold-out')
 async function drawHolding () {
   const r = await frame.send('holding.get')
   if (r?.error) return
-  H = r.result
-  for (const b of document.querySelectorAll('[data-hold]')) b.setAttribute('aria-pressed', String((b.dataset.hold === 'on') === H.on))
+  H = /** @type {import('./frame.js').Holding} */ (r.result)
+  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-hold]'))) b.setAttribute('aria-pressed', String((b.dataset.hold === 'on') === H.on))
   if (document.activeElement !== $('cf-share')) $('cf-share').value = String(Math.round(H.bytes / 1e8) / 10)
   $('cf-held').textContent = 'You hold ' + gbs(H.used) + ' of ' + gbs(H.bytes) + (H.on ? '' : ' (off)')
 }
-for (const b of document.querySelectorAll('[data-hold]')) {
+for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-hold]'))) {
   b.onclick = () => {
     if (!H || (b.dataset.hold === 'on') === H.on) return
     if (b.dataset.hold === 'on') return frame.send('holding.set', { on: true }).then(drawHolding)
@@ -432,7 +482,7 @@ $('cf-share-set').onclick = async () => {
   const r = await frame.send('share.check', { text: $('cf-share').value })
   if (r?.error) return holdOut.replaceChildren(line(r.error.message))
   const set = async () => {
-    const s = await frame.send('holding.set', { on: H.on, bytes: r.result.bytes })
+    const s = await frame.send('holding.set', { on: /** @type {import('./frame.js').Holding} */ (H).on, bytes: r.result.bytes })
     holdOut.replaceChildren(...(s?.error ? [line(s.error.message)] : []))
     drawHolding()
   }
@@ -442,10 +492,14 @@ $('cf-share-set').onclick = async () => {
 $('cf-share').onkeydown = (e) => { if (e.key === 'Enter') $('cf-share-set').click() }
 
 const clOut = $('cl-out')
+/** @param {...(Node | string)} nodes */
 const clShow = (...nodes) => clOut.replaceChildren(...nodes)
+/** @param {string} k */
 const short = (k) => k.slice(0, 6) + '…'
+/** @type {Array<string | null>} */
 const DECIDERS = ['owner', 'admin']
 
+/** @param {string | null} [note] */
 function openCircles (note = null) {
   $('circles').hidden = false
   frame.send('cover', { full: true })
@@ -463,6 +517,7 @@ frame.onCircles((d) => {
   if (!$('config').hidden) drawHolding()
 })
 
+/** @param {string} label @param {Array<[string, () => void]>} items */
 function more (label, items) {
   const d = el('details')
   const sum = el('summary', '', '…')
@@ -481,17 +536,17 @@ async function drawCircles () {
   const r = await frame.send('circles.list')
   if (r?.error) return
   $('cl-list').replaceChildren(...(r.result.length
-    ? r.result.map((c) => {
+    ? r.result.map((/** @type {Circle} */ c) => {
       const li = el('li')
       li.dataset.key = c.key
       const decides = DECIDERS.includes(c.role)
       li.append(el('span', 'grow', c.name || short(c.key)), el('span', 'dim', c.members + (c.members === 1 ? ' member, ' : ' members, ') + c.holders + ' holding'),
-        more('More for ' + (c.name || 'this circle'), [
+        more('More for ' + (c.name || 'this circle'), /** @type {Array<[string, () => void]>} */ ([
           ...(decides ? [['Copy invite link', () => invite(c)], ['Invite contacts…', () => inviteContacts(c)]] : []),
           ['Members', () => members(c)],
           ...(decides ? [['Rename', () => rename(c)]] : []),
           ['Leave', () => askLeave(c)]
-        ]))
+        ])))
       return li
     })
     : [el('li', 'dim', 'No circle yet')]))
@@ -527,9 +582,11 @@ $('cl-join').onclick = () => {
   box.focus()
 }
 
+/** @param {Circle} c */
 async function inviteContacts (c) {
   const r = await frame.send('circles.invitees', { key: c.key })
   if (r?.error) return clShow(line(r.error.message))
+  /** @type {Array<{ identity: string, name: string, in: boolean }>} */
   const rows = r.result
   if (!rows.length) return clShow(line('No friends yet: add some in Contacts'))
   const ul = el('ul', 'members')
@@ -552,6 +609,7 @@ async function inviteContacts (c) {
   }), push('Cancel', () => clShow()))
 }
 
+/** @param {Circle} c */
 async function invite (c) {
   const r = await frame.send('circles.invite', { key: c.key })
   if (r?.error) return clShow(line(r.error.message))
@@ -560,6 +618,7 @@ async function invite (c) {
     line(link, 'code'), push('Copy', () => navigator.clipboard.writeText(link).then(() => say('Invite link copied'), () => say('Select the link and copy it'))))
 }
 
+/** @param {Circle} c */
 function rename (c) {
   const box = el('input')
   box.value = c.name
@@ -574,12 +633,13 @@ function rename (c) {
 }
 
 // The owner leaving gets the forum's warning: the circle lives on; without an admin nobody can invite.
+/** @param {Circle} c */
 async function askLeave (c) {
   const name = '"' + (c.name || 'this circle') + '"'
   let text = 'Leave ' + name + '? Your computer stops keeping its people\'s copies, and they stop keeping yours.'
   if (c.role === 'owner') {
     const m = await frame.send('circles.members', { key: c.key })
-    const admins = (m?.result || []).filter((x) => x.role === 'admin' && !x.you).length
+    const admins = (m?.result || []).filter((/** @type {CircleMember} */ x) => x.role === 'admin' && !x.you).length
     text = 'You own ' + name + '. It lives on while its members keep it, ' + (admins
       ? 'and its ' + (admins === 1 ? 'admin' : admins + ' admins') + ' can still invite people.'
       : 'but nobody can invite people any more: make someone admin first (Members).') + ' Leave it?'
@@ -591,12 +651,13 @@ async function askLeave (c) {
   }), push('Cancel', () => clShow()))
 }
 
+/** @param {Circle} c */
 async function members (c) {
   const [r, l] = await Promise.all([frame.send('circles.members', { key: c.key }), frame.send('circles.list')])
   if (r?.error) return clShow(line(r.error.message))
   const decides = DECIDERS.includes(c.role)
   const ul = el('ul', 'members')
-  for (const m of r.result) {
+  for (const m of /** @type {CircleMember[]} */ (r.result)) {
     const who = m.name || short(m.identity)
     const li = el('li')
     const held = m.held
@@ -604,22 +665,23 @@ async function members (c) {
     if (held) nums.title = 'What they hold out of their share, across all their circles'
     li.append(el('span', 'grow', who + (m.you ? ' (you)' : '')), nums)
     if (decides && !m.you && m.role !== 'owner') {
-      li.append(more('More for ' + who, [
+      li.append(more('More for ' + who, /** @type {Array<[string, () => void]>} */ ([
         m.role === 'admin' ? ['Make member', () => setRole(c, m, 'member')] : ['Make admin', () => setRole(c, m, 'admin')],
         ['Remove', async () => {
           const x = await frame.send('circles.remove', { key: c.key, identity: m.identity })
           if (x?.error) return clShow(line(x.error.message))
           members(c)
         }]
-      ]))
+      ])))
     }
     ul.append(li)
   }
-  const total = l?.result?.find((x) => x.key === c.key)?.totalLine
+  const total = l?.result?.find((/** @type {Circle} */ x) => x.key === c.key)?.totalLine
   const room = total && line(total, 'dim')
   if (room) room.title = "Everyone's shares ÷ 5 copies; approximate: shares also serve other circles"
   clShow(line('Members of "' + (c.name || 'this circle') + '" (' + r.result.length + ' of 50):'), ul, ...(room ? [room] : []))
 }
+/** @param {Circle} c @param {CircleMember} m @param {string} role */
 async function setRole (c, m, role) {
   const x = await frame.send('circles.setRole', { key: c.key, identity: m.identity, role })
   if (x?.error) return clShow(line(x.error.message))
@@ -638,11 +700,11 @@ const addr = $('address')
 function toAddress () { addr.focus(); addr.select() }
 addr.onfocus = () => {
   const t = currentTab()
-  addr.value = t.id === 0 ? '' : t.name || t.key
+  addr.value = t.id === 0 ? '' : /** @type {string} */ (t.name || t.key)
   addr.select()
 }
 addr.onblur = () => render()
-addr.onkeydown = async (e) => {
+addr.onkeydown = async (/** @type {KeyboardEvent} */ e) => {
   if (e.key === 'Escape') { addr.blur(); return }
   if (e.key !== 'Enter') return
   const r = await send('open', { input: addr.value })
@@ -672,7 +734,7 @@ document.addEventListener('keydown', (e) => {
 // Tabs share the room left in the bar, each a whole number of pixels wide (crisp glyphs), at most 240.
 // shortcut: past ~35 tabs on a 1280 px window the last ones are cut off; a tab list menu if that matters.
 function sizeTabs () {
-  const tabs = $('tabs').children
+  const tabs = /** @type {HTMLCollectionOf<HTMLElement>} */ ($('tabs').children)
   if (!tabs.length) return
   const room = $('top').clientWidth - $('hb').offsetWidth - $('plus').offsetWidth - $('win').offsetWidth - 48
   const w = Math.max(24, Math.min(240, Math.floor(room / tabs.length)))
@@ -711,6 +773,6 @@ frame.onState((s) => {
 frame.onFocusAddress(toAddress)
 frame.send('glyphs').then((r) => {
   GLYPHS = r.result
-  for (const g of document.querySelectorAll('[data-g]')) setGlyph(g, g.dataset.g)
+  for (const g of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-g]'))) setGlyph(g, /** @type {string} */ (g.dataset.g))
   return frame.send('hello')
 }).then((r) => { S = r.result; render(); measure() })

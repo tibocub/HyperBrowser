@@ -3,29 +3,74 @@ import { summarize, sortThreads, tally, score, voteOf, nextVote, tree, visible, 
 import { render as renderText, toStored, toDraft, plain, shortKey } from './lib/text.js'
 import * as icon from './lib/icon.js'
 
-const app = document.getElementById('app')
+/**
+ * @typedef {Hyper.Record} R
+ * @typedef {import('./lib/forum.js').State} State
+ * @typedef {import('./lib/forum.js').News} News
+ * @typedef {import('./lib/forum.js').Person} Person
+ * @typedef {import('./lib/view.js').Tally} Tally
+ * @typedef {import('./lib/view.js').Summary} Summary
+ * @typedef {import('./lib/view.js').Row} Row
+ * @typedef {Awaited<ReturnType<Hyper.Site['instances']['list']>>[number]} Forum One of this app's instances.
+ * @typedef {Hyper.Follow & { id: string, popup: boolean }} Follow
+ * @typedef {{ name: string, public: boolean, link: string, error: string, busy: boolean }} JoinForm
+ * @typedef {object} Draft What is being typed in a form, kept across redraws.
+ * @property {string} text
+ * @property {string} title
+ * @property {{ [name: string]: string }} picks the mentions chosen: name -> key
+ * @property {number} [caret]
+ * @property {string} [draft]
+ * @property {string} [parent]
+ * @property {string} [order]
+ * @property {boolean} [touched]
+ * @typedef {{ on: string, count: number, reports: Array<{ id: string, by: string, reason: string, stamp: number }>, record?: R | null }} Report
+ */
+
+const app = /** @type {HTMLElement} */ (document.getElementById('app'))
 const at = new URLSearchParams(location.search).get('instance')
-const hyper = window.hyper && at ? window.hyper.instance(at) : null
+// in HyperBrowser only (start() checks): the forum shown, and the site API of the app itself
+const hyper = /** @type {Hyper.Place} */ (window.hyper && at ? window.hyper.instance(at) : null)
+const site = /** @type {Hyper.Site} */ (window.hyper)
+/** @type {Record<string, string>} */
 const SORT_LABELS = { activity: 'Activity', newest: 'Newest', top: 'Top', lively: 'Lively' }
 
-let f = null
-let me = null
+// set by start() before any draw
+let f = /** @type {ReturnType<typeof forum>} */ (/** @type {unknown} */ (null))
+let me = /** @type {Awaited<ReturnType<ReturnType<typeof forum>['me']>>} */ (/** @type {unknown} */ (null))
+/** @type {{ sort?: string, cursor?: News['cursor'], unread?: News['unread'], mentions?: number, panel?: string, [name: string]: unknown }} */
 let mine = {}
+/** @type {State} */
 let data = { complete: {}, boards: [], threads: [], comments: [], votes: [], profiles: [], avatars: [] }
+/** @type {Map<string, Person>} */
 let names = new Map()
 let peers = 0
 let notice = ''
 let title = 'Forum'
+/** @type {Record<string, Draft>} */
 const drafts = {}
+/**
+ * @type {{ folded: Set<string>, replyTo: string | null, editing: string | null, confirm: string | null,
+ *   invite: { link: string, uses: number } | null, members: Hyper.Member[] | null, reports: Report[] | null, hidden: R[] | null,
+ *   iconDraft: Uint8Array | null, joining: JoinForm | null, leaveWarning: string | null, forget: boolean, trimN: number,
+ *   trimUnit: string, suggest: string | null, suggested: Set<string | null>, menu?: string | null }}
+ */
 const ui = { folded: new Set(), replyTo: null, editing: null, confirm: null, invite: null, members: null, reports: null, hidden: null, iconDraft: null, joining: null, leaveWarning: null, forget: false, trimN: 6, trimUnit: 'months', suggest: null, suggested: new Set() }
+/** @type {Record<string, Set<string>>} the unread comments of each thread, when it was opened */
 const opened = {}
+/** @type {News} */
 let news = { cursor: null, unread: {} }
+/** @type {Forum[]} */
 let forums = []
+/** @type {{ [instance: string]: { count: number, dot: boolean } }} */
 let counts = {}
+/** @type {Follow[]} */
 let follows = []
 let collapsed = false
+/** @type {{ id: string | null, stop: Hyper.Unsubscribe | null, items: R[], complete: boolean, thread?: R, asked?: boolean, gone?: boolean }} */
 let threadView = { id: null, stop: null, items: [], complete: false }
+/** @type {{ items: R[], complete: boolean, seenAtOpen: number | null }} */
 let mentionView = { items: [], complete: false, seenAtOpen: null }
+/** @type {Record<string, { copies: Hyper.Copies | null, private: boolean, waiting: boolean }>} */
 const about = {}
 
 
@@ -71,13 +116,14 @@ async function start () {
   hyper.on('peers', (list) => { peers = Array.isArray(list) ? list.length : peers; schedule() })
   hyper.peers().then((list) => { peers = list.length; schedule() }, () => {})
   window.addEventListener('hashchange', () => { ui.replyTo = ui.editing = ui.confirm = ui.joining = null; enter(); schedule() })
-  window.hyper.notifications?.viewing(at).catch(() => {}) // this forum is shown here, so not notified
+  site.notifications?.viewing(at).catch(() => {}) // this forum is shown here, so not notified
   enter()
   schedule()
 }
 
 // What is new: since() by message numbers, never by dates.
 
+/** @type {ReturnType<typeof setTimeout> | null} */
 let catching = null
 function catchUpSoon () {
   clearTimeout(catching)
@@ -94,8 +140,8 @@ function catchUpSoon () {
 }
 
 async function panel () {
-  const root = window.hyper
-  const saved = (await root.mine.all().catch(() => ({}))).panel
+  const root = site
+  const saved = (await root.mine.all().catch(() => /** @type {{ [name: string]: unknown }} */ ({}))).panel
   collapsed = saved ? saved === 'collapsed' : innerWidth < 700 // narrow: collapsed unless chosen
   await loadForums()
   root.notifications?.on?.((u) => {
@@ -107,13 +153,13 @@ async function panel () {
 }
 
 async function loadForums () {
-  forums = await window.hyper.instances.list()
-  counts = (await window.hyper.notifications?.unread?.().catch(() => null)) || counts
+  forums = await site.instances.list()
+  counts = (await site.notifications?.unread?.().catch(() => null)) || counts
   schedule()
 }
 
 async function loadFollows () {
-  follows = (await window.hyper.notifications?.follows?.().catch(() => null)) || []
+  follows = (await site.notifications?.follows?.().catch(() => null)) || []
   schedule()
 }
 
@@ -122,10 +168,11 @@ function forumsColumn () {
     class: 'link fold-col',
     'aria-expanded': String(!collapsed),
     'aria-label': collapsed ? 'Show your forums' : 'Hide your forums',
-    onclick: () => { collapsed = !collapsed; schedule(); window.hyper.mine.set('panel', collapsed ? 'collapsed' : 'open').catch(() => {}) }
+    onclick: () => { collapsed = !collapsed; schedule(); site.mine.set('panel', collapsed ? 'collapsed' : 'open').catch(() => {}) }
   }, collapsed ? '»' : '«')
+  /** @param {Forum} i */
   const row = (i) => {
-    const c = counts[i.key] || {}
+    const c = /** @type {{ count?: number, dot?: boolean }} */ (counts[i.key] || {})
     const label = i.name || shortKey(i.key)
     return h('li', {},
       h('div', { class: 'forum-row' },
@@ -147,13 +194,15 @@ function forumsColumn () {
     h('button', { class: 'link add', 'aria-label': 'Join or make a forum', onclick: () => { ui.joining = { name: '', public: false, link: '', error: '', busy: false }; schedule() } }, collapsed ? '+' : '+ Join or make'))
 }
 
+/** @param {Forum} i */
 async function readAbout (i) {
-  const x = window.hyper.instance(i.key)
+  const x = site.instance(i.key)
   const [copies, info, st] = await Promise.all([x.copies().catch(() => null), x.info().catch(() => null), x.status().catch(() => null)])
   about[i.key] = { copies, private: !!info?.private, waiting: !!st?.warnings?.some((w) => w.code === 'RENEW_WAITING') }
   schedule()
 }
 
+/** @param {Forum} i */
 function aboutLines (i) {
   const a = about[i.key]
   const line = a?.copies && copiesLine(a.copies)
@@ -161,7 +210,7 @@ function aboutLines (i) {
     line ? h('p', { class: 'small copies' }, line.text) : null,
     line?.warn ? h('p', { class: 'small copies-warn', role: 'note' }, line.warn) : null,
     a?.private && i.role === 'owner'
-      ? h('p', { class: 'small' }, h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.instance(i.key).rotateKey(); notice = 'Key changed.' }) }, 'Change key'), ' ', CHANGE_KEY)
+      ? h('p', { class: 'small' }, h('button', { class: 'link', onclick: () => act(async () => { await site.instance(i.key).rotateKey(); notice = 'Key changed.' }) }, 'Change key'), ' ', CHANGE_KEY)
       : null,
     a?.private && ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'secure' + i.key; ui.forget = false; schedule() } }, 'Secure this place…') : null,
     ADMINS.has(i.role) ? h('button', { class: 'link', onclick: () => { ui.confirm = 'trim' + i.key; schedule() } }, 'Trim history…') : null,
@@ -169,6 +218,7 @@ function aboutLines (i) {
   ]
 }
 
+/** @param {Forum} i */
 function secureBox (i) {
   return h('div', { class: 'confirm-box small', role: 'alert' },
     h('p', {}, SECURE_TEXT),
@@ -177,6 +227,7 @@ function secureBox (i) {
     h('button', { class: 'link', onclick: () => secure(i) }, 'Secure'), h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'Cancel'))
 }
 
+/** @param {Forum} i */
 function trimBox (i) {
   return h('div', { class: 'confirm-box small', role: 'alert' },
     h('p', {}, 'Keep the last ',
@@ -186,33 +237,35 @@ function trimBox (i) {
     h('button', { class: 'link', onclick: () => trim(i) }, 'Trim'), h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'Cancel'))
 }
 
+/** @param {Forum} i */
 async function secure (i) {
   ui.confirm = null
   notice = 'Securing ' + (i.name || 'this forum') + '…'
   schedule()
   try {
-    const r = await window.hyper.instance(i.key).secure({ forget: ui.forget })
-    const st = await window.hyper.instance(r.key).status().catch(() => null)
+    const r = await site.instance(i.key).secure({ forget: ui.forget })
+    const st = await site.instance(r.key).status().catch(() => null)
     const waiting = !!st?.warnings?.some((w) => w.code === 'RENEW_WAITING')
     notice = 'Secured.' + (waiting ? ' ' + RENEW_WAITING : '')
     if (i.key === at) location.search = '?instance=' + r.key
     else await loadForums()
   } catch (err) {
-    notice = renewError(err, (k) => names.get(k)?.name || null)
+    notice = renewError(/** @type {Hyper.Failure} */ (err), (k) => names.get(k)?.name || null)
   }
   schedule()
 }
 
+/** @param {Forum} i */
 async function trim (i) {
   ui.confirm = null
   const before = trimBefore(ui.trimN, ui.trimUnit)
   notice = 'Trimming…'
   schedule()
   try {
-    await window.hyper.instance(i.key).trimHistory({ before })
+    await site.instance(i.key).trimHistory({ before })
     notice = 'Trimmed: posts from before ' + new Date(before).toLocaleDateString() + ' are deleted.'
   } catch (err) {
-    notice = renewError(err)
+    notice = renewError(/** @type {Hyper.Failure} */ (err))
   }
   schedule()
 }
@@ -227,17 +280,18 @@ async function suggestSecure () {
 
 function suggestion () {
   if (ui.suggest !== at) return null
-  const i = forums.find((x) => x.key === at) || { key: at, name: title, role: me.role }
+  const i = forums.find((x) => x.key === at) || /** @type {Forum} */ ({ key: at, name: title, role: me.role })
   return h('p', { class: 'notice', role: 'note' }, SUGGEST_SECURE, ' ',
     h('button', { class: 'link', onclick: () => { ui.suggest = null; ui.confirm = 'secure' + at; ui.menu = at; readAbout(i); schedule() } }, 'Secure this place…'), ' ',
     h('button', { class: 'link', onclick: () => { ui.suggest = null; schedule() } }, 'Dismiss'))
 }
 
 // An owner may leave, warned: without an admin, nobody can make boards or moderators any more.
+/** @param {Forum} i */
 async function askLeave (i) {
   ui.leaveWarning = null
   if (i.role === 'owner') {
-    const admins = (await window.hyper.instance(i.key).members().catch(() => [])).filter((m) => m.role === 'admin' && !m.you)
+    const admins = (await site.instance(i.key).members().catch(() => [])).filter((m) => m.role === 'admin' && !m.you)
     ui.leaveWarning = 'You own ' + (i.name || 'this forum') + '. It lives on while its members keep it, ' + (admins.length
       ? `and its ${admins.length === 1 ? 'admin' : admins.length + ' admins'} can still make boards and moderators.`
       : 'but nobody can make boards or moderators any more: name an admin first (Members).') + ' Leave it?'
@@ -246,10 +300,11 @@ async function askLeave (i) {
   schedule()
 }
 
+/** @param {Forum} i */
 async function leave (i) {
   ui.confirm = null
   await act(async () => {
-    await window.hyper.instances.leave(i.key)
+    await site.instances.leave(i.key)
     if (i.key !== at) return loadForums()
     const next = forums.find((x) => x.key !== i.key)
     location.search = next ? '?instance=' + next.key : ''
@@ -257,12 +312,13 @@ async function leave (i) {
 }
 
 function joinBox () {
-  const s = ui.joining
+  const s = /** @type {JoinForm} */ (ui.joining) // drawn only while it is open
+  /** @param {() => Promise<unknown>} fn */
   const run = async (fn) => {
     s.busy = true
     s.error = ''
     schedule()
-    try { await fn() } catch (err) { s.error = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
+    try { await fn() } catch (e) { const err = /** @type {Hyper.Failure} */ (e); s.error = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
     s.busy = false
     schedule()
   }
@@ -271,8 +327,13 @@ function joinBox () {
       h('div', { class: 'row-end' }, h('button', { class: 'link', onclick: () => { ui.joining = null; schedule() } }, 'Close'))))
 }
 
+/**
+ * @param {JoinForm} s
+ * @param {(fn: () => Promise<unknown>) => Promise<void>} run
+ * @param {(key: string) => void} open
+ */
 function joinForms (s, run, open) {
-  const root = window.hyper
+  const root = site
   return [s.error ? h('p', { class: 'notice', role: 'alert' }, s.error) : null,
     h('h3', {}, 'Make a forum'),
     h('p', { class: 'small' }, 'It is yours: you make its boards, its invites and its moderators. It lives on its members\' computers.'),
@@ -286,11 +347,16 @@ function joinForms (s, run, open) {
       h('button', { class: 'btn', disabled: s.busy ? '' : null }, 'Join'))]
 }
 
+/** @typedef {{ page: string, id: string | null }} Route */
+
+/** @param {Route} r */
 function boardsColumn (r) {
   const boards = boardTree(data.boards)
   const current = currentBoard(r)
   const sums = [...summarize(data.threads, data.comments, data.votes).values()]
+  /** @param {string} id */
   const fresh = (id) => sums.some((x) => x.thread.board === id && x.thread.id in news.unread)
+  /** @param {R} b @param {boolean} [sub] */
   const boardRow = (b, sub) => h('li', {}, h('a', { class: 'board', href: '#/b/' + b.id, 'aria-current': current?.id === b.id ? 'true' : null },
     h('span', { class: 'mark', 'aria-label': fresh(b.id) ? 'new' : null }, fresh(b.id) ? '■' : ' '),
     h('span', { class: 'grow' }, (sub ? '▸ ' : '') + b.name),
@@ -301,34 +367,40 @@ function boardsColumn (r) {
     ADMINS.has(me.role) ? h('p', { class: 'pad' }, h('a', { href: '#/board/new' }, '+ New board')) : null)
 }
 
+/** @param {Route} r */
 function currentBoard (r) {
   const flat = boardTree(data.boards).flatMap((b) => [b.board, ...b.subs])
   const id = r.page === 't' ? (data.threads.find((x) => x.id === r.id) || threadView.thread)?.board : ['b', 'new'].includes(r.page) ? r.id : null
   return flat.find((b) => b.id === id) || (r.page === 'b' ? flat[0] : null) || null
 }
 
+/** @param {(f: Follow) => boolean} match */
 const followOf = (match) => follows.find((x) => x.place === at && match(x))
 
+/** @param {Follow | undefined} existing @param {() => Hyper.Follow} make */
 function followButton (existing, make) {
   return h('button', {
     class: 'link',
     'aria-pressed': String(!!existing),
     onclick: () => act(async () => {
-      if (existing) await window.hyper.notifications.unfollow(existing.id)
-      else await window.hyper.notifications.follow(make())
+      if (existing) await site.notifications.unfollow(existing.id)
+      else await site.notifications.follow(make())
       await loadFollows()
     })
   }, existing ? 'Following' : 'Follow')
 }
 
-const followBoard = (b) => followButton(followOf((x) => x.where?.board === b.id), () => ({ place: at, type: 'thread', where: { board: b.id }, says: ('new thread in ' + b.name).slice(0, 60), open: '#/r/{id}' }))
-const followPerson = (key) => followButton(followOf((x) => x.by === key), () => ({ place: at, type: ['thread', 'comment'], by: key, says: (nameOf(key) + ' posted').slice(0, 60), open: '#/r/{id}' }))
+/** @param {R} b */
+const followBoard = (b) => followButton(followOf((x) => x.where?.board === b.id), () => ({ place: /** @type {string} */ (at), type: 'thread', where: { board: b.id }, says: ('new thread in ' + b.name).slice(0, 60), open: '#/r/{id}' }))
+/** @param {string} key */
+const followPerson = (key) => followButton(followOf((x) => x.by === key), () => ({ place: /** @type {string} */ (at), type: ['thread', 'comment'], by: key, says: (nameOf(key) + ' posted').slice(0, 60), open: '#/r/{id}' }))
 
 async function refreshRole () {
   me.role = await hyper.getRole(me.identity).catch(() => me.role)
   schedule()
 }
 
+/** @returns {Route} */
 function route () {
   const [page = '', id = null] = location.hash.replace(/^#\/?/, '').split('/')
   return { page: page || 'b', id }
@@ -337,11 +409,11 @@ function route () {
 function enter () {
   const r = route()
   if (r.page === 'r') return toThread(r.id)
-  if (r.page === 't') opened[r.id] = new Set(news.unread[r.id] || [])
+  if (r.page === 't') opened[/** @type {string} */ (r.id)] = new Set(news.unread[/** @type {string} */ (r.id)] || []) // a thread's page names it
   if (r.page === 't' && threadView.id !== r.id) {
     threadView.stop?.()
     threadView = { id: r.id, stop: null, items: [], complete: false }
-    threadView.stop = hyper.query('comment').on(r.id).live(({ items, complete }) => { threadView.items = items; threadView.complete = complete; schedule() }, { limit: LIMITS.thread })
+    threadView.stop = hyper.query('comment').on(/** @type {string} */ (r.id)).live(({ items, complete }) => { threadView.items = items; threadView.complete = complete; schedule() }, { limit: LIMITS.thread })
   }
   if (r.page === 'members') loadMembers()
   if (r.page === 'mod') loadModeration()
@@ -350,6 +422,7 @@ function enter () {
 }
 
 // shortcut: opens the comment's thread at its top, not scrolled to the comment; scroll there if people ask.
+/** @param {string | null} id */
 async function toThread (id) {
   const record = (await hyper.get(decodeURIComponent(id || '')).catch(() => null))?.record
   const thread = record?.type === 'thread' ? record.id : record?.type === 'comment' ? record.thread : null
@@ -357,7 +430,7 @@ async function toThread (id) {
 }
 
 async function loadMembers () {
-  ui.members = await hyper.members().catch((err) => { say(err); return [] })
+  ui.members = await hyper.members().catch((/** @type {Hyper.Failure} */ err) => { say(err); return [] })
   schedule()
 }
 
@@ -367,6 +440,7 @@ async function loadModeration () {
     hyper.query('thread').moderated('hidden').latest(50).catch(() => ({ items: [] })),
     hyper.query('comment').moderated('hidden').latest(50).catch(() => ({ items: [] }))
   ])
+  /** @type {Report[]} */
   const items = reports.items || []
   for (const it of items) it.record = (await hyper.get(it.on).catch(() => null))?.record || null
   ui.reports = items
@@ -383,22 +457,23 @@ function schedule () {
 
 function draw () {
   // the element being typed in keeps its focus and caret across the redraw
-  const active = document.activeElement?.dataset?.k
-  const sel = active ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null
+  const active = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.k
+  const sel = active ? /** @type {[number, number]} */ ([/** @type {HTMLInputElement} */ (document.activeElement).selectionStart, /** @type {HTMLInputElement} */ (document.activeElement).selectionEnd]) : null
   const r = route()
-  const page = { b: frontPage, t: threadPage, new: newThreadPage, mentions: mentionsPage, you: youPage, members: membersPage, mod: moderationPage, board: boardPage }[r.page] || frontPage
+  const page = /** @type {Record<string, (id: string) => HTMLElement>} */ ({ b: frontPage, t: threadPage, new: newThreadPage, mentions: mentionsPage, you: youPage, members: membersPage, mod: moderationPage, board: boardPage })[r.page] || frontPage
   app.replaceChildren(h('div', { class: 'layout' }, forumsColumn(), boardsColumn(r),
     h('div', { class: 'desk' }, bar(), notice ? h('p', { class: 'notice', role: 'alert' }, notice, ' ', h('button', { class: 'link', onclick: () => { notice = ''; schedule() } }, 'Dismiss')) : null, suggestion(), nameBanner(),
-      ui.joining ? joinBox() : null, page(r.id))))
+      ui.joining ? joinBox() : null, page(/** @type {string} */ (r.id)))))
   if (active) {
-    const el = app.querySelector(`[data-k="${active}"]`)
+    const el = /** @type {HTMLInputElement | null} */ (app.querySelector(`[data-k="${active}"]`))
     if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(...sel) } catch {} }
   }
-  if (r.page === 't') markThreadRead(r.id)
+  if (r.page === 't') markThreadRead(/** @type {string} */ (r.id))
   if (r.page === 'mentions') markMentionsSeen()
 }
 
 function bar () {
+  /** @type {Person} */
   const p = names.get(me.identity) || {}
   return h('nav', { class: 'bar', 'aria-label': 'Forum' },
     h('a', { href: '#/', class: 'brand' }, h('img', { src: 'icon.svg', alt: '', width: 16, height: 16 }), title),
@@ -419,24 +494,28 @@ function nameBanner () {
     h('button', { class: 'btn' }, 'Save'))
 }
 
+/** @param {string} title @param {...unknown} children */
 function windowBox (title, ...children) {
   return h('section', { class: 'window', 'aria-label': title },
     h('div', { class: 'title' }, h('h1', {}, title)),
     ...children)
 }
 
+/** @param {string} left @param {string} right */
 function status (left, right) {
   return h('div', { class: 'status' }, h('span', {}, left), h('span', { class: 'grow' }), h('span', {}, right))
 }
 
 const online = () => (peers === 1 ? '1 peer online' : peers + ' peers online') + (Object.values(data.complete).every(Boolean) ? ' · complete' : ' · loading…')
 
+/** @param {string | null} boardId */
 function frontPage (boardId) {
   const current = currentBoard({ page: 'b', id: boardId })
   const sums = summarize(data.threads, data.comments, data.votes)
   const tallied = tally(data.votes)
+  /** @param {Summary} s */
   const isUnread = (s) => s.thread.id in news.unread
-  const sort = SORTS.includes(mine.sort) ? mine.sort : 'activity'
+  const sort = SORTS.includes(/** @type {string} */ (mine.sort)) ? /** @type {string} */ (mine.sort) : 'activity'
   const list = current ? sortThreads([...sums.values()].filter((s) => s.thread.board === current.id), sort) : []
   const unreadCount = list.filter(isUnread).length
 
@@ -459,6 +538,7 @@ function frontPage (boardId) {
     status(`${list.length} threads · ${unreadCount} unread`, online()))
 }
 
+/** @param {Summary} s @param {boolean} isUnread @param {Tally} tallied */
 function threadRow (s, isUnread, tallied) {
   const t = s.thread
   return h('li', { class: 'row' },
@@ -470,12 +550,15 @@ function threadRow (s, isUnread, tallied) {
     votes(t.id, tallied))
 }
 
+/** @param {string} author */
 function byline (author) {
   return h('span', { class: author === me.identity ? 'by me' : 'by', title: shortKey(author) }, avatar(author), nameOf(author))
 }
 
+/** @param {string} key */
 const nameOf = (key) => names.get(key)?.name || shortKey(key)
 
+/** @param {string} key */
 function avatar (key) {
   const bytes = names.get(key)?.icon
   const span = h('span', { class: 'icon', 'aria-hidden': 'true' })
@@ -483,8 +566,10 @@ function avatar (key) {
   return span
 }
 
+/** @param {string} id @param {Tally} tallied */
 function votes (id, tallied) {
   const v = voteOf(tallied, id, me.identity)
+  /** @param {number} n */
   const cast = (n) => act(() => f.vote(id, nextVote(v, n)))
   return h('div', { class: 'votes' },
     h('button', { class: 'vote', 'aria-label': 'Vote up', 'aria-pressed': String(v === 1), onclick: () => cast(1) }, '▲'),
@@ -492,6 +577,7 @@ function votes (id, tallied) {
     h('button', { class: 'vote', 'aria-label': 'Vote down', 'aria-pressed': String(v === -1), onclick: () => cast(-1) }, '▼'))
 }
 
+/** @param {string} id */
 function threadPage (id) {
   const t = data.threads.find((x) => x.id === id) || threadView.thread
   if (!t) {
@@ -504,6 +590,7 @@ function threadPage (id) {
   const board = data.boards.find((b) => b.id === t.board)
   const tallied = tally(data.votes)
   const rows = tree(threadView.items, id)
+  /** @param {R} c */
   const fresh = (c) => !!opened[id]?.has(c.id)
   const shown = visible(rows, ui.folded)
   const newCount = threadView.items.filter(fresh).length
@@ -523,10 +610,11 @@ function threadPage (id) {
     status(`${shown.filter((r) => r.comment).length} of ${rows.filter((r) => r.comment).length} replies shown · ${newCount} new`, threadView.complete ? 'complete: every reply is here' : 'loading replies…'))
 }
 
+/** @param {Row} r @param {Tally} tallied @param {(c: R) => boolean} fresh */
 function replyRow (r, tallied, fresh) {
   const c = r.comment
   const folded = ui.folded.has(r.id)
-  const segs = r.segs.map((s) => h('span', { class: 'seg-' + s, 'aria-hidden': 'true' }, { pipe: '│ ', blank: '  ', tee: '├─', elbow: '└─' }[s]))
+  const segs = r.segs.map((s) => h('span', { class: 'seg-' + s, 'aria-hidden': 'true' }, /** @type {Record<string, string>} */ ({ pipe: '│ ', blank: '  ', tee: '├─', elbow: '└─' })[s]))
   const toggle = h('button', { class: 'fold', 'aria-expanded': String(!folded), 'aria-label': folded ? 'Unfold' : 'Fold', onclick: () => { folded ? ui.folded.delete(r.id) : ui.folded.add(r.id); schedule() } }, folded ? '[+]' : '[−]')
   if (!c) {
     return h('li', { class: 'reply' }, ...segs, h('div', { class: 'body' }, h('div', { class: 'meta' }, r.under ? toggle : null, h('span', { class: 'small' }, '(deleted)')),
@@ -543,12 +631,14 @@ function replyRow (r, tallied, fresh) {
             ui.replyTo === c.id ? composer(c.thread, c.id, 'Reply to ' + nameOf(c.author)) : null]))
 }
 
+/** @param {unknown} text */
 function postText (text) {
   const div = h('div', { class: 'text' })
   div.innerHTML = renderText(text, (k) => names.get(k)?.name || null) // escaped by render: only the subset's tags
   return div
 }
 
+/** @param {R} rec @param {Tally} tallied */
 function actions (rec, tallied) {
   const mineRec = rec.author === me.identity
   const key = 'c' + rec.id
@@ -556,12 +646,13 @@ function actions (rec, tallied) {
     votes(rec.id, tallied),
     h('button', { class: 'link', onclick: () => { ui.replyTo = rec.type === 'thread' ? null : rec.id; schedule() } }, 'Reply'),
     h('button', { class: 'link', onclick: () => quote(rec) }, 'Quote'),
-    mineRec ? h('button', { class: 'link', onclick: () => { ui.editing = rec.id; const d = draft('e' + rec.id); Object.assign(d, toDraft(rec.text, (k) => names.get(k)?.name || null)); d.text = d.draft; d.title = rec.title || ''; schedule() } }, 'Edit') : null,
+    mineRec ? h('button', { class: 'link', onclick: () => { ui.editing = rec.id; const d = draft('e' + rec.id); Object.assign(d, toDraft(rec.text, (k) => names.get(k)?.name || null)); d.text = /** @type {string} */ (d.draft); d.title = rec.title || ''; schedule() } }, 'Edit') : null,
     mineRec ? confirmButton(key + 'del', 'Delete', () => act(() => f.remove(rec.id))) : null,
     !mineRec ? confirmButton(key + 'rep', 'Report', () => act(async () => { await f.report(rec.id, 'reported from the forum'); say('Reported: the moderators will see it.') })) : null,
     MODERATORS.has(me.role) ? confirmButton(key + 'hide', 'Hide', () => act(() => f.hide(rec.id))) : null)
 }
 
+/** @param {string} key @param {string} label @param {() => void} run */
 function confirmButton (key, label, run) {
   if (ui.confirm !== key) return h('button', { class: 'link', onclick: () => { ui.confirm = key; schedule() } }, label)
   return h('span', { class: 'confirm' }, label + '? ',
@@ -569,6 +660,7 @@ function confirmButton (key, label, run) {
     h('button', { class: 'link', onclick: () => { ui.confirm = null; schedule() } }, 'No'))
 }
 
+/** @param {R} rec */
 function quote (rec) {
   const d = draft('r' + rec.id)
   const lines = plain(rec.text, (k) => names.get(k)?.name || null).slice(0, 300)
@@ -577,18 +669,20 @@ function quote (rec) {
   schedule()
 }
 
+/** @param {string} k */
 function draft (k) {
   if (!drafts[k]) drafts[k] = { text: '', title: '', picks: {} }
   return drafts[k]
 }
 
+/** @param {string} k @param {Draft} d @param {string} label */
 function textBox (k, d, label, rows = 5) {
   const at = /@([^\s@]*)$/.exec(d.text.slice(0, d.caret ?? d.text.length))
-  const matches = at ? [...names.entries()].filter(([key, p]) => p.name && key !== me.identity && p.name.toLowerCase().startsWith(at[1].toLowerCase())).slice(0, 6) : []
-  const ta = h('textarea', {
+  const matches = /** @type {Array<[string, Person & { name: string }]>} */ (at ? [...names.entries()].filter(([key, p]) => p.name && key !== me.identity && p.name.toLowerCase().startsWith(at[1].toLowerCase())).slice(0, 6) : [])
+  const ta = /** @type {HTMLTextAreaElement} */ (h('textarea', {
     id: k, 'data-k': k, rows, class: 'text', placeholder: 'Write here. @name to mention someone.',
     oninput: (e) => { d.text = e.target.value; d.caret = e.target.selectionStart; schedule() }
-  })
+  }))
   ta.value = d.text
   return [h('label', { for: k, class: 'label' }, label), ta,
     matches.length ? h('ul', { class: 'suggest', 'aria-label': 'Mention' }, ...matches.map(([key, p]) => h('li', {}, h('button', {
@@ -596,7 +690,7 @@ function textBox (k, d, label, rows = 5) {
       class: 'link',
       onclick: () => {
         const end = d.caret ?? d.text.length
-        const startAt = end - at[0].length
+        const startAt = end - /** @type {RegExpExecArray} */ (at)[0].length
         d.text = d.text.slice(0, startAt) + '@' + p.name + ' ' + d.text.slice(end)
         d.caret = startAt + p.name.length + 2
         d.picks[p.name] = key
@@ -606,6 +700,7 @@ function textBox (k, d, label, rows = 5) {
     h('p', { class: 'hint small' }, '**bold** · _italic_ · `code` · > quote · [link](hyper://key/page) · @name')]
 }
 
+/** @param {string} thread @param {string} on @param {string} label */
 function composer (thread, on, label) {
   const k = 'r' + on
   const d = draft(k)
@@ -619,6 +714,7 @@ function composer (thread, on, label) {
   } }, ...textBox(k, d, label), h('div', { class: 'row-end' }, on !== thread ? h('button', { type: 'button', class: 'link', onclick: () => { ui.replyTo = null; schedule() } }, 'Cancel') : null, h('button', { class: 'btn' }, 'Post reply')))
 }
 
+/** @param {R} rec @param {boolean} isThread */
 function editForm (rec, isThread) {
   const k = 'e' + rec.id
   const d = draft(k)
@@ -635,12 +731,14 @@ function editForm (rec, isThread) {
   h('div', { class: 'row-end' }, h('button', { type: 'button', class: 'link', onclick: () => { ui.editing = null; schedule() } }, 'Cancel'), h('button', { class: 'btn' }, 'Save')))
 }
 
+/** @param {string} id */
 function markThreadRead (id) {
   if (!(id in news.unread)) return
   news = { ...news, unread: without(news.unread, id) }
   f.saveUnread(news).catch(say)
 }
 
+/** @param {string} boardId */
 function newThreadPage (boardId) {
   const board = data.boards.find((b) => b.id === boardId)
   const k = 'n' + boardId
@@ -662,6 +760,7 @@ function newThreadPage (boardId) {
     h('div', { class: 'row-end' }, h('button', { class: 'btn' }, 'Post thread'))))
 }
 
+/** @param {string} id */
 function boardPage (id) {
   if (!ADMINS.has(me.role)) return windowBox('Boards', h('p', { class: 'pad' }, 'Only admins make and edit boards.'))
   const board = id === 'new' ? null : data.boards.find((b) => b.id === id)
@@ -721,6 +820,7 @@ function markMentionsSeen () {
 }
 
 function youPage () {
+  /** @type {Person} */
   const p = names.get(me.identity) || {}
   const d = draft('you')
   if (d.text === '' && p.name && !d.touched) d.text = p.name
@@ -752,11 +852,13 @@ function youPage () {
 
 function followsList () {
   const mineHere = follows.filter((x) => x.place === at)
-  const label = (x) => x.where?.board ? 'Board ' + (data.boards.find((b) => b.id === x.where.board)?.name || '(removed)') : 'Posts of ' + nameOf(x.by)
+  /** @param {Follow} x */
+  const label = (x) => x.where?.board ? 'Board ' + (data.boards.find((b) => b.id === /** @type {{ board: string }} */ (x.where).board)?.name || '(removed)') : 'Posts of ' + nameOf(/** @type {string} */ (x.by))
+  /** @param {Follow} x @param {boolean} popup */
   const setPopup = (x, popup) => act(async () => {
     const { id, ...rest } = x
-    await window.hyper.notifications.follow({ ...rest, popup })
-    await window.hyper.notifications.unfollow(id)
+    await site.notifications.follow({ ...rest, popup })
+    await site.notifications.unfollow(id)
     await loadFollows()
   })
   return [h('h3', {}, 'You follow'),
@@ -764,7 +866,7 @@ function followsList () {
       ? h('ul', { class: 'members' }, ...mineHere.map((x) => h('li', { class: 'row' },
         h('span', { class: 'grow' }, label(x)),
         h('label', { class: 'small' }, h('input', { type: 'checkbox', checked: x.popup ? '' : null, onchange: (e) => setPopup(x, e.target.checked) }), ' Popup'),
-        h('button', { class: 'link', onclick: () => act(async () => { await window.hyper.notifications.unfollow(x.id); await loadFollows() }) }, 'Unfollow'))))
+        h('button', { class: 'link', onclick: () => act(async () => { await site.notifications.unfollow(x.id); await loadFollows() }) }, 'Unfollow'))))
       : h('p', { class: 'small' }, 'Nothing yet: Follow is on a board\'s page and next to each member.')]
 }
 
@@ -802,17 +904,21 @@ function membersPage () {
 }
 
 async function startPage () {
-  const root = window.hyper
+  const root = site
+  /** @type {JoinForm & { forums: Forum[] | null, official: string | null }} */
   const s = { forums: null, official: null, name: '', public: false, link: '', error: '', busy: false }
+  /** @param {string} key */
   const open = (key) => { location.search = '?instance=' + key }
+  /** @param {() => Promise<unknown>} fn */
   const run = async (fn) => {
     s.busy = true
     s.error = ''
     paint()
-    try { await fn() } catch (err) { s.error = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
+    try { await fn() } catch (e) { const err = /** @type {Hyper.Failure} */ (e); s.error = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
     s.busy = false
     paint()
   }
+  /** @param {Forum} i */
   const forumRow = (i) => h('li', { class: 'row' },
     h('a', { href: '?instance=' + i.key, class: 'grow' }, i.name || shortKey(i.key)),
     h('span', { class: 'small' }, (i.role || 'not a member yet') + (i.public ? ' · public' : '')))
@@ -836,7 +942,9 @@ function moderationPage () {
   if (!MODERATORS.has(me.role)) return windowBox('Moderation', h('p', { class: 'pad' }, 'For moderators.'))
   const reports = ui.reports
   const hidden = ui.hidden
+  /** @param {R} rec */
   const titleOf = (rec) => rec.type === 'thread' ? rec.title : plain(rec.text, (k) => names.get(k)?.name || null).slice(0, 120)
+  /** @param {R} rec */
   const threadOf = (rec) => rec.type === 'thread' ? rec.id : rec.thread
   return windowBox('Moderation',
     h('div', { class: 'thread' },
@@ -855,27 +963,35 @@ function moderationPage () {
     status('Moderators see reports; members only see that someone reported', online()))
 }
 
+/** @param {() => Promise<unknown>} fn */
 async function act (fn) {
   try {
     await fn()
   } catch (err) {
-    say(err)
+    say(/** @type {Hyper.Failure} */ (err))
   }
   schedule()
 }
 
+/** @param {string | Hyper.Failure} what */
 function say (what) {
   notice = typeof what === 'string' ? what : (what.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + what.message
   schedule()
 }
 
+/**
+ * @param {string} tag
+ * @param {{ [name: string]: string | number | boolean | null | undefined | ((e: any) => void) } | null} [attrs]
+ *   attribute values, `value`, and on* listeners (each gets its event: input, change, submit...)
+ * @param {...unknown} children nodes, text and lists of them; null, undefined and false are left out
+ */
 function h (tag, attrs = {}, ...children) {
   const el = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue
-    if (k.startsWith('on')) el.addEventListener(k.slice(2), v)
-    else if (k === 'value') el.value = v
-    else el.setAttribute(k, v)
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), /** @type {EventListener} */ (v))
+    else if (k === 'value') /** @type {HTMLInputElement} */ (el).value = /** @type {string} */ (v)
+    else el.setAttribute(k, /** @type {string} */ (v))
   }
   for (const c of children.flat(Infinity)) if (c !== null && c !== undefined && c !== false) el.append(c instanceof Node ? c : String(c))
   return el

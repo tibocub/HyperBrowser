@@ -2,6 +2,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('split', {
-  send: (msg) => ipcRenderer.send('split', msg),
-  on: (fn) => ipcRenderer.on('split-at', (e, d) => fn(d))
+  send: (/** @type {unknown} */ msg) => ipcRenderer.send('split', msg),
+  on: (/** @type {(d: { at: number, value: number }) => void} */ fn) => ipcRenderer.on('split-at', (e, d) => fn(d))
 })

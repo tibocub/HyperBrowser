@@ -38,6 +38,13 @@ npm test && npm run test:bare && npm run test:sandbox
 
 More on the tests, and on temp folders: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Types
+
+HyperBrowser is plain JavaScript typed with JSDoc and checked by TypeScript in strict mode
+(`npm run typecheck`), with nothing to compile; editors show the types as you write. The site API a page gets,
+`window.hyper`, is typed in [sites/hyper.d.ts](sites/hyper.d.ts): a site's own editor reads it too
+([docs/site-api.md](docs/site-api.md), "Types for your site").
+
 ## How it is built
 
 ```

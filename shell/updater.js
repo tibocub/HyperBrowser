@@ -8,6 +8,7 @@ import path from 'path'
 
 const [data, version, upgrade, name, app, bootstrap, delay] = Bare.argv.slice(2)
 const WINDOWS = Bare.platform === 'win32'
+/** @param {string} line */
 const say = (line) => Bare.IPC.write(line + '\n')
 const store = new Corestore(path.join(data, 'pear-runtime', 'corestore'))
 const swarm = new Hyperswarm({ bootstrap: bootstrap ? bootstrap.split(',').map((b) => { const [host, port] = b.split(':'); return { host, port: Number(port) } }) : undefined })
@@ -25,7 +26,7 @@ pear.updater.on('updated', async () => {
     await pear.updater.applyUpdate()
     say('ready ' + next)
   } catch (err) {
-    say('error installing the update: ' + err.message)
+    say('error installing the update: ' + /** @type {Error} */ (err).message)
   }
 })
 

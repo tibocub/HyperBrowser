@@ -1,17 +1,49 @@
 import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/chat.js'
 import { keepScroll, newLine } from './lib/scroll.js'
 
-const hyper = window.hyper
-const root = document.getElementById('app')
-const c = hyper && chat(hyper)
-let me = null
+/**
+ * @typedef {import('./lib/chat.js').Conversation} Conversation
+ * @typedef {object} View The conversation open.
+ * @property {string} key
+ * @property {Hyper.Record[]} messages oldest first
+ * @property {Hyper.Record[]} invites
+ * @property {Map<string, string>} names
+ * @property {Hyper.Member[] | null} members
+ * @property {string | null} role
+ * @property {Hyper.Record | null} editing
+ * @property {string | null} menu the "…" open: a message's id, or 'info'
+ * @property {number} unread when it was opened
+ * @property {number | null} line where the "New messages" line goes
+ * @property {boolean} placed scrolled to the line once
+ * @property {Hyper.Copies | null} copies
+ * @property {boolean} gone secured without this person
+ * @property {boolean} waiting
+ * @property {'secure' | 'trim' | null} confirm
+ * @property {boolean} forget
+ * @property {number} trimN
+ * @property {string} trimUnit
+ * @property {string | null} [draft]
+ * @property {boolean} [toEnd]
+ */
+
+const hyper = /** @type {Hyper.Site} */ (window.hyper) // undefined outside HyperBrowser: start() checks
+const root = /** @type {HTMLElement} */ (document.getElementById('app'))
+const c = /** @type {ReturnType<typeof chat>} */ (hyper && chat(hyper))
+// set by start() before any draw
+let me = /** @type {Awaited<ReturnType<Hyper.Site['contacts']['me']>>} */ (/** @type {unknown} */ (null))
+/** @type {Hyper.Contact[]} */
 let contacts = []
+/** @type {Conversation[]} */
 let convs = []
 let current = new URLSearchParams(location.search).get('instance')
-let view = null
+// null while no conversation is open: what runs then checks
+let view = /** @type {View} */ (/** @type {unknown} */ (null))
+/** @type {Hyper.Unsubscribe[]} */
 let stops = []
+/** @type {{ [name: string]: unknown }} */
 let joined = {}
 let notice = ''
+/** @type {{ [instance: string]: { count: number, dot: boolean } }} */
 let counts = {}
 
 start().catch((err) => {
@@ -26,7 +58,7 @@ async function start () {
   hyper.notifications?.on?.((u) => { counts = u; draw() })
   hyper.contacts.on(() => refresh().catch(() => {}))
   const shut = () => { if (view?.menu) { view.menu = null; draw() } }
-  document.addEventListener('click', (e) => { if (!e.target.closest('details')) shut() })
+  document.addEventListener('click', (e) => { if (!/** @type {Element} */ (e.target).closest('details')) shut() })
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut() })
   await refresh()
   if (current) open(current)
@@ -38,13 +70,17 @@ async function refresh () {
   draw()
 }
 
+/** @param {string} k */
 const short = (k) => k.slice(0, 8) + '…'
+/** @param {Conversation} x */
 const titleOf = (x) => x.direct ? (x.direct.name || short(x.direct.identity)) : (x.name || 'Group')
+/** @param {string} id */
 function nameOf (id) {
   if (id === me.identity) return 'you'
   return view?.names.get(id) || contacts.find((x) => x.identity === id)?.name || short(id)
 }
 
+/** @param {string} key */
 function open (key) {
   for (const s of stops) s()
   stops = []
@@ -79,7 +115,7 @@ function open (key) {
 function draw () {
   const conv = convs.find((x) => x.key === current)
   // a redraw (a message arriving) keeps the writer's caret and the reader's place
-  const typing = document.activeElement?.name === 'text' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null
+  const typing = /** @type {HTMLTextAreaElement | null} */ (document.activeElement)?.name === 'text' ? /** @type {[number, number]} */ ([/** @type {HTMLTextAreaElement} */ (document.activeElement).selectionStart, /** @type {HTMLTextAreaElement} */ (document.activeElement).selectionEnd]) : null
   const top = keepScroll(root.querySelector('[data-key]'), view?.key, view?.toEnd)
   if (view) view.toEnd = false
   // overflow-wrap: a long word (an hg: link) wraps anywhere rather than widen the page
@@ -98,21 +134,22 @@ function draw () {
       view && conv ? (view.gone ? h('p', {}, 'You no longer have access to this group: it was secured, and you were not taken along.') : conversation(conv)) : h('p', {}, 'Pick a conversation.'))))
   const list = root.querySelector('[data-key]')
   if (list) list.scrollTop = top ?? list.scrollHeight
-  const line = list?.querySelector('.new-line')
-  if (line && !view.placed) {
+  const line = /** @type {HTMLElement | null | undefined} */ (list?.querySelector('.new-line'))
+  if (list && line && !view.placed) {
     view.placed = true
     list.scrollTop = Math.max(0, line.offsetTop - 8)
   }
   if (typing) {
-    const box = root.querySelector('textarea[name=text]')
+    const box = /** @type {HTMLTextAreaElement | null} */ (root.querySelector('textarea[name=text]'))
     box?.focus()
     box?.setSelectionRange(...typing)
   }
 }
 
+/** @param {Conversation} conv */
 function conversation (conv) {
   const mod = MODERATORS.has(view.role)
-  const out = [h('h2', {}, conv.direct ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(conv.direct.identity)) } }, titleOf(conv)) : '# ' + titleOf(conv), ' ', info())]
+  const out = [h('h2', {}, conv.direct ? h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(/** @type {Hyper.Contact} */ (conv.direct).identity)) } }, titleOf(conv)) : '# ' + titleOf(conv), ' ', info())]
   for (const inv of view.invites) {
     if (inv.author === me.identity || joined['invite:' + inv.id]) continue
     out.push(h('p', {}, nameOf(inv.author), ' invites you to the group ', h('b', {}, inv.name), ' ', h('button', { onclick: () => join(inv) }, 'Join')))
@@ -132,6 +169,7 @@ function conversation (conv) {
 }
 
 // An Accept button only asks HyperBrowser: the page never joins a circle itself.
+/** @param {Hyper.Record} m */
 function body (m) {
   const inv = circleOf(m)
   if (!inv) return h('span', { style: 'white-space:pre-wrap' }, m.text)
@@ -180,7 +218,7 @@ async function secure () {
     notice = 'Secured.' + (st?.warnings?.some((w) => w.code === 'RENEW_WAITING') ? ' ' + RENEW_WAITING : '')
     open(r.key)
   } catch (err) {
-    notice = renewError(err, (k) => view?.names.get(k) || null)
+    notice = renewError(/** @type {Hyper.Failure} */ (err), (k) => view?.names.get(k) || null)
     draw()
   }
 }
@@ -194,11 +232,12 @@ async function trim () {
     await c.trimHistory(view.key, before)
     notice = 'Trimmed: messages from before ' + new Date(before).toLocaleDateString() + ' are deleted.'
   } catch (err) {
-    notice = renewError(err)
+    notice = renewError(/** @type {Hyper.Failure} */ (err))
   }
   draw()
 }
 
+/** @param {Hyper.Record} m @param {boolean} mod */
 function menu (m, mod) {
   const mine = m.author === me.identity
   if (!mine && !mod) return null
@@ -209,6 +248,7 @@ function menu (m, mod) {
       h('button', { class: 'small', onclick: () => { view.menu = null; act(() => c.remove(view.key, m, mine)) } }, 'Delete')))
 }
 
+/** @param {Conversation} conv */
 function group (conv) {
   const admin = view.role === 'owner' || view.role === 'admin'
   const mod = MODERATORS.has(view.role)
@@ -219,7 +259,7 @@ function group (conv) {
       admin && m.role !== 'owner' && m.identity !== me.identity
         ? h('select', { onchange: (e) => act(() => c.grant(view.key, m.identity, e.target.value)) },
           Object.entries(ROLES).map(([r, label]) => h('option', { value: r, selected: r === m.role ? '' : null }, label)))
-        : (ROLES[m.role] || m.role),
+        : (ROLES[/** @type {string} */ (m.role)] || m.role),
       mod && m.role !== 'owner' && m.identity !== me.identity
         ? [' ', h('button', { class: 'small', onclick: () => act(async () => { await c.removeMember(view.key, m.identity); suggest() }) }, 'Remove'), ' ',
             h('button', { class: 'small', onclick: () => act(async () => { await c.ban(view.key, m.identity); suggest() }) }, 'Ban')]
@@ -228,29 +268,33 @@ function group (conv) {
       ? h('form', { onsubmit: (e) => { e.preventDefault(); const f = addable.find((x) => x.identity === e.target.who.value); act(() => c.add(view.key, conv.name, f)) } },
         h('select', { name: 'who' }, addable.map((x) => h('option', { value: x.identity }, x.name || short(x.identity)))), ' ', h('button', {}, 'Add to the group'))
       : null,
-    h('p', {}, h('button', { onclick: () => act(async () => { await c.leave(view.key); view = null; current = null; await refresh() }) }, 'Leave the group')))
+    h('p', {}, h('button', { onclick: () => act(async () => { await c.leave(view.key); view = /** @type {View} */ (/** @type {unknown} */ (null)); current = null; await refresh() }) }, 'Leave the group')))
 }
 
+/** @type {Set<string>} */
 const suggested = new Set()
 function suggest () {
-  if (suggested.has(view.key) || !['owner', 'admin'].includes(view.role) || convs.find((x) => x.key === view.key)?.direct) return
+  if (suggested.has(view.key) || !['owner', 'admin'].includes(/** @type {string} */ (view.role)) || convs.find((x) => x.key === view.key)?.direct) return
   suggested.add(view.key)
   notice = SUGGEST_SECURE
 }
 
+/** @param {() => Promise<unknown>} fn */
 async function act (fn) {
   notice = ''
-  try { await fn() } catch (err) { notice = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
+  try { await fn() } catch (e) { const err = /** @type {Hyper.Failure} */ (e); notice = (err.code === 'NOT_ALLOWED' ? 'Not allowed: ' : '') + err.message }
   draw()
 }
 
+/** @param {KeyboardEvent} e */
 function enter (e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.form.requestSubmit() }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); /** @type {HTMLFormElement} */ (/** @type {HTMLTextAreaElement} */ (e.target).form).requestSubmit() }
 }
 
+/** @param {SubmitEvent} e */
 function send (e) {
   e.preventDefault()
-  const text = e.target.text.value
+  const text = /** @type {HTMLFormElement} */ (e.target).text.value
   const editing = view.editing
   act(async () => {
     if (editing) await c.edit(view.key, editing.id, text)
@@ -259,12 +303,14 @@ function send (e) {
   })
 }
 
+/** @param {SubmitEvent} e */
 function newGroup (e) {
   e.preventDefault()
-  const name = e.target.name.value
+  const name = /** @type {{ name: HTMLInputElement }} */ (/** @type {unknown} */ (e.target)).name.value // the form's input named name
   act(async () => { const g = await c.group(name); await refresh(); open(g.key) })
 }
 
+/** @param {Hyper.Record} inv an invite record */
 function join (inv) {
   act(async () => {
     const g = await c.join(inv.link)
@@ -275,13 +321,19 @@ function join (inv) {
   })
 }
 
+/**
+ * @param {string} tag
+ * @param {{ [name: string]: string | number | boolean | null | undefined | ((e: any) => void) } | null} [attrs]
+ *   attribute values, `value`, and on* listeners (each gets its event: input, change, submit...)
+ * @param {...unknown} children nodes, text and lists of them; null, undefined and false are left out
+ */
 function h (tag, attrs = {}, ...children) {
   const el = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue
-    if (k.startsWith('on')) el.addEventListener(k.slice(2), v)
-    else if (k === 'value') el.value = v
-    else el.setAttribute(k, v)
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), /** @type {EventListener} */ (v))
+    else if (k === 'value') /** @type {HTMLInputElement} */ (el).value = /** @type {string} */ (v)
+    else el.setAttribute(k, /** @type {string} */ (v))
   }
   for (const x of children.flat(Infinity)) if (x !== null && x !== undefined && x !== false) el.append(x instanceof Node ? x : String(x))
   return el

@@ -9,22 +9,43 @@ const TICK = 60000
 const HOUR = 3600000
 const OPEN = 30000
 
+/** @typedef {import('./helper-config.js').HelperConfig} HelperConfig */
+/** @typedef {Error & { code?: string }} CodedError */
+/** @typedef {{ app: string, title: string, bytes: number }} Kept */
+
+/** @param {number} b */
 const gb = (b) => Math.floor(b / GB * 10) / 10
 // shortcut: hypergraph says "nobody answered" only in INVITE_INVALID's message; a code of its own would be cleaner
+/** @param {CodedError} err */
 const unanswered = (err) => err.code === 'INVITE_INVALID' && /answered within/.test(err.message)
 
+/**
+ * The always-on helper's passes: its name, its share of disk, the circles it joins, the apps it keeps.
+ * @param {object} opts
+ * @param {import('./protocol.js').Rpc} opts.rpc its engine
+ * @param {string} opts.dir the engine folder
+ * @param {string} opts.preset shell/preset.json: the official apps
+ * @param {(line: string) => void} [opts.log]
+ * @param {number} [opts.tick]
+ * @param {number} [opts.summary]
+ */
 export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summary = HOUR }) {
   const FILE = path.join(dir, 'helper.json')
+  /** @type {{ links: Record<string, 'joined' | 'refused'>, share: number | null, kept: Record<string, Kept> }} */
   let state = { links: {}, share: null, kept: {} }
   try { state = { ...state, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) } } catch {}
   const save = () => fs.promises.writeFile(FILE, JSON.stringify(state, null, 2))
-  let config = null
+  let config = /** @type {HelperConfig} */ (/** @type {unknown} */ (null)) // set by apply() before any pass
+  /** @type {Promise<unknown>} */
   let running = Promise.resolve()
   let closed = false
   const told = new Set()
+  /** @param {string} id @param {string} line */
   const once = (id, line) => { if (!told.has(id)) { told.add(id); log(line) } }
+  /** @param {CodedError} err */
   const fail = (err) => log(`error: ${err.code || 'ERROR'} ${err.message}`)
-  const pass = () => (running = running.then(() => closed || run()).catch(fail))
+  const pass = () => (running = running.then(/** @returns {unknown} */ () => closed || run()).catch(fail))
+  /** @type {Promise<void> | null} */
   let fetching = null // the apps' pass, beside the others: an app nobody serves yet waits OPEN, joins don't
   const fetch = () => (fetching ||= apps().catch(fail).finally(() => { fetching = null }))
   const timer = setInterval(() => { if (config) pass() }, tick)
@@ -49,7 +70,7 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
       state.share = Math.min(DEFAULT_MAX, Math.floor(h.free / 2))
       await save()
     }
-    const want = config.share ? Math.round(config.share * GB) : state.share
+    const want = config.share ? Math.round(config.share * GB) : /** @type {number} */ (state.share)
     const room = Math.floor(h.free + h.used - SPARE)
     const bytes = Math.min(want, room)
     if (bytes < MIN) return once('room', `share: no room on this disk (${gb(h.free)} GB free); holding stays ${h.on ? 'on' : 'off'}`)
@@ -65,7 +86,8 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
         const r = await rpc.request('circles.join', { link })
         state.links[link] = 'joined'
         log(`joined "${r.name}"`)
-      } catch (err) {
+      } catch (e) {
+        const err = /** @type {CodedError} */ (e)
         if (unanswered(err)) { once('join' + link, `join: nobody answered yet (${link.slice(0, 16)}...); trying again every minute`); continue }
         state.links[link] = 'refused'
         log(`refused: ${err.message} (${link.slice(0, 16)}...)`)
@@ -79,7 +101,7 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
     if (config.apps === 'official') {
       try {
         for (const p of JSON.parse(fs.readFileSync(preset, 'utf-8'))) if (p.key) keys.add(p.key)
-      } catch (err) { once('preset', `apps: can't read ${preset} (${err.message})`) }
+      } catch (err) { once('preset', `apps: can't read ${preset} (${/** @type {Error} */ (err).message})`) }
     }
     return keys
   }
@@ -102,7 +124,7 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
         }
         told.delete('app' + key)
       } catch (err) {
-        once('app' + key, `app ${key}: not reached yet (${err.code || 'ERROR'}); trying again every minute`)
+        once('app' + key, `app ${key}: not reached yet (${/** @type {CodedError} */ (err).code || 'ERROR'}); trying again every minute`)
       }
     }))
     for (const [key, k] of Object.entries(state.kept)) {
@@ -119,10 +141,11 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
     const circles = await rpc.request('circles.list')
     const h = await rpc.request('holding.get')
     const apps = Object.values(state.kept).map((k) => `${k.title} ${Math.round(k.bytes / 1024)} KB`).join(', ') || 'none'
-    log(`summary: ${circles.length} circle(s), ${circles.reduce((n, c) => n + c.members, 0)} member(s); holding ${gb(h.used)} of ${gb(h.bytes)} GB; apps: ${apps}`)
+    log(`summary: ${circles.length} circle(s), ${circles.reduce((/** @type {number} */ n, /** @type {{ members: number }} */ c) => n + c.members, 0)} member(s); holding ${gb(h.used)} of ${gb(h.bytes)} GB; apps: ${apps}`)
   }
 
   return {
+    /** @param {HelperConfig} next */
     apply (next) {
       config = next
       return pass().then(() => fetching)

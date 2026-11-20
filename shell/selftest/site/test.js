@@ -1,19 +1,24 @@
 // The shell reads window.__results: no test-only API in the page.
 const me = location.host
 const params = new URLSearchParams(location.search)
-const other = params.get('other')
+const other = /** @type {string} */ (params.get('other')) // the shell always names one
 const isStatic = params.has('static')
-document.getElementById('me').textContent = (isStatic ? 'static ' : 'site ') + me.slice(0, 8)
+const meLine = /** @type {HTMLElement} */ (document.getElementById('me'))
+meLine.textContent = (isStatic ? 'static ' : 'site ') + me.slice(0, 8)
 
+/** @param {Promise<unknown>} p */
 const refused = (p) => p.then(() => false, () => true)
+/** @param {number} ms */
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const API = ['apps', 'circles', 'completeFrom', 'contacts', 'copies', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
   'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
   'projects', 'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'secure', 'setRole',
   'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'trimHistory', 'types', 'unrelate', 'untag']
 
+/** @type {Array<[string, () => Promise<unknown>]>} */
 const common = [
   ['no Node: require/process/module/Buffer undefined', async () =>
+    // @ts-expect-error: the check is that a page has none of these
     [typeof require, typeof process, typeof module, typeof Buffer].every((t) => t === 'undefined')],
   ['no file system: fetch file:///C:/Windows/win.ini', () => refused(fetch('file:///C:/Windows/win.ini'))],
   ['no file system: fetch file:///etc/hostname', () => refused(fetch('file:///etc/hostname'))],
@@ -28,7 +33,7 @@ const common = [
     return blank
   }],
   ["other site's files: fetch hyper://<other>/test.js", () =>
-    refused(fetch('hyper://' + other + '/test.js').then((r) => { if (!r.ok) throw new Error(r.status) }))],
+    refused(fetch('hyper://' + other + '/test.js').then((r) => { if (!r.ok) throw new Error(String(r.status)) }))],
   ["other site's files: <script src=hyper://<other>/probe.js> doesn't run", async () => {
     const el = document.createElement('script')
     el.src = 'hyper://' + other + '/probe.js'
@@ -56,58 +61,63 @@ const common = [
   }],
   ['its own files load: fetch probe.js from its own site', async () => (await fetch('probe.js')).ok],
   ['wasm: WebAssembly.instantiateStreaming(fetch("add.wasm")) adds 2 + 3', async () =>
-    (await WebAssembly.instantiateStreaming(fetch('add.wasm'))).instance.exports.add(2, 3) === 5],
+    /** @type {(a: number, b: number) => number} */ ((await WebAssembly.instantiateStreaming(fetch('add.wasm'))).instance.exports.add)(2, 3) === 5],
   ['wasm: WebAssembly.compile of bytes the page holds', async () => {
     const bytes = new Uint8Array(await (await fetch('add.wasm')).arrayBuffer())
-    return new WebAssembly.Instance(await WebAssembly.compile(bytes)).exports.add(40, 2) === 42
+    return /** @type {(a: number, b: number) => number} */ (new WebAssembly.Instance(await WebAssembly.compile(bytes)).exports.add)(40, 2) === 42
   }],
   ["wasm: another site's add.wasm is refused", () =>
     refused(WebAssembly.instantiateStreaming(fetch('hyper://' + other + '/add.wasm')))]
 ]
 
+/** @type {Array<[string, () => Promise<unknown>]>} */
 const statics = [
   ['a static site has no API: window.hyper is undefined', async () => typeof window.hyper === 'undefined']
 ]
 
 const name = 'me-' + me.slice(0, 8)
+// a dynamic site's: only its checks below use it. Not `hyper`: a classic script's const can't shadow window.hyper
+const api = /** @type {Hyper.Site} */ (window.hyper)
+/** @type {Array<[string, () => Promise<unknown>]>} */
 const dynamics = [
   ['the site API is hypergraph\'s site handle, nothing more', async () =>
-    Object.keys(window.hyper).sort().join() === API.join()],
-  ['own space: info() names this site', async () => (await window.hyper.info()).key === me],
+    Object.keys(api).sort().join() === API.join()],
+  ['own space: info() names this site', async () => (await api.info()).key === me],
   ['own space: put then query reads it back, and only its own', async () => {
-    await window.hyper.put('profile', { name })
-    const { items } = await window.hyper.query('profile').latest(10)
+    await api.put('profile', { name })
+    const { items } = await api.query('profile').latest(10)
     return items.length === 1 && items[0].name === name
   }],
   ['own space: a live view gets its record', () => new Promise((resolve) => {
-    const stop = window.hyper.query('profile').live(({ items }) => {
+    const stop = api.query('profile').live(({ items }) => {
       if (items.some((r) => r.name === name)) { stop(); resolve(true) }
     })
     setTimeout(() => resolve(false), 5000)
   })],
   ['the page names no space: hyper.subspace(<other site>) is refused', () =>
-    refused(window.hyper.subspace(other).query('profile').latest(10))],
+    refused(api.subspace(other).query('profile').latest(10))],
   ['the page names no space: hyper.instance(<other site>) is refused', () =>
-    refused(window.hyper.instance(other).query('profile').latest(10))],
+    refused(api.instance(other).query('profile').latest(10))],
   ["contacts: a site whose site.json doesn't ask for them gets NOT_ALLOWED", () =>
-    window.hyper.contacts.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+    api.contacts.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
   ["projects: a site whose site.json doesn't ask for them gets NOT_ALLOWED (spec 024)", () =>
-    window.hyper.projects.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
-  ['people: opening a chat without a click opens nothing', async () => (await window.hyper.people.chat(other)) === false],
+    api.projects.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+  ['people: opening a chat without a click opens nothing', async () => (await api.people.chat(other)) === false],
   ['people: a friend request the person refused is NOT_ALLOWED', () =>
-    window.hyper.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],
-  ['apps: installing a site without a click installs nothing', async () => (await window.hyper.apps.install(other)) === false],
-  ['apps: opening a site without a click opens nothing', async () => (await window.hyper.apps.open(other)) === false],
-  ['copies: hyper.subspace(<other site>).copies() is refused', () => refused(window.hyper.subspace(other).copies())],
-  ['circles: joining without a click joins nothing', async () => (await window.hyper.circles.join('hg:x')).joined === false],
+    api.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+  ['apps: installing a site without a click installs nothing', async () => (await api.apps.install(other)) === false],
+  ['apps: opening a site without a click opens nothing', async () => (await api.apps.open(other)) === false],
+  ['copies: hyper.subspace(<other site>).copies() is refused', () => refused(api.subspace(other).copies())],
+  ['circles: joining without a click joins nothing', async () => (await api.circles.join('hg:x')).joined === false],
   ['its own instance: created, then reached', async () => {
-    const f = await window.hyper.instances.create('Self-test ' + me.slice(0, 4))
-    await window.hyper.instance(f.key).put('profile', { name })
-    return (await window.hyper.instance(f.key).query('profile').latest(10)).items.some((r) => r.name === name)
+    const f = await api.instances.create('Self-test ' + me.slice(0, 4))
+    await api.instance(f.key).put('profile', { name })
+    return (await api.instance(f.key).query('profile').latest(10)).items.some((r) => r.name === name)
   }]
 ]
 
 ;(async () => {
+  /** @type {Array<{ site: string, name: string, pass: boolean }>} */
   const results = []
   for (const [label, fn] of [...common, ...(isStatic ? statics : dynamics)]) {
     let pass = false
@@ -116,7 +126,8 @@ const dynamics = [
     const li = document.createElement('li')
     li.className = pass ? 'pass' : 'fail'
     li.textContent = (pass ? 'PASS ' : 'FAIL ') + label
-    document.getElementById('out').append(li)
+    const out = /** @type {HTMLElement} */ (document.getElementById('out'))
+    out.append(li)
   }
   window.__results = results
 })()

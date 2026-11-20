@@ -1,8 +1,18 @@
+/**
+ * @typedef {Awaited<ReturnType<Hyper.Site['instances']['list']>>[number] & { direct: Hyper.Contact | null }} Conversation
+ *   A group, or a direct conversation with a friend.
+ * @typedef {{ link: string, name: string }} CircleInvite
+ */
+
+/** @type {Record<string, string>} */
 export const ROLES = { member: 'Member', inviter: 'Can add people', moderator: 'Moderator', admin: 'Admin' }
+/** @type {Set<string | null>} */
 export const MODERATORS = new Set(['owner', 'admin', 'moderator'])
+/** @type {Set<string | null>} */
 export const INVITERS = new Set(['owner', 'admin', 'inviter'])
 export const LIMIT = 300 // shortcut: a conversation shows its latest messages only; page back with `until` when needed
 
+/** @param {Hyper.Copies} copies */
 export function copiesLine ({ wanted, kept, online }) {
   if (!wanted) return null
   return { text: `Kept by ${kept} of ${wanted} copies, ${online} online`, warn: online < 2 ? "Few copies online: people may not get this while you're offline" : null }
@@ -15,8 +25,14 @@ export const TRIM_TEXT = "Older messages are deleted on every member's device an
 export const SUGGEST_SECURE = 'They can no longer read what comes next. To also hide who joins and writes from now on: … then Secure this place.'
 export const RENEW_WAITING = "Keep HyperBrowser open until another admin's device has joined."
 const DAY = 24 * 3600e3
+/** @type {Record<string, number>} */
 const UNITS = { days: DAY, weeks: 7 * DAY, months: 30 * DAY, years: 365 * DAY }
+/** @param {number} n @param {string} unit days, weeks, months or years */
 export const trimBefore = (n, unit, now = Date.now()) => now - n * UNITS[unit]
+/**
+ * @param {Hyper.Failure} err
+ * @param {(key: string) => string | null} [nameOf]
+ */
 export function renewError (err, nameOf = () => null) {
   if (err.code === 'ALREADY_RENEWED') {
     const key = (String(err.message).match(/[ybndrfg8ejkmcpqxot1uwisza345h769]{52}/) || [])[0]
@@ -26,13 +42,18 @@ export function renewError (err, nameOf = () => null) {
   return err.message
 }
 
+/** @param {Hyper.Record} m a message @returns {CircleInvite | null} */
 export const circleOf = (m) => typeof m.circle === 'string' && m.circle.startsWith('hg:') ? { link: m.circle, name: m.circleName || 'a circle' } : null
 
+/** @param {string} who @param {string} circle */
 export const acceptLabel = (who, circle) => `Accept ${who}'s invitation to "${circle}"`
 
+/** @param {unknown} ok @param {string} message */
 const need = (ok, message) => { if (!ok) throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }) }
 
+/** @param {Hyper.Site} hyper */
 export function chat (hyper) {
+  /** @param {string} key */
   const at = (key) => hyper.instance(key)
 
   async function myName () {
@@ -40,12 +61,14 @@ export function chat (hyper) {
   }
 
   return {
+    /** @returns {Promise<Conversation[]>} */
     async conversations () {
       const [list, contacts] = await Promise.all([hyper.instances.list(), hyper.contacts.list()])
       const byChat = new Map(contacts.filter((c) => c.chat && c.state !== 'incoming').map((c) => [c.chat, c]))
       return list.map((i) => ({ ...i, direct: byChat.get(i.key) || null }))
     },
 
+    /** @param {unknown} name */
     async group (name) {
       need(String(name || '').trim(), 'a group needs a name')
       const g = await hyper.instances.create(String(name).trim(), { private: true })
@@ -56,25 +79,39 @@ export function chat (hyper) {
       return g
     },
 
+    /** @param {string} key @param {unknown} text */
     async send (key, text) {
       need(String(text || '').trim(), 'nothing to send')
       return at(key).put('message', { text: String(text) })
     },
+    /** @param {string} key @param {string} id @param {unknown} text */
     edit: (key, id, text) => at(key).edit(id, { text: String(text) }),
+    /** @param {string} key @param {Hyper.Record} message @param {boolean} mine */
     remove: (key, message, mine) => mine ? at(key).del(message.id) : at(key).moderateAction('remove', message.id),
 
+    /** @param {string} key @param {(page: Hyper.Page) => void} fn */
     messages: (key, fn) => at(key).query('message').live(fn, { limit: LIMIT }),
+    /** @param {string} key @param {(page: Hyper.Page) => void} fn */
     invites: (key, fn) => at(key).query('invite').live(fn, { limit: 50 }),
+    /** @param {string} key @returns {Promise<Map<string, string>>} */
     names: async (key) => new Map((await at(key).query('profile').latest(1000)).items.map((p) => [p.author, p.name])),
+    /** @param {string} key */
     members: (key) => at(key).members(),
+    /** @param {string} key */
     role: async (key) => at(key).getRole((await hyper.info()).identity),
 
-    // A friend into a group: an invite only they can use in practice, sent in your direct conversation with them.
+    /**
+     * A friend into a group: an invite only they can use in practice, sent in your direct conversation with them.
+     * @param {string} group
+     * @param {string | null} name the group's
+     * @param {Hyper.Contact | undefined} friend
+     */
     async add (group, name, friend) {
       need(friend?.chat && friend.state === 'friend', 'only a friend can be added')
       const link = await at(group).createInvite({ role: 'member' })
-      return at(friend.chat).put('invite', { link, name })
+      return at(/** @type {Hyper.Contact} */ (friend).chat).put('invite', { link, name })
     },
+    /** @param {string} link */
     async join (link) {
       const g = await hyper.instances.join(link)
       const me = await myName()
@@ -82,18 +119,30 @@ export function chat (hyper) {
       return g
     },
 
+    /** @param {string} key @param {string} identity @param {string} role */
     grant: (key, identity, role) => at(key).setRole(identity, role),
+    /** @param {string} key @param {string} identity */
     ban: (key, identity) => at(key).moderateAction('ban', identity, { reason: 'banned from the group' }),
+    /** @param {string} key @param {string} identity */
     removeMember: (key, identity) => at(key).removeRole(identity),
+    /** @param {string} key */
     leave: (key) => hyper.instances.leave(key),
 
+    /** @param {string} key */
     copies: (key) => at(key).copies(),
+    /** @param {string} key @param {(copies: Hyper.Copies) => void} fn */
     onCopies: (key, fn) => at(key).on('copies', fn),
+    /** @param {string} key */
     changeKey: (key) => at(key).rotateKey(),
+    /** @param {string} key @param {{ forgetHistory?: boolean }} [opts] */
     secure: (key, { forgetHistory = false } = {}) => at(key).secure({ forget: forgetHistory }),
+    /** @param {string} key @param {number} before */
     trimHistory: (key, before) => at(key).trimHistory({ before }),
+    /** @param {string} key */
     info: (key) => at(key).info(),
+    /** @param {string} key */
     status: (key) => at(key).status(),
+    /** @param {CircleInvite} inv */
     joinCircle: (inv) => hyper.circles.join(inv.link, inv.name)
   }
 }

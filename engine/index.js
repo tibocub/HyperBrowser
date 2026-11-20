@@ -10,6 +10,8 @@ import { circles } from './circles.js'
 import { projects } from './projects.js'
 import hyperdns from 'hyperdns'
 
+/** @typedef {{ id: string, apps: Array<{ key: string, id?: string }> }} Bundle The apps the build bundled (bundle.json). */
+
 const ANSWERS = 'hyperbrowser/identity'
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 // addProtocol and memberConnections can't cross to a page.
@@ -38,37 +40,80 @@ const GRACE = 5 * 60 * 1000
 // Long enough that a page coming back at once finds the handle still open.
 const IDLE = 30 * 1000
 
+/**
+ * @typedef {import('./types.js').Site} Site
+ * @typedef {import('./types.js').SiteHandle} SiteHandle
+ * @typedef {import('./types.js').Manifest} Manifest
+ * @typedef {import('./types.js').Params} Params
+ * @typedef {import('./types.js').CodedError} CodedError
+ * @typedef {import('./types.js').TypeDeclarations} TypeDeclarations
+ * @typedef {{ site: Site, scope: SiteHandle, types: TypeDeclarations | null }} Instance An app's instance, open.
+ * @typedef {object} Opened A site open in at least one tab.
+ * @property {Site} site
+ * @property {Manifest} manifest
+ * @property {Promise<SiteHandle> | null} scope the site's own space, as the person
+ * @property {Map<string, Promise<Instance>>} instances
+ * @property {Map<string, ReturnType<typeof setTimeout>>} idle an instance's handle closes when its timer ends
+ * @property {number} tabs
+ * @property {string} [draft] an IDE preview: its pages are the project's
+ * @typedef {{ key: string, instance?: string | null, contacts?: true, stop: () => void }} Sub A page's subscription.
+ * @typedef {{ key: unknown, sub?: unknown, instance?: unknown }} At The space a page's call is for.
+ */
+
+/** @param {string} code @param {string} message */
 const error = (code, message) => Object.assign(new Error(message), { code })
 
+/**
+ * The engine: requests from the shell over `ipc`, answered by method.
+ * @param {unknown} ipc a duplex stream to the shell (Bare.IPC, or a pair() end)
+ */
 export function start (ipc) {
-  let sfs = null
+  // null until init, set back to null at the end: handle() refuses every call before init
+  let sfs = /** @type {SwarmFS} */ (/** @type {unknown} */ (null))
+  /** @type {Promise<SwarmFS> | null} */
   let starting = null
+  /** @type {ReturnType<typeof setInterval> | null} */
   let timer = null
   let last = Date.now()
+  /** @type {Promise<void> | null} */
   let closing = null
   let nextSub = 1
+  /** @type {Promise<unknown>} */
   let answering = Promise.resolve()
+  /** @type {Promise<unknown>} */
   let keeping = Promise.resolve() // mine.set one at a time: two at once would each pass the cap
+  /** @type {Promise<unknown>} */
   let following = Promise.resolve() // followMoves one at a time
+  /** @type {Promise<void> | null} */
   let syncing = null
-  let people = null
-  let notes = null
-  let rings = null
-  let works = null
+  // set by init, before any call that uses them (as sfs)
+  let people = /** @type {ReturnType<typeof contacts>} */ (/** @type {unknown} */ (null))
+  let notes = /** @type {ReturnType<typeof notifications>} */ (/** @type {unknown} */ (null))
+  let rings = /** @type {ReturnType<typeof circles>} */ (/** @type {unknown} */ (null))
+  let works = /** @type {ReturnType<typeof projects>} */ (/** @type {unknown} */ (null))
+  /** @type {Map<string, Opened>} */
   const sites = new Map()
+  /** @type {Map<string, ReturnType<typeof setTimeout>>} */
   const leaving = new Map()
+  /** @type {Map<string, Promise<unknown>>} */
   const departing = new Map()
   let grace = GRACE
   let idle = IDLE
+  /** @type {Set<() => void>} */
   const counters = new Set()
   let opening = 0
+  /** @type {Map<number, Sub>} */
   const subs = new Map()
+  /** @type {Set<string>} */
   const bundled = new Set()
+  /** @type {(reason: string) => void} */
   let closed
+  /** @type {Promise<string>} */
   const done = new Promise((resolve) => { closed = resolve })
 
   const rpc = connect(ipc, { handle, onmessage: () => { last = Date.now() }, onclose: () => shutdown('closed') })
 
+  /** @param {string} method @param {Params} p */
   async function handle (method, p) {
     if (method === 'init') return init(p)
     if (method === 'ping') return true
@@ -113,7 +158,7 @@ export function start (ipc) {
       case 'contacts.list': return people.call('list', [])
       case 'contacts.inviteToCircle': return people.call('inviteToCircle', [p.identity, p.circle])
       case 'names.resolve': return resolveName(p) // the shell's, never a page's (not in CALLS)
-      case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length, handles: [...sites.values()].reduce((n, s) => n + s.instances.size, 0) }
+      case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length, handles: [...sites.values()].reduce((/** @type {number} */ n, s) => n + s.instances.size, 0) }
       case 'site.installed': return installed()
       case 'devices.list': return devices()
       case 'devices.add': return { code: (await sfs.hg.addDevice(secret(p))).code }
@@ -132,6 +177,7 @@ export function start (ipc) {
     }
   }
 
+  /** @param {Params} p */
   async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName, bundle, notifyTurn, idle: i, projects: root }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
@@ -165,6 +211,7 @@ export function start (ipc) {
     return { identity: sfs.hg.identity.publicKey, version: VERSION }
   }
 
+  /** @param {Params} p */
   async function publish ({ folder, fresh = false }) {
     if (typeof folder !== 'string' || !folder) throw error('INVALID_PARAMS', 'site.publish needs { folder }')
     const full = path.resolve(folder)
@@ -172,11 +219,11 @@ export function start (ipc) {
     // a folder published before is linked to its site's pages (SwarmFS keeps the links): same site, same key
     const link = (await sfs.links()).find((l) => l.path === full)
     if (link && fresh) { // a new site for this folder: the old one is left (its key stops working once nobody holds it)
-      const old = sfs.hg.space(link.space).parent
+      const old = /** @type {string} */ (sfs.hg.space(link.space).parent) // a site's pages: a sub-space of the site
       await sfs.unlink(full)
       await sfs.leave(old)
     } else if (link) {
-      const key = sfs.hg.space(link.space).parent
+      const key = /** @type {string} */ (sfs.hg.space(link.space).parent)
       const site = await sfs.site(key)
       // an invite-only site never turns public by itself: public can't be undone, and its records would be read
       if (manifest.public !== false && !site.isPublic) throw error('PRIVATE_SITE', `this folder's site (${key}) is invite-only and site.json doesn't say "public": false; publish with --new for a fresh public site`)
@@ -189,6 +236,7 @@ export function start (ipc) {
     return { key: site.key, created: true, manifest }
   }
 
+  /** @param {Params} p */
   async function open ({ key, timeout = 30000 }) {
     if (typeof key !== 'string') throw error('INVALID_PARAMS', 'site.open needs { key }')
     opening++
@@ -199,6 +247,11 @@ export function start (ipc) {
     }
   }
 
+  /**
+   * @param {string} key a site's key, or an hg: link
+   * @param {number} timeout
+   * @returns {Promise<{ key: string, manifest: Manifest, dynamic: boolean, draft?: true, instance?: string, notify?: 'ask' }>}
+   */
   async function openSite (key, timeout) {
     stay(key)
     await Promise.all(departing.values()) // a site being left is joined again once it is gone
@@ -218,7 +271,7 @@ export function start (ipc) {
       await listInstance(site.app, site.key, true)
       return { ...(await openSite(site.app, timeout)), instance: site.key }
     }
-    const manifest = parseManifest(await site.read('site.json', { timeout }).catch((err) => {
+    const manifest = parseManifest(await site.read('site.json', { timeout }).catch((/** @type {CodedError} */ err) => {
       throw err.code === 'NOT_FOUND' ? error('NO_MANIFEST', 'this site has no site.json') : err
     }))
     stay(site.key)
@@ -229,6 +282,7 @@ export function start (ipc) {
     return { key: site.key, manifest, dynamic: isDynamic(manifest), ...(await askNotify(site.key, manifest)) }
   }
 
+  /** @param {string} key @returns {Promise<Site>} */
   async function visitSite (key, timeout = 30000) {
     if (!KEY.test(key)) throw error('INVALID_KEY', 'not a site key')
     let held = true
@@ -236,12 +290,14 @@ export function start (ipc) {
     return held ? sfs.site(key, { timeout }) : sfs.visit('hg:' + key, { timeout })
   }
 
+  /** @param {string} key @param {Manifest} manifest @returns {Promise<{ notify?: 'ask' }>} */
   async function askNotify (key, manifest) {
     if (!manifest.permissions.includes('notifications') || !manifest.notifications?.length) return {}
     const s = await sfs.hg.settings()
     return s[ANSWERS]?.[key] === true && typeof s[PERMITS]?.[key]?.notifications !== 'boolean' ? { notify: 'ask' } : {}
   }
 
+  /** @param {Params} params */
   async function read ({ key, path: p, timeout }) {
     const s = opened(keyOf({ key }))
     const clean = p === '' || p === '/' ? s.manifest.entry : sitePath(p)
@@ -250,11 +306,13 @@ export function start (ipc) {
     return { bytes: await s.site.read(clean, { timeout }), path: clean }
   }
 
+  /** @param {Params} p */
   function state ({ key }) {
     const { site } = opened(keyOf({ key }))
     return { complete: site.space.isComplete() && site.pages.space.isComplete(), peers: site.space.peers().length }
   }
 
+  /** @param {Params} p */
   async function keep ({ key, keep, timeout }) {
     const { site, manifest } = opened(keyOf({ key }))
     if (typeof keep !== 'boolean') throw error('INVALID_PARAMS', 'site.keep needs { keep: true | false }')
@@ -265,23 +323,27 @@ export function start (ipc) {
   }
 
   // Reads every held file record: the shell asks every few seconds, not more.
+  /** @param {Params} p */
   async function held ({ key }) {
     const { site } = opened(keyOf({ key }))
     return { bytes: await site.held(), kept: await site.kept() }
   }
 
+  /** @param {{ key?: unknown }} p @returns {string} */
   function keyOf ({ key }) {
     if (typeof key !== 'string') throw error('INVALID_PARAMS', 'needs { key }')
     if (!KEY.test(key)) throw error('INVALID_KEY', 'not a site key')
     return key
   }
 
+  /** @param {string} key */
   function opened (key) {
     const s = sites.get(key)
     if (!s) throw error('NOT_FOUND', 'open the site first (site.open)')
     return s
   }
 
+  /** @param {Params} p */
   async function consent ({ key, allow }) {
     key = keyOf({ key })
     if (typeof allow !== 'boolean') throw error('INVALID_PARAMS', 'site.consent needs { allow: true | false }')
@@ -296,6 +358,7 @@ export function start (ipc) {
     return true
   }
 
+  /** @param {Params} p */
   async function permit ({ key, permission, allow }) {
     key = keyOf({ key })
     if (!['contacts', 'notifications', 'projects'].includes(permission) || typeof allow !== 'boolean') throw error('INVALID_PARAMS', "site.permit needs { permission: 'contacts' | 'notifications' | 'projects', allow: true | false }")
@@ -308,6 +371,7 @@ export function start (ipc) {
     return true
   }
 
+  /** @param {string} key @param {string} permission @param {boolean} allow */
   function writePermit (key, permission, allow) {
     const write = answering.then(async () => {
       const all = (await sfs.hg.settings())[PERMITS] || {}
@@ -317,6 +381,7 @@ export function start (ipc) {
     return write
   }
 
+  /** @param {string} key */
   async function permitted (key, permission = 'contacts') {
     await target({ key })
     if (!opened(key).manifest.permissions.includes(permission)) throw error('NOT_ALLOWED', "this site's site.json doesn't ask for " + permission)
@@ -325,25 +390,29 @@ export function start (ipc) {
     if (answer !== true) throw error('NEEDS_PERMISSION', 'ask the person first (site.permit)')
   }
 
+  /** @param {At} at @returns {Promise<SiteHandle>} */
   async function target ({ key, sub, instance }) {
     const s = opened(keyOf({ key }))
     if (!isDynamic(s.manifest)) throw error('NOT_ALLOWED', 'a static site has no API')
-    const answer = s.draft ? true : ((await sfs.hg.settings())[ANSWERS] || {})[key] // a preview: its space is a throwaway
+    const answer = s.draft ? true : ((await sfs.hg.settings())[ANSWERS] || {})[/** @type {string} */ (key)] // a preview: its space is a throwaway
     if (answer === false) throw error('NOT_ALLOWED', 'the person said no to this site using their identity')
     if (answer !== true) throw error('NEEDS_CONSENT', 'ask the person first (site.consent)')
     if (!s.scope) {
-      s.scope = sfs.hg.scope(key, { identity: 'main' })
+      s.scope = sfs.hg.scope(/** @type {string} */ (key), { identity: 'main' })
       s.scope.catch(() => { s.scope = null })
     }
-    const scope = instance === undefined || instance === null ? await s.scope : await instanceScope(s, key, instance)
-    return sub === undefined || sub === null ? scope : scope.subspace(sub)
+    const scope = instance === undefined || instance === null ? await s.scope : await instanceScope(s, /** @type {string} */ (key), /** @type {string} */ (instance))
+    // a sub-space's scope has the space's methods too (hypergraph's type says Scope only)
+    return sub === undefined || sub === null ? scope : /** @type {SiteHandle} */ (scope.subspace(/** @type {string} */ (sub)))
   }
 
+  /** @param {string} app @returns {Promise<Record<string, true>>} */
   async function listed (app) {
     return (await sfs.hg.settings())[APP_PREFIX + app + '/instances'] || {}
   }
 
   // One read-and-write of an app's list at a time (as the consent answers).
+  /** @param {string} app @param {string} key @param {boolean} on @returns {Promise<void>} */
   function listInstance (app, key, on) {
     const write = answering.then(async () => {
       const list = await listed(app)
@@ -356,6 +425,7 @@ export function start (ipc) {
     return write
   }
 
+  /** @param {Opened} s @param {string} app @param {string} key a page's: keyOf() checks it */
   async function instanceScope (s, app, key) {
     keyOf({ key })
     const old = key
@@ -369,6 +439,7 @@ export function start (ipc) {
     }
   }
 
+  /** @param {Opened} s @param {string} app @param {string} key */
   async function useInstance (s, app, key) {
     const list = await listed(app)
     const now = current(key) // renewed: the new place, listed under either key
@@ -383,7 +454,7 @@ export function start (ipc) {
       s.instances.set(key, opening)
       opening.catch(() => s.instances.delete(key))
     }
-    const i = await s.instances.get(key)
+    const i = await /** @type {Promise<Instance>} */ (s.instances.get(key))
     if (s.manifest.types && i.types !== s.manifest.types) { // the app's types, and those a new version added: owner, admins only
       i.types = s.manifest.types
       await i.site.declareTypes(i.types).catch(() => {})
@@ -393,6 +464,7 @@ export function start (ipc) {
 
   // shortcut: a single call running longer than `idle` on an instance may see its handle closed (CLOSED); count the
   // calls in flight if that ever shows up.
+  /** @param {Opened} s @param {string} app @param {string} key */
   function idleLater (s, app, key) {
     clearTimeout(s.idle.get(key))
     s.idle.set(key, setTimeout(() => {
@@ -404,8 +476,10 @@ export function start (ipc) {
     }, idle))
   }
 
+  /** @param {Opened} s @param {string} app @param {string} method @param {any[]} args a page's: checked here */
   async function instances (s, app, method, [a, b]) {
     if (method === 'instances.list') {
+      /** @type {Array<{ key: string, name: string | null, role: string | null, public: boolean }>} */
       const out = []
       for (const key of Object.keys(await listed(app))) {
         let space
@@ -432,15 +506,18 @@ export function start (ipc) {
     return leaveInstance(app, a)
   }
 
+  /** @param {string} app @param {unknown} link @returns {Promise<Site>} */
   async function joinInstance (app, link) {
     if (typeof link !== 'string' || !link.startsWith('hg:')) throw error('INVALID_PARAMS', "join takes an instance's link (hg:...)")
     const before = new Set(sfs.hg.spaces().map((x) => x.key))
+    /** @type {Site | null} */
     let site = null
+    /** @type {CodedError | null} */
     let failed = null
     try {
       site = await sfs.visit(link)
     } catch (err) {
-      failed = err // NOT_FOUND: a space that isn't a site, refused below
+      failed = /** @type {CodedError} */ (err) // NOT_FOUND: a space that isn't a site, refused below
     }
     // a circle's invite is joined through HyperBrowser only: a page's join of one is left at once (its one
     // use is spent: hypergraph can't tell a circle's link before redeeming it)
@@ -454,11 +531,13 @@ export function start (ipc) {
     return site
   }
 
+  /** @param {string} key */
   function isCircle (key) {
     try { return sfs.hg.space(key).circle } catch { return false }
   }
 
   // Off the list first, so nothing reaches it while it goes.
+  /** @param {string} app @param {string} key a page's: keyOf() checks it */
   async function leaveInstance (app, key) {
     keyOf({ key })
     if (!(await listed(app))[key]) throw error('NOT_ALLOWED', "not one of this app's instances")
@@ -475,9 +554,15 @@ export function start (ipc) {
     return true
   }
 
+  /**
+   * @param {SiteHandle} t
+   * @param {unknown} args a page's
+   * @param {unknown} [chain] a page's filters, each [name, args]
+   */
   function query (t, args, chain = []) {
     if (!Array.isArray(args) || !Array.isArray(chain)) throw error('INVALID_PARAMS', 'args and chain are lists')
-    let q = t.query(...args)
+    /** @type {any} */
+    let q = t.query(.../** @type {[string]} */ (args)) // a Query, its filters called by name (checked against FILTERS)
     for (const step of chain) {
       if (!Array.isArray(step) || !FILTERS.has(step[0])) throw error('INVALID_PARAMS', 'a query step is one of ' + [...FILTERS].join(', '))
       q = q[step[0]](...(step[1] || []))
@@ -485,6 +570,7 @@ export function start (ipc) {
     return q
   }
 
+  /** @param {Params} p */
   async function call ({ key, sub, instance, method, args = [], chain }) {
     const project = typeof method === 'string' && method.startsWith('projects.')
     if (method !== 'info' && !project && !MINE.has(method) && !INSTANCES.has(method) && !CONTACTS.has(method) && !NOTIFY.has(method) && !CALLS.has(method)) throw error('UNKNOWN_METHOD', `a site may not call ${method}`)
@@ -509,8 +595,9 @@ export function start (ipc) {
     if (method === 'since') args = sinceArgs(args)
     const t = await target({ key, sub, instance })
     if (method === 'info') {
+      /** @type {Record<string, unknown>} */
       const out = { identity: t.identity.publicKey }
-      for (const name of INFO) out[name] = t[name] ?? null
+      for (const name of INFO) out[name] = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (t))[name] ?? null
       out.app = instance ? key : null
       return plain(out)
     }
@@ -529,9 +616,10 @@ export function start (ipc) {
       if (typeof before !== 'number' || Number.isNaN(before)) throw error('INVALID_PARAMS', 'trimHistory({ before }): a time in ms')
       return plain(await sfs.hg.space(t.key).trimHistory({ before }))
     }
-    return plain(await t[method](...args))
+    return plain(await /** @type {any} */ (t)[method](...args)) // a method of CALLS, called by name with the page's args
   }
 
+  /** @param {SiteHandle} t @param {any} [opts] a page's: checked here */
   async function secure (t, opts = {}) {
     if (opts === null || typeof opts !== 'object' || (opts.forget !== undefined && typeof opts.forget !== 'boolean')) throw error('INVALID_PARAMS', 'secure({ forget }): forget is true or false')
     const fresh = await sfs.hg.space(t.key).secure({ forget: !!opts.forget })
@@ -539,6 +627,7 @@ export function start (ipc) {
     return { key: fresh.key }
   }
 
+  /** @param {string} key */
   function current (key) {
     try { return sfs.hg.space(key).key } catch { return key }
   }
@@ -564,18 +653,21 @@ export function start (ipc) {
     }
   }
 
+  /** @param {string} key @param {SiteHandle} t @param {unknown} k @returns {Promise<SiteHandle>} */
   async function ownSpace (key, t, k) {
     keyOf({ key: k })
     if (k === t.key) return t
-    if (t.key === key && (await listed(key))[k]) return target({ key, instance: k })
-    try { return t.subspace(k) } catch { throw error('NOT_ALLOWED', "not this site's space, one of its sub-spaces or instances") }
+    if (t.key === key && (await listed(key))[/** @type {string} */ (k)]) return target({ key, instance: k })
+    try { return /** @type {SiteHandle} */ (t.subspace(/** @type {string} */ (k))) } catch { throw error('NOT_ALLOWED', "not this site's space, one of its sub-spaces or instances") }
   }
 
   // Never in the site's space; the key prefix keeps other sites' names out of reach.
+  /** @param {string} key @param {string} method @param {any[]} args a page's: checked here @param {unknown} instance */
   async function mine (key, method, [name, value], instance) {
     const site = `${MINE_PREFIX}${key}/`
     const prefix = instance ? `${site}@${instance}/` : site
     if (method === 'mine.all') {
+      /** @type {Record<string, unknown>} */
       const out = {}
       for (const [n, v] of Object.entries(await sfs.hg.settings())) {
         if (n.startsWith(prefix) && v !== null && (instance || n[prefix.length] !== '@')) out[n.slice(prefix.length)] = v
@@ -603,6 +695,7 @@ export function start (ipc) {
   }
 
   // the app's own places only, whatever instance the page names (the list is the engine's).
+  /** @param {string} key @param {string} method @param {any[]} args a page's */
   async function notify (key, method, [a]) {
     await target({ key })
     const { manifest } = opened(key)
@@ -614,6 +707,7 @@ export function start (ipc) {
     return notes.follow(key, manifest.types, places, a)
   }
 
+  /** @param {any[]} args a page's: checked here */
   function sinceArgs ([cursor, o]) {
     if (o !== undefined && (o === null || typeof o !== 'object' || Array.isArray(o))) throw error('INVALID_PARAMS', 'since(cursor, { types, limit })')
     const limit = o?.limit ?? SINCE_MAX
@@ -621,15 +715,17 @@ export function start (ipc) {
     return [cursor ?? null, { ...o, limit }]
   }
 
+  /** @param {Params} p */
   async function live ({ key, sub, instance, args = [], chain = [], opts }) {
     const t = await target({ key, sub, instance })
     const q = query(t, args, chain)
     const id = nextSub++
-    const stop = q.live((r) => rpc.emit('live', { id, items: plain(r.items), complete: r.complete }), opts)
+    const stop = q.live((/** @type {import('./types.js').Page} */ r) => rpc.emit('live', { id, items: plain(r.items), complete: r.complete }), opts)
     subs.set(id, { key, instance, stop })
     return { id }
   }
 
+  /** @param {Params} p */
   async function listen ({ key, sub, instance, event }) {
     if (event === 'contacts') { // the list may have changed (any setting did: the site reads again)
       await permitted(key)
@@ -673,23 +769,26 @@ export function start (ipc) {
     }
     const t = await target({ key, sub, instance })
     const id = nextSub++
+    /** @param {unknown} data */
     const fn = (data) => rpc.emit('event', { id, data: plain(data) })
     t.on(event, fn)
     subs.set(id, { key, instance, stop: () => t.off(event, fn) })
     return { id }
   }
 
+  /** @param {Params} p */
   function off ({ id }) {
     const s = subs.get(id)
     if (s) {
       subs.delete(id)
       s.stop()
       const site = s.instance && sites.get(s.key)
-      if (site) idleLater(site, s.key, s.instance)
+      if (site) idleLater(site, s.key, /** @type {string} */ (s.instance))
     }
     return true
   }
 
+  /** @param {string} key */
   async function release (key) {
     for (const [id, s] of subs) if (s.key === key) off({ id })
     const s = sites.get(key)
@@ -707,6 +806,7 @@ export function start (ipc) {
     }
   }
 
+  /** @param {string} key */
   async function closeSite (key) {
     const s = sites.get(key)
     if (s && --s.tabs > 0) return true
@@ -717,22 +817,25 @@ export function start (ipc) {
   }
 
   // An instance stays joined after its tab closes, or an invite-only forum would be lost.
+  /** @param {Site} site */
   async function hosted (site) {
-    return !!site.app || bundled.has(site.key) || (await site.kept()) || ['owner', 'admin'].includes(await site.space.getRole(sfs.hg.identity.publicKey))
+    return !!site.app || bundled.has(site.key) || (await site.kept()) || /** @type {Array<string | null>} */ (['owner', 'admin']).includes(await site.space.getRole(sfs.hg.identity.publicKey))
   }
 
+  /** @param {string} key */
   function stay (key) {
     clearTimeout(leaving.get(key))
     leaving.delete(key)
   }
 
+  /** @param {string} key @param {Site} site */
   function leaveLater (key, site) {
     stay(key)
     leaving.set(key, setTimeout(() => {
       leaving.delete(key)
       if (closing || sites.has(key)) return
       if (opening) return leaveLater(key, site) // a link being opened may be this site
-      const left = hosted(site).then((h) => h || sfs.leave(key)).catch(() => {}).finally(() => departing.delete(key))
+      const left = hosted(site).then(/** @returns {unknown} */ (h) => h || sfs.leave(key)).catch(() => {}).finally(() => departing.delete(key))
       departing.set(key, left)
     }, grace))
   }
@@ -748,13 +851,14 @@ export function start (ipc) {
     }
   }
 
+  /** @param {Params} p */
   async function resolveName ({ address, timeout }) {
     if (typeof address !== 'string' || !address.includes('@')) throw error('INVALID_PARAMS', 'names.resolve needs { address: name@authority }')
     let found
     try {
       found = await hyperdns.resolveAddress(address, { hg: sfs.hg, timeout })
     } catch (err) {
-      if (err.message === 'Invalid address format') throw error('INVALID_PARAMS', 'not name@authority: ' + address)
+      if (/** @type {Error} */ (err).message === 'Invalid address format') throw error('INVALID_PARAMS', 'not name@authority: ' + address)
       throw err
     }
     for (const { value } of found.records) {
@@ -764,34 +868,40 @@ export function start (ipc) {
     throw error('NOT_A_SITE', address + ' points to no site (no key among its records)')
   }
 
+  /** @param {string} bundle @returns {Promise<Bundle | null>} */
   async function readBundle (bundle) {
     try {
       const list = JSON.parse(await fs.promises.readFile(path.join(bundle, 'bundle.json'), 'utf-8'))
-      return typeof list?.id === 'string' && Array.isArray(list.apps) ? { id: list.id, apps: list.apps.filter((a) => typeof a?.key === 'string' && KEY.test(a.key)) } : null
+      return typeof list?.id === 'string' && Array.isArray(list.apps) ? { id: list.id, apps: list.apps.filter((/** @type {any} */ a) => typeof a?.key === 'string' && KEY.test(a.key)) } : null
     } catch {
       return null
     }
   }
 
   // A newer version held here stays (hypergraph never takes a core back); a failed app is retried next start.
+  /** @param {string} bundle @param {Bundle} list @param {string} dir */
   async function unbundle (bundle, list, dir) {
     const marker = path.join(dir, 'bundled.json')
+    /** @type {string | null} */
     let done = null
     try { done = JSON.parse(await fs.promises.readFile(marker, 'utf-8')).id } catch {}
+    /** @param {string} key */
     const held = (key) => { try { sfs.hg.space(key); return true } catch { return false } }
     const todo = list.apps.filter((a) => done !== list.id || !held(a.key))
     let failed = false
     for (const a of todo) {
       try {
         await sfs.importSites(path.join(bundle, a.key), { timeout: 10000 })
-      } catch (err) {
+      } catch (e) {
         failed = true
+        const err = /** @type {CodedError} */ (e)
         console.error(`bundled app ${a.id} (${a.key}) not imported: ${err.code || 'ERROR'} ${err.message}`)
       }
     }
     if (todo.length && !failed) await fs.promises.writeFile(marker, JSON.stringify({ id: list.id }))
   }
 
+  /** @param {Params} p */
   const secret = ({ password, recoveryPhrase }) => ({ password, recoveryPhrase })
 
   async function devices () {
@@ -800,6 +910,7 @@ export function start (ipc) {
     try {
       if (await sfs.hg.recoveryPhrase() === null) phrase = 'forgotten'
     } catch { phrase = 'protected' }
+    /** @type {Array<{ key: string, name: string }>} */
     const owns = []
     for (const s of sfs.hg.spaces()) {
       if (!s.parent && (await sfs.hg.space(s.key).getRole(sfs.hg.identity.publicKey).catch(() => null)) === 'owner') owns.push({ key: s.key, name: s.name ?? '' })
@@ -811,6 +922,7 @@ export function start (ipc) {
   }
 
   async function installed () {
+    /** @type {{ sites: Array<{ key: string, title: string }>, uninstalled: string[] }} */
     const out = { sites: [], uninstalled: [] }
     for (const [n, title] of Object.entries(await sfs.hg.settings())) {
       if (!n.startsWith(INSTALLED)) continue
@@ -820,6 +932,7 @@ export function start (ipc) {
     return out
   }
 
+  /** @param {string} reason */
   function shutdown (reason) {
     if (!closing) {
       closing = (async () => {
@@ -837,7 +950,7 @@ export function start (ipc) {
         if (notes) await notes.close()
         if (people) await people.close()
         if (opening) await opening.then((s) => s.close(), () => {})
-        sfs = null
+        sfs = /** @type {SwarmFS} */ (/** @type {unknown} */ (null))
         setTimeout(() => rpc.end(), 0) // after the reply to 'close'
         closed(reason)
       })()
@@ -846,8 +959,9 @@ export function start (ipc) {
   }
 
   // Told without its stack: that stays in the log.
+  /** @param {unknown} err anything: a throw can be of any value */
   function escaped (err) {
-    const e = { message: String(err?.message ?? err), code: err?.code ?? null, method: err?.method ?? null }
+    const e = { message: String(/** @type {CodedError | undefined} */ (err)?.message ?? err), code: /** @type {CodedError | undefined} */ (err)?.code ?? null, method: /** @type {CodedError | undefined} */ (err)?.method ?? null }
     try { rpc.emit('engine.error', e) } catch {} // the channel may be closing: telling must never throw back into guard
     return e
   }
@@ -855,25 +969,37 @@ export function start (ipc) {
   return { closed: done, escaped }
 }
 
-// Logged and told, and the engine keeps running (else Bare aborts the process). Never in tests: failures stay loud.
+/**
+ * Logged and told, and the engine keeps running (else Bare aborts the process). Never in tests: failures stay loud.
+ * @param {ReturnType<typeof start>} engine
+ * @param {{ on (event: 'uncaughtException' | 'unhandledRejection', fn: (err: unknown) => void): unknown }} target process, or Bare
+ * @param {{ stack?: boolean }} [opts]
+ */
 export function guard (engine, target, { stack = true } = {}) {
+  /** @param {unknown} err */
   const on = (err) => {
     const { message, code, method } = engine.escaped(err)
-    console.error(`escaped error${code ? ' ' + code : ''}${method ? ' in ' + method : ''}: ${stack && err?.stack ? err.stack : message}`)
+    console.error(`escaped error${code ? ' ' + code : ''}${method ? ' in ' + method : ''}: ${stack && /** @type {Error | undefined} */ (err)?.stack ? /** @type {Error} */ (err).stack : message}`)
   }
   target.on('uncaughtException', on)
   target.on('unhandledRejection', on)
 }
 
+/**
+ * A value as a page gets it: plain JSON and bytes; an object of a class (a Space) is its key and name.
+ * @param {unknown} value
+ * @returns {unknown}
+ */
 function plain (value) {
   if (value === undefined) return null
   if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return value
   if (Array.isArray(value)) return value.map(plain)
   const proto = Object.getPrototypeOf(value)
   if (proto !== Object.prototype && proto !== null) {
-    return typeof value.key === 'string' ? { key: value.key, name: value.name ?? null } : null
+    return typeof /** @type {{ key?: unknown }} */ (value).key === 'string' ? { key: /** @type {{ key: string }} */ (value).key, name: /** @type {{ name?: unknown }} */ (value).name ?? null } : null
   }
+  /** @type {Record<string, unknown>} */
   const out = {}
-  for (const k of Object.keys(value)) if (typeof value[k] !== 'function') out[k] = plain(value[k])
+  for (const k of Object.keys(value)) if (typeof /** @type {Record<string, unknown>} */ (value)[k] !== 'function') out[k] = plain(/** @type {Record<string, unknown>} */ (value)[k])
   return out
 }

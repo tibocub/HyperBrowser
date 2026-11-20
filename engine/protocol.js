@@ -5,15 +5,39 @@ import { Duplex } from 'streamx'
 
 export const VERSION = 1
 
+/**
+ * JSON as it crosses the stream; bytes come back as Uint8Array.
+ * @typedef {any} Wire
+ * @typedef {Record<string, Wire>} Params A request's params: from the other side, checked by each handler.
+ * @typedef {(method: string, params: Params) => unknown} Handler
+ * @typedef {object} Rpc
+ * @property {(method: string, params?: object) => Promise<Wire>} request The answer depends on the method.
+ * @property {(event: string, data: unknown) => void} emit
+ * @property {() => void} end
+ * @property {() => void} destroy
+ * @property {boolean} destroyed
+ */
+
+/** @param {string} code @param {string} message */
 const error = (code, message) => Object.assign(new Error(message), { code })
 
-// onmessage: called for every message of this version (the engine's heartbeat counts them).
+/**
+ * onmessage: called for every message of this version (the engine's heartbeat counts them).
+ * @param {unknown} stream a duplex byte stream
+ * @param {object} [opts]
+ * @param {Handler | null} [opts.handle]
+ * @param {((event: string, data: Wire) => void) | null} [opts.onEvent]
+ * @param {(() => void) | null} [opts.onmessage]
+ * @param {(() => void) | null} [opts.onclose]
+ * @returns {Rpc}
+ */
 export function connect (stream, { handle = null, onEvent = null, onmessage = null, onclose = null } = {}) {
   const framed = new FramedStream(stream)
+  /** @type {Map<number, { resolve: (v: Wire) => void, reject: (err: Error) => void, method: string }>} */
   const waiting = new Map()
   let next = 1
 
-  framed.on('data', async (buf) => {
+  framed.on('data', async (/** @type {Uint8Array} */ buf) => {
     let m
     try { m = JSON.parse(b4a.toString(buf)) } catch { return }
     if (!m || typeof m !== 'object') return
@@ -27,13 +51,14 @@ export function connect (stream, { handle = null, onEvent = null, onmessage = nu
         if (!handle) throw error('NOT_SUPPORTED', 'no requests here')
         const result = await handle(m.method, fromWire(m.params) || {})
         send({ id: m.id, result: result ?? null })
-      } catch (err) {
+      } catch (e) {
+        const err = /** @type {{ code?: string, message?: string }} */ (e)
         send({ id: m.id, error: { code: err.code || 'ERROR', message: err.message } })
       }
     } else if (typeof m.event === 'string') {
       if (onEvent) onEvent(m.event, fromWire(m.data))
     } else if (waiting.has(m.id)) {
-      const w = waiting.get(m.id)
+      const w = /** @type {NonNullable<ReturnType<typeof waiting.get>>} */ (waiting.get(m.id))
       waiting.delete(m.id)
       // the method too: an engine's error alone ("not a site: …") doesn't say which call failed
       if (m.error) w.reject(Object.assign(error(m.error.code, m.error.message), { method: w.method }))
@@ -48,6 +73,7 @@ export function connect (stream, { handle = null, onEvent = null, onmessage = nu
   framed.on('end', () => framed.destroy())
   framed.on('error', () => {})
 
+  /** @param {object} m */
   function send (m) {
     if (!framed.destroyed) framed.write(b4a.from(JSON.stringify({ v: VERSION, ...toWire(m) })))
   }
@@ -68,21 +94,31 @@ export function connect (stream, { handle = null, onEvent = null, onmessage = nu
   }
 }
 
+/**
+ * @param {unknown} value
+ * @returns {Wire}
+ */
 export function toWire (value) {
   if (value instanceof Uint8Array) return { $bytes: b4a.toString(value, 'base64') }
   if (Array.isArray(value)) return value.map(toWire)
   if (value && typeof value === 'object') {
+    /** @type {Record<string, Wire>} */
     const out = {}
-    for (const k of Object.keys(value)) out[k] = toWire(value[k])
+    for (const k of Object.keys(value)) out[k] = toWire(/** @type {Record<string, unknown>} */ (value)[k])
     return out
   }
   return value
 }
 
+/**
+ * @param {Wire} value
+ * @returns {Wire}
+ */
 export function fromWire (value) {
   if (Array.isArray(value)) return value.map(fromWire)
   if (value && typeof value === 'object') {
     if (typeof value.$bytes === 'string' && Object.keys(value).length === 1) return b4a.from(value.$bytes, 'base64')
+    /** @type {Record<string, Wire>} */
     const out = {}
     for (const k of Object.keys(value)) out[k] = fromWire(value[k])
     return out
@@ -91,7 +127,7 @@ export function fromWire (value) {
 }
 
 export function pair () {
-  const a = new Duplex({ write (data, cb) { b.push(data); cb() }, final (cb) { b.push(null); cb() }, predestroy () { b.destroy() } })
-  const b = new Duplex({ write (data, cb) { a.push(data); cb() }, final (cb) { a.push(null); cb() }, predestroy () { a.destroy() } })
+  const a = new Duplex({ write (data, cb) { b.push(data); cb(null) }, final (cb) { b.push(null); cb(null) }, predestroy () { b.destroy() } })
+  const b = new Duplex({ write (data, cb) { a.push(data); cb(null) }, final (cb) { a.push(null); cb(null) }, predestroy () { a.destroy() } })
   return [a, b]
 }

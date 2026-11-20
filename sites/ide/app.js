@@ -2,38 +2,66 @@
 import * as ide from './lib/site.js'
 import { fileTree } from './lib/tree.js'
 
-const hyper = window.hyper
-const root = document.getElementById('app')
-const projects = hyper?.projects
+/**
+ * @typedef {Hyper.Site['projects']} Projects
+ * @typedef {{ path: string, size: number, mtime: number }} File
+ * @typedef {{ path: string, folder: true }} Folder
+ * @typedef {[string, () => void]} Item a "…" menu's entry
+ * @typedef {{ wrap: boolean, tabSize: number, fontSize: number, lineNumbers: boolean }} Prefs
+ */
+
+const hyper = /** @type {Hyper.Site} */ (window.hyper) // undefined outside HyperBrowser: start() checks
+const root = /** @type {HTMLElement} */ (document.getElementById('app'))
+const projects = /** @type {Projects} */ (hyper?.projects)
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|ico)$/i
 const TEXT = /\.(hmd|md|html?|css|m?js|json|txt|svg|xml|wat)$|^[^.]+$/i
 const PERMISSIONS = ['space', 'contacts', 'notifications', 'projects']
 const KINDS = ['string', 'text', 'number', 'boolean']
 
+/** @type {Hyper.Project[]} */
 let list = []
-let cur = null
+// null on the home page: what runs there checks
+let cur = /** @type {Hyper.Project} */ (/** @type {unknown} */ (null))
+/** @type {'pages' | 'files'} */
 let mode = 'pages'
+/** @type {File[]} */
 let files = []
+/** @type {Array<{ path: string, title: string }>} */
 let pageList = []
+/** @type {string | null} */
 let open = null
+/** @type {string | null} */
 let panel = null
 let notice = ''
+/** @type {string | null} the "…" menu open */
 let menu = null
 let previewing = false
+/** @type {Awaited<ReturnType<Projects['status']>> | null} */
 let status = null
+/** @type {import('./vendor/editor.js').Editor | null} */
 let editor = null
+/** @type {HTMLTextAreaElement | null} */
 let area = null
 let dirty = false
+/** @type {Promise<void> | null} */
 let saving = null
+/** @type {ReturnType<typeof setTimeout> | null} */
 let timer = null
 let lastText = ''
+/** @type {string | null} */
 let image = null
+/** @type {HTMLElement | null} */
 let box = null // the editor's place, kept across redraws (its undo history with it)
+/** @type {Folder[]} */
 let folders = []
+/** @type {ReturnType<typeof fileTree> | null} */
 let tree = null
+/** @type {HTMLElement | null} */
 let treeBox = null
 let treeShown = true
+/** @type {{ op: 'cut' | 'copy', path: string, kind: string | null } | null} */
 let clip = null
+/** @type {Prefs} */
 const DEFAULTS = { wrap: false, tabSize: 2, fontSize: 14, lineNumbers: true }
 let prefs = { ...DEFAULTS }
 
@@ -43,13 +71,14 @@ start().catch((err) => {
 
 async function start () {
   if (!projects) return root.replaceChildren(h('p', {}, 'Open the IDE in HyperBrowser.'))
-  document.addEventListener('click', (e) => { if (menu && !e.target.closest('[data-menu]')) { menu = null; draw() } })
+  document.addEventListener('click', (e) => { if (menu && !/** @type {Element} */ (e.target).closest('[data-menu]')) { menu = null; draw() } })
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && menu) {
       const id = menu
       menu = null
       draw()
-      root.querySelector('[data-menu="' + id + '"] > button')?.focus()
+      const button = /** @type {HTMLElement | null} */ (root.querySelector('[data-menu="' + id + '"] > button'))
+      button?.focus()
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's' && cur && open) { e.preventDefault(); save() }
   })
@@ -57,24 +86,31 @@ async function start () {
   setInterval(() => { // who is online (the line under the title): no event tells it
     if (cur) projects.status(cur.key).then((st) => { status = st; drawState() }, () => {})
   }, 5000)
-  const mine = await hyper.mine.all().catch(() => ({}))
+  const mine = await hyper.mine.all().catch(() => /** @type {{ [name: string]: unknown }} */ ({}))
   treeShown = mine.tree !== false
-  prefs = { ...DEFAULTS, ...(mine.editor || {}) }
+  prefs = { ...DEFAULTS, .../** @type {Partial<Prefs>} */ (mine.editor || {}) }
   list = await projects.list()
   draw()
 }
 
+/**
+ * @template T
+ * @param {() => T | Promise<T>} fn
+ * @param {string | ((r: T) => string)} [done] what to say once done
+ */
 async function act (fn, done) {
   notice = ''
   try {
     const r = await fn()
     if (done) notice = typeof done === 'function' ? done(r) : done
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Hyper.Failure} */ (e)
     notice = (err.code === 'INVALID_MANIFEST' ? 'The site setup has a problem: ' : '') + err.message + (err.code ? ' (' + err.code + ')' : '')
   }
   draw()
 }
 
+/** @param {Hyper.Project} p */
 async function openProject (p) {
   await flush()
   cur = p
@@ -92,15 +128,16 @@ async function openProject (p) {
 
 async function reload () {
   list = await projects.list()
-  cur = list.find((p) => p.key === cur.key) || null
+  cur = /** @type {Hyper.Project} */ (list.find((p) => p.key === cur.key) || null)
   if (!cur) return
   const all = await projects.files(cur.key, { folders: true })
-  files = all.filter((f) => !f.folder).sort((a, b) => (a.path < b.path ? -1 : 1))
-  folders = all.filter((f) => f.folder)
+  files = /** @type {File[]} */ (all.filter((f) => !(/** @type {{ folder?: true }} */ (f)).folder)).sort((a, b) => (a.path < b.path ? -1 : 1))
+  folders = /** @type {Folder[]} */ (all.filter((f) => (/** @type {{ folder?: true }} */ (f)).folder))
   pageList = await ide.pages(projects, cur.key)
   status = await projects.status(cur.key).catch(() => null)
 }
 
+/** @type {ReturnType<typeof setTimeout> | null} */
 let changing = null
 function changed () {
   clearTimeout(changing)
@@ -118,7 +155,7 @@ function changed () {
 async function closeProject () {
   await flush()
   if (previewing) await projects.closePreview().catch(() => {})
-  cur = null
+  cur = /** @type {Hyper.Project} */ (/** @type {unknown} */ (null))
   open = null
   previewing = false
   editor?.destroy()
@@ -139,7 +176,7 @@ async function load () {
   dirty = false
   lastText = ''
   if (open && IMAGE.test(open) && !open.endsWith('.svg')) {
-    image = URL.createObjectURL(new Blob([await projects.read(cur.key, open)]))
+    image = URL.createObjectURL(new Blob([/** @type {Uint8Array<ArrayBuffer>} */ (await projects.read(cur.key, open))]))
   } else if (open) {
     lastText = await ide.read(projects, cur.key, open)
   }
@@ -159,6 +196,7 @@ function remount () {
   draw()
 }
 
+/** @param {string} text */
 function setText (text) {
   lastText = text
   if (editor) editor.set(text)
@@ -184,7 +222,7 @@ function save () {
     await saving
     await ide.save(projects, key, path, text)
     if (previewing && cur?.key === key) await ide.preview(projects, key)
-  })().catch((err) => { dirty = true; notice = 'Not saved: ' + err.message; draw() })
+  })().catch((/** @type {Hyper.Failure} */ err) => { dirty = true; notice = 'Not saved: ' + err.message; draw() })
   drawState()
   return saving
 }
@@ -194,6 +232,7 @@ async function flush () {
   await saving
 }
 
+/** @param {string} path */
 async function choose (path) {
   await flush()
   open = path
@@ -202,13 +241,14 @@ async function choose (path) {
 }
 
 // A hand-written x.html wins over the page x.hmd: said, so the person knows why an edit doesn't show.
+/** @param {string[] | undefined} hidden */
 const hiding = (hidden) => hidden?.length ? ` ${hidden.join(', ')} ${hidden.length > 1 ? 'are' : 'is'} your own, so used instead of the page${hidden.length > 1 ? 's' : ''} built from .hmd.` : ''
 
 function draw () {
-  const inMenu = document.activeElement?.closest?.('[data-menu]')?.dataset.menu
+  const inMenu = /** @type {HTMLElement | null | undefined} */ (document.activeElement?.closest?.('[data-menu]'))?.dataset.menu
   const typing = !!box && (box.contains(document.activeElement) || document.activeElement === box)
   root.replaceChildren(cur ? project() : home())
-  if (inMenu) root.querySelector('[data-menu="' + inMenu + '"] > button')?.focus()
+  if (inMenu) /** @type {HTMLElement | null} */ (root.querySelector('[data-menu="' + inMenu + '"] > button'))?.focus()
   if (typing) (area || editor)?.focus()
   fitMenu()
   if (tree && root.contains(treeBox)) {
@@ -227,7 +267,7 @@ function home () {
         h('span', { class: 'small' }, p.site ? 'published' : 'not published yet', p.role === 'editor' ? ', co-author' : ''))))
       : h('p', {}, 'No project yet: make one below.')),
     h('section', {}, h('h2', {}, 'New project'),
-      h('form', { onsubmit: (e) => { e.preventDefault(); const f = e.target; act(async () => openProject(await ide.create(projects, f.name.value.trim(), f.kind.value))) } },
+      h('form', { onsubmit: (e) => { e.preventDefault(); const f = e.target; act(async () => openProject(/** @type {Hyper.Project} */ (await ide.create(projects, f.name.value.trim(), f.kind.value)))) } },
         h('p', {}, h('label', {}, 'Name ', h('input', { name: 'name', required: '', maxlength: 64 }))),
         h('p', {}, h('label', {}, 'Kind ', h('select', { name: 'kind' }, Object.entries(ide.TEMPLATES).map(([k, t]) => h('option', { value: k }, t.label))))),
         h('p', {}, h('button', {}, 'Make it'), ' ', more('home', [
@@ -244,7 +284,7 @@ function project () {
       h('h1', { style: 'margin:0; font-size:1.2em' }, cur.name),
       h('span', { style: 'flex:1' }),
       h('button', { onclick: toggleTree, 'aria-pressed': String(treeShown), title: 'More room for the editor' }, treeShown ? 'Hide file explorer' : 'Show file explorer'),
-      h('button', { onclick: () => act(async () => { await flush(); previewing = !previewing; if (previewing) return ide.preview(projects, cur.key); else await projects.closePreview() }, (r) => hiding(r?.hidden)), 'aria-pressed': String(previewing) }, 'Preview'),
+      h('button', { onclick: () => act(async () => { await flush(); previewing = !previewing; if (previewing) return ide.preview(projects, cur.key); else await projects.closePreview() }, (/** @type {{ hidden?: string[] } | undefined} */ r) => hiding(r?.hidden)), 'aria-pressed': String(previewing) }, 'Preview'),
       h('button', { onclick: () => act(async () => { await flush(); const r = await ide.publish(projects, cur.key); await reload(); return r }, (r) => `Published: version ${r.version}. Its address: ${r.site}` + hiding(r.hidden)) }, 'Publish'),
       more('project', [
         [mode === 'pages' ? 'Show the files' : 'Show the pages', () => act(async () => { await flush(); mode = mode === 'pages' ? 'files' : 'pages'; await load() })],
@@ -263,6 +303,7 @@ function project () {
       h('div', { role: 'main', style: 'display:flex; flex-direction:column; min-height:0; min-width:0' }, panel ? panelView() : fileView())))
 }
 
+/** @returns {string} */
 function stateLine () {
   const parts = [notice, open ? (dirty ? 'Not saved yet' : 'Saved') : '']
   if (status) {
@@ -289,7 +330,7 @@ function pagesNav () {
 }
 
 function siteBasics () {
-  const m = manifestOf()
+  const m = /** @type {{ title?: string, icon?: string, public?: boolean }} */ (manifestOf())
   const icon = files.find((f) => f.path === m.icon)
   return h('div', {},
     h('p', {}, h('label', {}, 'Title', h('br'), h('input', { value: m.title || '', maxlength: 200, style: 'width:100%; box-sizing:border-box', onchange: (e) => act(() => ide.setManifest(projects, cur.key, { title: e.target.value })) }))),
@@ -297,6 +338,7 @@ function siteBasics () {
     h('p', {}, h('label', {}, h('input', { type: 'checkbox', checked: m.public === false ? '' : null, onchange: (e) => act(() => ide.setManifest(projects, cur.key, { public: e.target.checked ? false : null })) }), ' Invite-only (else anyone with its address)')))
 }
 
+/** @type {{ key: string | null, at: number | undefined, m: Record<string, unknown> }} */
 let manifestCache = { key: null, at: 0, m: {} }
 function manifestOf () {
   const f = files.find((x) => x.path === 'site.json')
@@ -317,26 +359,38 @@ function filesNav () {
   ]
 }
 
+/** @param {string} p */
 const parentOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
+/** @param {string} p */
 const nameOf = (p) => p.slice(p.lastIndexOf('/') + 1)
+/** @param {string} dir @param {string} name */
 const join = (dir, name) => (dir ? dir + '/' + name : name)
+/** @param {string | null | undefined} p */
 const dirOf = (p) => (!p ? '' : folders.some((f) => f.path === p) ? p : parentOf(p))
 
+/**
+ * @param {string | null} path
+ * @param {string | null} kind
+ * @returns {Array<Item | null>}
+ */
 function treeMenu (path, kind) {
   const dir = !path ? '' : kind === 'folder' ? path : parentOf(path)
+  /** @type {Array<Item | null>} */
   const items = []
-  if (kind === 'file') items.push(['Open', () => choose(path)])
-  if (path) items.push(['Rename', () => tree.rename(path)], ['Delete…', () => remove(path)], null,
+  if (kind === 'file') items.push(['Open', () => choose(/** @type {string} */ (path))]) // a file's menu has its path
+  if (path) items.push(['Rename', () => /** @type {NonNullable<typeof tree>} */ (tree).rename(path)], ['Delete…', () => remove(path)], null,
     ['Cut', () => { clip = { op: 'cut', path, kind } }], ['Copy', () => { clip = { op: 'copy', path, kind } }])
   if (clip) items.push(['Paste ' + nameOf(clip.path), () => act(() => paste(dir))])
   items.push(null, ['New file…', () => newFile(dir)], ['New folder…', () => newFolder(dir)])
   return items.filter((x, i, all) => x || (i > 0 && all[i - 1] && i < all.length - 1))
 }
 
+/** @param {string} from @param {string} to */
 async function renameTo (from, to) {
   try {
     await projects.rename(cur.key, from, to)
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {Hyper.Failure} */ (e)
     notice = err.message + (err.code ? ' (' + err.code + ')' : '')
     draw()
     throw err
@@ -346,6 +400,7 @@ async function renameTo (from, to) {
   draw()
 }
 
+/** @param {string} path */
 async function remove (path) {
   if (!(await sure('Delete ' + path + '?' + (folders.some((f) => f.path === path) ? ' And what is in it.' : ''), 'Delete'))) return
   act(async () => {
@@ -355,18 +410,21 @@ async function remove (path) {
   })
 }
 
+/** @param {string} dir */
 async function newFile (dir) {
   const name = await ask('The new file’s name' + (dir ? ' (in ' + dir + ')' : ''))
   if (name) act(async () => { const p = join(dir, name.trim()); await projects.write(cur.key, p, ''); await reload(); await choose(p) })
 }
 
+/** @param {string} dir */
 async function newFolder (dir) {
   const name = await ask('The new folder’s name' + (dir ? ' (in ' + dir + ')' : ''))
-  if (name) act(async () => { const p = join(dir, name.trim()); await projects.mkdir(cur.key, p); tree.expanded.add(p); await reload() })
+  if (name) act(async () => { const p = join(dir, name.trim()); await projects.mkdir(cur.key, p); /** @type {NonNullable<typeof tree>} */ (tree).expanded.add(p); await reload() })
 }
 
+/** @param {string} dir */
 async function paste (dir) {
-  const { op, path } = clip
+  const { op, path } = /** @type {NonNullable<typeof clip>} */ (clip) // its menu item is there only with something cut or copied
   if (op === 'cut' && (dir === path || dir.startsWith(path + '/'))) throw Object.assign(new Error('a folder can’t go inside itself'), { code: 'INVALID_PATH' })
   const have = new Set([...files, ...folders].map((f) => f.path))
   const name = nameOf(path)
@@ -380,6 +438,7 @@ async function paste (dir) {
     clip = null
     return
   }
+  /** @param {string} p */
   const under = (p) => p === path || p.startsWith(path + '/')
   for (const f of folders.filter((f) => under(f.path))) await projects.mkdir(cur.key, to + f.path.slice(path.length)).catch(() => {})
   for (const f of files.filter((f) => under(f.path))) await projects.write(cur.key, to + f.path.slice(path.length), await projects.read(cur.key, f.path))
@@ -392,11 +451,12 @@ function toggleTree () {
   draw()
 }
 
+/** @param {string} label @param {string} accept @param {(name: string, bytes: Uint8Array) => Promise<unknown>} fn */
 function pick (label, accept, fn) {
-  const input = h('input', { type: 'file', accept, style: 'display:none', onchange: () => {
-    const f = input.files[0]
+  const input = /** @type {HTMLInputElement} */ (h('input', { type: 'file', accept, style: 'display:none', onchange: () => {
+    const f = /** @type {FileList} */ (input.files)[0]
     if (f) act(async () => { await fn(f.name, new Uint8Array(await f.arrayBuffer())); await reload() })
-  } })
+  } }))
   return h('span', {}, h('button', { onclick: () => input.click() }, label), input)
 }
 
@@ -414,18 +474,22 @@ function fileView () {
 }
 
 function toolbar () {
+  /** @param {string} before */
   const wrap = (before, after = before, empty = '') => () => {
-    const { selectionStart: s, selectionEnd: e, value } = area
+    const a = /** @type {HTMLTextAreaElement} */ (area) // the page's: there while this toolbar is
+    const { selectionStart: s, selectionEnd: e, value } = a
     const sel = value.slice(s, e) || empty
-    area.setRangeText(before + sel + after, s, e, 'select')
-    area.focus()
+    a.setRangeText(before + sel + after, s, e, 'select')
+    a.focus()
     edited()
   }
+  /** @param {string} prefix */
   const line = (prefix) => () => {
-    const { selectionStart: s, value } = area
+    const a = /** @type {HTMLTextAreaElement} */ (area)
+    const { selectionStart: s, value } = a
     const at = value.lastIndexOf('\n', s - 1) + 1
-    area.setRangeText(prefix, at, at, 'end')
-    area.focus()
+    a.setRangeText(prefix, at, at, 'end')
+    a.focus()
     edited()
   }
   return h('div', { role: 'toolbar', 'aria-label': 'Formatting', style: 'display:flex; gap:4px; flex-wrap:wrap' },
@@ -435,14 +499,16 @@ function toolbar () {
     h('button', { onclick: async () => { const url = await ask('The link’s address (https://…, or another page’s title)'); if (url) wrap('[', '](' + linkTo(url) + ')', 'link')() } }, 'Link'),
     pick('Image', 'image/*', async (name, bytes) => {
       const p = await ide.upload(projects, cur.key, name, bytes, 'images')
-      const { selectionStart: s, selectionEnd: e } = area
-      area.setRangeText('![' + name.replace(/\.[^.]+$/, '') + '](' + p + ')', s, e, 'end')
+      const a = /** @type {HTMLTextAreaElement} */ (area)
+      const { selectionStart: s, selectionEnd: e } = a
+      a.setRangeText('![' + name.replace(/\.[^.]+$/, '') + '](' + p + ')', s, e, 'end')
       edited()
     }),
     h('button', { onclick: line('- ') }, 'List'),
     h('button', { onclick: line('> ') }, 'Quote'))
 }
 
+/** @param {string} what */
 function linkTo (what) {
   const page = pageList.find((p) => p.title.toLowerCase() === what.trim().toLowerCase())
   return page ? page.path : what.trim()
@@ -455,7 +521,7 @@ async function mountEditor () {
   if (mode === 'pages' && open?.endsWith('.hmd')) {
     editor?.destroy()
     editor = null
-    area = h('textarea', { 'aria-label': 'The page', style: 'display:block; width:100%; height:100%; box-sizing:border-box; border:0; resize:none; font:inherit; padding:6px', oninput: edited })
+    area = /** @type {HTMLTextAreaElement} */ (h('textarea', { 'aria-label': 'The page', style: 'display:block; width:100%; height:100%; box-sizing:border-box; border:0; resize:none; font:inherit; padding:6px', oninput: edited }))
     area.value = text
     slot.replaceChildren(area)
     return
@@ -464,10 +530,12 @@ async function mountEditor () {
   const { editor: make } = await import('./vendor/editor.js')
   if (!root.contains(slot)) return
   editor?.destroy()
-  editor = make(slot, { name: open, doc: text, label: open, onChange: edited, wrap: prefs.wrap, tabSize: prefs.tabSize, lineNumbers: prefs.lineNumbers })
+  editor = make(slot, { name: /** @type {string} */ (open), doc: text, label: /** @type {string} */ (open), onChange: edited, wrap: prefs.wrap, tabSize: prefs.tabSize, lineNumbers: prefs.lineNumbers })
 }
 
+/** @type {Awaited<ReturnType<Projects['versions']>>} */
 let versions = []
+/** @type {{ members: Awaited<ReturnType<Projects['members']>>, friends: Hyper.Contact[] | null, link: string | null }} */
 let people = { members: [], friends: null, link: null }
 
 function panelView () {
@@ -485,6 +553,7 @@ function panelView () {
 }
 
 function editorSettings () {
+  /** @param {Partial<Prefs>} change */
   const set = (change) => {
     prefs = { ...prefs, ...change }
     hyper.mine.set('editor', prefs).catch(() => {})
@@ -514,19 +583,22 @@ function peopleView () {
     owner ? h('p', {},
       h('button', { onclick: () => act(async () => { people.link = (await projects.invite(cur.key)).link }) }, 'Make an invite link'), ' ',
       h('button', { onclick: () => act(async () => { people.friends = (await hyper.contacts.list()).filter((c) => c.state === 'friend') }) }, 'Invite a contact…')) : null,
-    people.link ? h('p', {}, h('code', { style: 'word-break:break-all' }, people.link), ' ', h('button', { onclick: () => navigator.clipboard.writeText(people.link) }, 'Copy'), h('br'), h('span', { class: 'small' }, 'One use. They paste it in the IDE: … → Join with an invite.')) : null,
+    people.link ? h('p', {}, h('code', { style: 'word-break:break-all' }, people.link), ' ', h('button', { onclick: () => navigator.clipboard.writeText(/** @type {string} */ (people.link)) }, 'Copy'), h('br'), h('span', { class: 'small' }, 'One use. They paste it in the IDE: … → Join with an invite.')) : null,
     people.friends ? (people.friends.length
       ? h('ul', {}, people.friends.map((c) => h('li', {}, c.name || c.identity.slice(0, 8) + '…', ' ', h('button', { onclick: () => act(() => projects.inviteContact(cur.key, c.identity), 'Invite sent in your chat with ' + (c.name || 'them') + '.') }, 'Invite'))))
       : h('p', {}, 'No friends yet: add some in Contacts.')) : null)
 }
 
+/** @type {string | null} site.json being edited as JSON */
 let raw = null
 function setupView () {
-  const m = manifestOf()
+  const m = /** @type {{ title?: string, entry?: string, icon?: string, public?: boolean, permissions?: string[], types?: Record<string, { fields?: Record<string, string> }> }} */ (manifestOf())
+  /** @param {Record<string, unknown>} change */
   const set = (change) => act(() => ide.setManifest(projects, cur.key, change), 'Saved.')
   const pages = files.map((f) => f.path).filter((p) => /\.html?$/.test(p))
   const images = files.map((f) => f.path).filter((p) => IMAGE.test(p))
   const types = m.types || {}
+  /** @param {Record<string, unknown>} t */
   const setTypes = (t) => set({ types: Object.keys(t).length ? t : null })
   return h('div', { style: 'overflow:auto' },
     h('h2', {}, 'Site setup'),
@@ -540,40 +612,55 @@ function setupView () {
       h('fieldset', {}, h('legend', {}, 'Record types (an app’s data in its space)'),
         Object.entries(types).map(([name, t]) => h('div', {}, h('b', {}, name), ' ',
           Object.entries(t.fields || {}).map(([f, k]) => h('span', { class: 'small', style: 'margin-right:8px' }, f + ': ' + k)), ' ',
-          h('button', { 'aria-label': 'Add a field to ' + name, onclick: async () => { const f = await ask('Field name'); const k = f && await ask('Kind', 'string', KINDS); if (f && KINDS.includes(k)) setTypes({ ...types, [name]: { ...t, fields: { ...t.fields, [f]: k } } }) } }, '+ field'))),
+          h('button', { 'aria-label': 'Add a field to ' + name, onclick: async () => { const f = await ask('Field name'); const k = f && await ask('Kind', 'string', KINDS); if (f && KINDS.includes(/** @type {string} */ (k))) setTypes({ ...types, [name]: { ...t, fields: { ...t.fields, [f]: k } } }) } }, '+ field'))),
         h('p', {}, h('button', { onclick: async () => { const n = await ask('Type name'); if (n) setTypes({ ...types, [n]: { fields: {} } }) } }, 'Add a type')),
         h('p', { class: 'small' }, 'Types and fields can be added, never removed, once published. Roles are made by the app at run time (hyper.defineRole).')),
       h('p', {}, h('button', { onclick: () => act(async () => { raw = await ide.read(projects, cur.key, 'site.json') }) }, 'Edit as JSON'))
     ] : [
       h('textarea', { 'aria-label': 'site.json', id: 'raw', style: 'width:100%; box-sizing:border-box; height:50vh; font-family:monospace', value: raw }),
-      h('p', {}, h('button', { onclick: () => { const v = root.querySelector('#raw').value; act(async () => { await ide.writeManifest(projects, cur.key, v); raw = null }, 'Saved.') } }, 'Save'), ' ',
+      h('p', {}, h('button', { onclick: () => { const v = /** @type {HTMLTextAreaElement} */ (root.querySelector('#raw')).value; act(async () => { await ide.writeManifest(projects, cur.key, v); raw = null }, 'Saved.') } }, 'Save'), ' ',
         h('button', { onclick: () => { raw = null; draw() } }, 'Back to the form'))
     ])
 }
 
-// Electron has no prompt(): a modal dialog instead.
+/**
+ * Electron has no prompt(): a modal dialog instead.
+ * @param {string} label
+ * @param {string[] | null} [choices]
+ * @returns {Promise<string | null>} null: cancelled
+ */
 function ask (label, value = '', choices = null) {
-  const field = choices
+  const field = /** @type {HTMLInputElement | HTMLSelectElement} */ (choices
     ? h('select', { name: 'v' }, choices.map((c) => h('option', { value: c, selected: c === value ? '' : null }, c)))
-    : h('input', { name: 'v', value, required: '', style: 'width:100%; box-sizing:border-box' })
+    : h('input', { name: 'v', value, required: '', style: 'width:100%; box-sizing:border-box' }))
   return modal(h('label', {}, label, h('br'), field), 'OK', () => field.value)
 }
 
+/** @param {string} text @param {string} yes */
 function sure (text, yes) {
   return modal(h('p', {}, text), yes, () => true).then((r) => r === true)
 }
 
+/**
+ * @template T
+ * @param {HTMLElement} body
+ * @param {string} yes
+ * @param {() => T} value the answer on yes
+ * @returns {Promise<T | null>}
+ */
 function modal (body, yes, value) {
   return new Promise((resolve) => {
+    /** @param {T | null} answer */
     const done = (answer) => { d.close(); d.remove(); resolve(answer) }
-    const d = h('dialog', { 'aria-label': yes, style: 'max-width:480px', oncancel: (e) => { e.preventDefault(); done(null) } },
+    const d = /** @type {HTMLDialogElement} */ (h('dialog', { 'aria-label': yes, style: 'max-width:480px', oncancel: (e) => { e.preventDefault(); done(null) } },
       h('form', { onsubmit: (e) => { e.preventDefault(); done(value()) } }, body,
-        h('p', {}, h('button', {}, yes), ' ', h('button', { type: 'button', onclick: () => done(null) }, 'Cancel'))))
+        h('p', {}, h('button', {}, yes), ' ', h('button', { type: 'button', onclick: () => done(null) }, 'Cancel')))))
     document.body.append(d)
     d.showModal()
   })
 }
 
+/** @param {string} id @param {Item[]} items */
 function more (id, items) {
   const isOpen = menu === id
   return h('span', { 'data-menu': id, style: 'position:relative; display:inline-block' },
@@ -585,20 +672,26 @@ function more (id, items) {
 }
 
 function fitMenu () {
-  const m = root.querySelector('[data-menu] [role=menu]')
+  const m = /** @type {HTMLElement | null} */ (root.querySelector('[data-menu] [role=menu]'))
   if (!m) return
   if (m.getBoundingClientRect().left < 0) Object.assign(m.style, { right: 'auto', left: '0' })
   if (m.getBoundingClientRect().right > innerWidth) Object.assign(m.style, { left: 'auto', right: '0' })
   if (m.getBoundingClientRect().bottom > innerHeight) Object.assign(m.style, { top: 'auto', bottom: '100%', marginTop: '0', marginBottom: '2px' })
 }
 
+/**
+ * @param {string} tag
+ * @param {{ [name: string]: string | number | boolean | null | undefined | ((e: any) => void) } | null} [attrs]
+ *   attribute values, `value`, and on* listeners (each gets its event: input, change, submit...)
+ * @param {...unknown} children nodes, text and lists of them; null, undefined and false are left out
+ */
 function h (tag, attrs = {}, ...children) {
   const el = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue
-    if (k.startsWith('on')) el.addEventListener(k.slice(2), v)
-    else if (k === 'value') el.value = v
-    else el.setAttribute(k, v)
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), /** @type {EventListener} */ (v))
+    else if (k === 'value') /** @type {HTMLInputElement} */ (el).value = /** @type {string} */ (v)
+    else el.setAttribute(k, /** @type {string} */ (v))
   }
   for (const x of children.flat(Infinity)) if (x !== null && x !== undefined && x !== false) el.append(x instanceof Node ? x : String(x))
   return el

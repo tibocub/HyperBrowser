@@ -12,6 +12,16 @@ const CSP = "default-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' data: blob:"
 const THEME = fs.readFileSync(path.join(HERE, 'ui', 'theme.css'), 'utf-8')
   .replace(/url\(fonts\/([\w.-]+)\)/g, (m, f) => 'url(data:font/woff2;base64,' + fs.readFileSync(path.join(HERE, 'ui', 'fonts', f)).toString('base64') + ')')
 
+/**
+ * A site's view: its own session, the hyper: protocol answering for this site only.
+ * @param {string} key
+ * @param {object} opts
+ * @param {boolean} opts.dynamic it gets the site API (the preload)
+ * @param {(key: string, path: string) => Promise<{ bytes: Uint8Array, type: string }>} opts.serve
+ * @param {boolean} [opts.guards]
+ * @param {boolean} [opts.persist]
+ * @param {string} [opts.query]
+ */
 export function createSiteView (key, { dynamic, serve, guards = true, persist = true, query = '' }) {
   const ses = session.fromPartition((persist ? 'persist:' : '') + 'site-' + key)
   const origin = 'hyper://' + key + '/'
@@ -21,10 +31,12 @@ export function createSiteView (key, { dynamic, serve, guards = true, persist = 
     if (guards && url.host !== key) return new Response('not this site', { status: 404 })
     try {
       const { bytes, type } = await serve(guards ? key : url.host, decodeURIComponent(url.pathname))
+      /** @type {Record<string, string>} */
       const headers = { 'content-type': type }
       if (guards) headers['content-security-policy'] = CSP
-      return new Response(bytes, { headers })
-    } catch (err) {
+      return new Response(/** @type {Uint8Array<ArrayBuffer>} */ (bytes), { headers })
+    } catch (e) {
+      const err = /** @type {{ code?: string }} */ (e)
       const status = err.code === 'NOT_FOUND' || err.code === 'INVALID_KEY' ? 404 : err.code === 'NOT_AVAILABLE' ? 503 : 500
       return new Response(err.code || 'error', { status })
     }
