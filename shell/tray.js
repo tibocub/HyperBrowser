@@ -18,6 +18,7 @@ export function hasTray () {
   }
 }
 
+/** @param {import('electron').NativeImage} image */
 function withMark (image) {
   const { width, height } = image.getSize()
   const px = Buffer.from(image.toBitmap()) // BGRA
@@ -28,13 +29,20 @@ function withMark (image) {
   return nativeImage.createFromBitmap(px, { width, height })
 }
 
+/**
+ * @param {object} opts
+ * @param {Pick<import('../engine/protocol.js').Rpc, 'request'>} opts.rpc
+ * @param {() => void} opts.show
+ * @param {() => void} opts.quit
+ */
 export function startTray ({ rpc, show, quit }) {
   const image = nativeImage.createFromPath(ICON)
   const marked = withMark(image)
   const tray = new Tray(image)
   let unread = 0
   let status = 'starting…'
-  let menu = null
+  /** @type {import('electron').Menu} */
+  let menu
   const draw = () => {
     menu = Menu.buildFromTemplate([
       { label: 'Open HyperBrowser', click: show },
@@ -44,7 +52,7 @@ export function startTray ({ rpc, show, quit }) {
     ])
     tray.setContextMenu(menu) // set again after each change (Linux shows the menu it was given)
   }
-  const poll = () => rpc.request('hosting').then(({ sites }) => {
+  const poll = () => rpc.request('hosting').then((/** @type {{ sites: number }} */ { sites }) => {
     const s = 'hosting ' + sites + (sites === 1 ? ' site' : ' sites')
     if (s !== status) { status = s; draw() }
   }, () => {})
@@ -56,12 +64,15 @@ export function startTray ({ rpc, show, quit }) {
   return {
     status: () => status,
     marked: () => unread > 0,
+    /** @param {number} n */
     mark (n) {
       if ((n > 0) !== (unread > 0)) tray.setImage(n > 0 ? marked : image)
       unread = n
       tray.setToolTip(n > 0 ? `HyperBrowser: ${n} new` : 'HyperBrowser')
     },
+    /** @param {string} label */
     item: (label) => menu.items.find((i) => i.label === label),
+    /** @param {string} text */
     notice (text) {
       if (process.platform === 'win32') tray.displayBalloon({ icon: image, title: 'HyperBrowser', content: text })
       else if (Notification.isSupported()) new Notification({ title: 'HyperBrowser', body: text }).show()

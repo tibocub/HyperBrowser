@@ -5,9 +5,11 @@ const fs = require('fs')
 const path = require('path')
 
 const ROOT = path.join(__dirname, '..', '..')
+/** @param {string} p */
 const css = (p) => fs.readFileSync(path.join(ROOT, p), 'utf-8')
 const TALL = '<div style="height:3000px"></div>'
 const AREA = { x: 40, y: 120, width: 40, height: 40 }
+/** @type {Array<[string, string, string | null, import('electron').Rectangle]>} */
 const PAGES = [
   ['the shell desktop', `<style>${css('shell/ui/ui.css')}</style><main id="desktop">${TALL}</main>`, null, AREA],
   ['sites/home', `<style>${css('sites/home/style.css')}</style>${TALL}`, null, AREA],
@@ -17,6 +19,7 @@ const PAGES = [
 ]
 
 // cell: a dither dot in device pixels (1 up to 199 %, 2 from 200 %: still one CSS pixel there)
+/** @param {import('electron').BrowserWindow} w @param {import('electron').Rectangle} area @param {number} cell */
 async function grab (w, area, cell) {
   const img = await w.webContents.capturePage(area)
   const { width, height } = img.getSize()
@@ -45,10 +48,10 @@ app.whenReady().then(async () => {
     await w.webContents.executeJavaScript("(document.getElementById('desktop') || document.scrollingElement).scrollTop = 7")
     await frame()
     const after = await grab(w, area, Math.floor(dpr))
-    for (const [label, pass] of [
+    for (const [label, pass] of /** @type {Array<[string, boolean]>} */ ([
       [`${name} at ${dpr * 100} %: whole device pixels, no gray`, before.bad === 0],
       [`${name} at ${dpr * 100} %: still after scrolling 7 px`, after.bytes.equals(before.bytes)]
-    ]) {
+    ])) {
       console.log((pass ? 'PASS ' : 'FAIL ') + 'pixels  ' + label)
       ok = ok && pass
     }
