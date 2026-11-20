@@ -8,8 +8,8 @@ the shell talks to the engine ([engine.md](engine.md)), and it names the site fr
 | `main.js` | starts the engine worker, serves `hyper://`, bridges site calls to the engine, the self-test and frame check |
 | `frame.js` | the window: bars, tabs, site views, the docked preview |
 | `views.js` | the sandboxed site views: own session, `hyper://<key>/` only, no pop-ups, no permissions |
-| `site-preload.cjs` | `window.hyper` in a site's page |
-| `frame-preload.cjs`, `ui/` | the window's own interface |
+| `site-preload.cjs` | `window.hyper` in a site's page (typed in `sites/hyper.d.ts`) |
+| `frame-preload.cjs`, `ui/` | the window's own interface (its messages typed in `ui/frame.d.ts`) |
 | `model.js` | the frame's pure logic: addresses, desktop icons and cells, wording (tested in `test/model.test.js`) |
 | `tray.js` | the tray icon |
 | `updater.js` | the update worker |

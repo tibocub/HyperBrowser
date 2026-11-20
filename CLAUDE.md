@@ -6,7 +6,7 @@ sites (`sites/`). Start with [README.md](README.md); setup and workflow: [CONTRI
 ## Run the tests
 
 ```bash
-npm test && npm run test:bare && npm run test:sandbox && npm run selftest
+npm run typecheck && npm test && npm run test:bare && npm run test:sandbox && npm run selftest
 ```
 
 Point the temp folders at a disk with room. On this machine C: is nearly full, so use E: (PowerShell):
@@ -20,6 +20,16 @@ $env:TMP = 'E:\Code\P2P\.tmp\tmp'; $env:TEMP = $env:TMP; $env:HG_TEST_TMP = $env
 - `docs/`: how each part works now, for developers ([index](docs/README.md)). Update the doc with the code.
 - `sites/home/`: the user documentation (the official site).
 - `specs/`: design history, one folder per feature. Don't edit past specs.
+
+## Types
+
+`npm run typecheck` must pass with no error (a test enforces it): TypeScript in strict mode over JSDoc, nothing
+compiled. One config per runtime: `jsconfig.json` (engine, scripts, `shell/updater.js`: Node and Bare),
+`shell/jsconfig.json` (Electron), `shell/ui/jsconfig.json` (the frame page), `sites/jsconfig.json` (pages: the DOM,
+no Node). Real `@typedef`s, and the libraries' own types for their values (hypergraph, SwarmFS, HyperMD); `any`,
+casts and `@ts-expect-error` only with a one-line reason. A cast never starts a line: without semicolons, `(` there
+joins the line above. The site API is `sites/hyper.d.ts`: change it with `shell/site-preload.cjs` and
+`engine/index.js` (a test checks it lists what the preload gives). Untyped packages: `types/modules.d.ts`.
 
 ## Comments
 

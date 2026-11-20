@@ -16,6 +16,7 @@ big picture; [docs/](docs/README.md) explains each part.
 ## Test
 
 ```bash
+npm run typecheck      # TypeScript, strict, over the JSDoc: no error
 npm test               # every test/*.test.js on Node, in parallel
 npm run test:bare      # the same files on Bare
 npm run test:sandbox   # Electron: the sandbox self-test, its control run, the frame check, the tray
@@ -45,12 +46,13 @@ sudo chown root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 nod
 3. Add or update a test next to the ones for that part (`test/`, or the self-test in `shell/main.js` for
    anything only a real window shows).
 4. Update the doc in `docs/` that describes the part, and `sites/home` if people using HyperBrowser see it.
-5. Run the four test commands above; all must pass.
+5. Run the test commands above; all must pass, `npm run typecheck` included.
 6. Open a pull request saying what changed and why.
 
 ## Style
 
 - [standard](https://standardjs.com/) JavaScript style: no semicolons, two spaces.
+- Types in JSDoc, checked by `npm run typecheck` ([CLAUDE.md](CLAUDE.md), "Types", says how).
 - A comment says why the code is the way it is, when the code can't. Don't restate the code, and don't refer
   to spec numbers, dates or people: that history lives in `specs/` and git.
 - Docs describe how things work now, not how they got there.

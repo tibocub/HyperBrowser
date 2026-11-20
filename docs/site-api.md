@@ -84,6 +84,19 @@ stop(); off()
   `NOT_FOUND`, `INVALID_TYPE`… Bytes fields are `Uint8Array`.
 - The official forum (`sites/forum`) is a full example: [forum.md](forum.md).
 
+### Types for your site
+
+[sites/hyper.d.ts](../sites/hyper.d.ts) describes `window.hyper` call by call: what each takes and gives back,
+the records, the errors. Copy it into your site's folder and add a `jsconfig.json` beside your pages; your editor
+then completes every call and flags a wrong one, in plain JavaScript:
+
+```json
+{ "compilerOptions": { "checkJs": true, "strict": true, "lib": ["ES2024", "DOM"], "types": [] }, "include": ["*.js", "hyper.d.ts"] }
+```
+
+`window.hyper` is typed as possibly undefined (outside HyperBrowser, or in a static site): test it first. Name a
+type's fields with `Hyper.Record<{ title: string }>`; a record's fields are otherwise any JSON.
+
 ### `hyper.mine`: the person's own data
 
 The person's data for your site, kept in their settings on their devices, never in your site's space and out of
