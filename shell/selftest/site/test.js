@@ -76,42 +76,43 @@ const statics = [
 ]
 
 const name = 'me-' + me.slice(0, 8)
-const hyper = /** @type {Hyper.Site} */ (window.hyper) // a dynamic site's: only its checks below use it
+// a dynamic site's: only its checks below use it. Not `hyper`: a classic script's const can't shadow window.hyper
+const api = /** @type {Hyper.Site} */ (window.hyper)
 /** @type {Array<[string, () => Promise<unknown>]>} */
 const dynamics = [
   ['the site API is hypergraph\'s site handle, nothing more', async () =>
-    Object.keys(hyper).sort().join() === API.join()],
-  ['own space: info() names this site', async () => (await hyper.info()).key === me],
+    Object.keys(api).sort().join() === API.join()],
+  ['own space: info() names this site', async () => (await api.info()).key === me],
   ['own space: put then query reads it back, and only its own', async () => {
-    await hyper.put('profile', { name })
-    const { items } = await hyper.query('profile').latest(10)
+    await api.put('profile', { name })
+    const { items } = await api.query('profile').latest(10)
     return items.length === 1 && items[0].name === name
   }],
   ['own space: a live view gets its record', () => new Promise((resolve) => {
-    const stop = hyper.query('profile').live(({ items }) => {
+    const stop = api.query('profile').live(({ items }) => {
       if (items.some((r) => r.name === name)) { stop(); resolve(true) }
     })
     setTimeout(() => resolve(false), 5000)
   })],
   ['the page names no space: hyper.subspace(<other site>) is refused', () =>
-    refused(hyper.subspace(other).query('profile').latest(10))],
+    refused(api.subspace(other).query('profile').latest(10))],
   ['the page names no space: hyper.instance(<other site>) is refused', () =>
-    refused(hyper.instance(other).query('profile').latest(10))],
+    refused(api.instance(other).query('profile').latest(10))],
   ["contacts: a site whose site.json doesn't ask for them gets NOT_ALLOWED", () =>
-    hyper.contacts.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+    api.contacts.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
   ["projects: a site whose site.json doesn't ask for them gets NOT_ALLOWED (spec 024)", () =>
-    hyper.projects.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
-  ['people: opening a chat without a click opens nothing', async () => (await hyper.people.chat(other)) === false],
+    api.projects.list().then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+  ['people: opening a chat without a click opens nothing', async () => (await api.people.chat(other)) === false],
   ['people: a friend request the person refused is NOT_ALLOWED', () =>
-    hyper.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],
-  ['apps: installing a site without a click installs nothing', async () => (await hyper.apps.install(other)) === false],
-  ['apps: opening a site without a click opens nothing', async () => (await hyper.apps.open(other)) === false],
-  ['copies: hyper.subspace(<other site>).copies() is refused', () => refused(hyper.subspace(other).copies())],
-  ['circles: joining without a click joins nothing', async () => (await hyper.circles.join('hg:x')).joined === false],
+    api.people.request(other, 'Someone').then(() => false, (err) => err.code === 'NOT_ALLOWED')],
+  ['apps: installing a site without a click installs nothing', async () => (await api.apps.install(other)) === false],
+  ['apps: opening a site without a click opens nothing', async () => (await api.apps.open(other)) === false],
+  ['copies: hyper.subspace(<other site>).copies() is refused', () => refused(api.subspace(other).copies())],
+  ['circles: joining without a click joins nothing', async () => (await api.circles.join('hg:x')).joined === false],
   ['its own instance: created, then reached', async () => {
-    const f = await hyper.instances.create('Self-test ' + me.slice(0, 4))
-    await hyper.instance(f.key).put('profile', { name })
-    return (await hyper.instance(f.key).query('profile').latest(10)).items.some((r) => r.name === name)
+    const f = await api.instances.create('Self-test ' + me.slice(0, 4))
+    await api.instance(f.key).put('profile', { name })
+    return (await api.instance(f.key).query('profile').latest(10)).items.some((r) => r.name === name)
   }]
 ]
 
