@@ -76,6 +76,24 @@ export interface FrameState {
   maximized: boolean
 }
 
+/** A circle, as circles.list gives it to the frame. */
+export interface Circle { key: string, name: string, members: number, holders: number, total: number | null, role: string | null, totalLine: string }
+
+/** A circle's member, as circles.members gives it to the frame. */
+export interface CircleMember { identity: string, name: string, role: string, you: boolean, holds: boolean, share: number | null, used: number | null, held: string }
+
+/** This identity's devices (devices.list). */
+export interface Devices {
+  identity: string
+  devices: Array<{ publicKey: string, name: string, current: boolean, online: boolean }>
+  removed: boolean
+  phrase: 'plain' | 'protected' | 'forgotten'
+  owns: Array<{ key: string, name: string }>
+}
+
+/** What this computer holds for its circles (holding.get). */
+export interface Holding { on: boolean, bytes: number, used: number, free: number }
+
 export interface FrameApi {
   send (op: string, args?: object): Promise<Reply>
   onState (fn: (state: FrameState) => void): void
