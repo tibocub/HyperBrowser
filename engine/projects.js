@@ -18,9 +18,25 @@ const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 const GIT_MAX = 500
 const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i // Windows device names
 
+/**
+ * @typedef {import('./types.js').Site} Site
+ * @typedef {import('./types.js').CodedError} CodedError
+ * @typedef {import('./types.js').Manifest} Manifest
+ * @typedef {{ name: string, left?: true }} Listed A project as the person's settings list it.
+ * @typedef {{ key: string, name: string, folder: string | null, site: string | null, role: string | null }} Project
+ * @typedef {{ path: string, size: number, mtime: number } | { path: string, folder: true }} FileEntry
+ * @typedef {{ path: string, state: 'new' | 'modified' | 'deleted' }} GitChange
+ */
+
+/** @param {string} code @param {string} message */
 const error = (code, message) => Object.assign(new Error(message), { code })
 
-// A hard link (versions never change once made); a copy where links fail (another drive, FAT).
+/**
+ * A hard link (versions never change once made); a copy where links fail (another drive, FAT).
+ * @param {string} from
+ * @param {string} to
+ * @param {(from: string, to: string) => Promise<void>} [link]
+ */
 export async function linkOrCopy (from, to, link = fs.promises.link) {
   try {
     await link(from, to)
@@ -29,22 +45,43 @@ export async function linkOrCopy (from, to, link = fs.promises.link) {
   }
 }
 
+/**
+ * The IDE's projects: a private files space per project, linked to a folder; published to a site of its own.
+ * @param {object} opts
+ * @param {import('./types.js').SwarmFS} opts.sfs
+ * @param {string} opts.dir the engine folder
+ * @param {string} opts.root where new projects' folders go
+ * @param {(key: string, timeout?: number) => Promise<Site>} opts.visit
+ * @param {(identity: string, text: string) => Promise<unknown>} opts.tell a message to a friend's conversation
+ * @param {(key: string) => Promise<void>} opts.forget a draft site let go: the engine closes it
+ */
 export function projects ({ sfs, dir, root, visit, tell, forget }) {
   const hg = sfs.hg
   const me = hg.identity.publicKey
   const DRAFTS = path.join(dir, 'drafts.json')
+  /** @type {Record<string, string>} project key -> its draft site's key */
   let drafts = {}
+  /** @type {Map<string, string>} draft site key -> project key */
   const folders = new Map()
+  /** @type {Set<string>} */
   const watched = new Set()
+  /** @type {Promise<unknown>} */
   let queue = Promise.resolve() // list writes, links and publishes, one at a time
+  /** @type {Promise<unknown>} */
   let following = Promise.resolve()
   let closed = false
 
+  /**
+   * @template T
+   * @param {() => T | Promise<T>} fn
+   * @returns {Promise<T>}
+   */
   const one = (fn) => {
     const run = queue.then(fn)
     queue = run.catch(() => {})
     return run
   }
+  /** @returns {Promise<Record<string, Listed>>} */
   const all = async () => (await hg.settings())[LIST] || {}
   const onChange = () => { follow().catch(() => {}) }
 
@@ -75,14 +112,17 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return following
   }
 
+  /** @param {string} key */
   function held (key) {
     try { hg.space(key); return true } catch { return false }
   }
 
+  /** @param {string} key */
   async function folderOf (key) {
     return (await sfs.links()).find((l) => l.space === key && l.folder === key)?.path || null
   }
 
+  /** @param {string} key @param {string} name */
   async function attach (key, name) {
     if (await folderOf(key)) return
     const base = path.join(root, safe(name))
@@ -94,11 +134,13 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     await sfs.space(key).link(key, folder)
   }
 
+  /** @param {string} folder */
   async function taken (folder) {
     try { return (await fs.promises.readdir(folder)).length > 0 } catch { return false }
   }
 
   // Before every link: SwarmFS reads the rules when it starts following the folder.
+  /** @param {string} folder */
   async function ensureIgnore (folder) {
     const file = path.join(folder, IGNORE)
     let text = ''
@@ -108,11 +150,17 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     if (missing.length) await fs.promises.writeFile(file, missing.join('\n') + '\n' + text)
   }
 
+  /** @param {string} key @param {string} name */
   async function remember (key, name) {
     const list = await all()
     await hg.setSetting(LIST, { ...list, [key]: { name } })
   }
 
+  /**
+   * A page's projects.* call.
+   * @param {string} method
+   * @param {any[]} args the page's: checked here
+   */
   async function call (method, [a, b, c]) {
     switch (method) {
       case 'list': return list()
@@ -147,6 +195,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   }
 
   async function list () {
+    /** @type {Project[]} */
     const out = []
     for (const [key, { name, left }] of Object.entries(await all())) {
       if (left || !held(key)) continue
@@ -156,18 +205,25 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return out
   }
 
+  /** @param {string} key */
   async function view (key) {
     return (await list()).find((p) => p.key === key)
   }
 
+  /**
+   * The project's folder, if it is one of the person's here.
+   * @param {unknown} key
+   * @returns {Promise<string>}
+   */
   async function project (key) {
     const known = typeof key === 'string' && KEY.test(key) ? (await all())[key] : null
     if (!known || known.left) throw error('NOT_FOUND', 'not one of your projects')
-    const folder = await folderOf(key)
+    const folder = await folderOf(/** @type {string} */ (key))
     if (!folder) throw error('NOT_FOUND', 'this project is not on this device yet')
     return folder
   }
 
+  /** @param {unknown} name */
   async function create (name) {
     if (typeof name !== 'string' || !name.trim() || name.length > NAME_MAX) throw error('INVALID_PARAMS', `a project's name is 1 to ${NAME_MAX} characters`)
     const drive = await sfs.createSpace(name.trim())
@@ -177,6 +233,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   }
 
   // The folder the person picked (the shell's dialog: a page never names a path), as it is.
+  /** @param {unknown} folder */
   async function openFolder (folder) {
     if (typeof folder !== 'string' || !path.isAbsolute(folder)) throw error('INVALID_PARAMS', 'openFolder needs a folder')
     const full = path.resolve(folder)
@@ -190,11 +247,14 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return view(drive.key)
   }
 
+  /** @param {unknown} key */
   async function openCopy (key) {
     if (typeof key !== 'string' || !KEY.test(key)) throw error('INVALID_KEY', 'not a site key')
     const site = await visit(key)
     const title = parseManifest(await site.read('site.json')).title
+    /** @type {string[]} */
     const pages = []
+    /** @param {string} id @param {string} prefix @returns {Promise<void>} */
     const walk = async (id, prefix) => {
       const { items } = await site.pages.list(id, { limit: Infinity, timeout: 10000 })
       for (const e of items) {
@@ -203,16 +263,18 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
       }
     }
     await walk(site.pages.top, '')
+    /** @type {Array<[string, Uint8Array]>} */
     const bytes = []
     for (const p of pages) if (sitePath(p)) bytes.push([p, await site.read(p)])
-    const made = await one(() => create(`${title} (copy)`.slice(0, NAME_MAX)))
+    const made = /** @type {Project} */ (await one(() => create(`${title} (copy)`.slice(0, NAME_MAX))))
     for (const [p, b] of bytes) { // a page the project would never sync (.git/hooks/...): left out
-      await writeFile(made.folder, p, b).catch((err) => { if (err.code !== 'NOT_ALLOWED') throw err })
+      await writeFile(/** @type {string} */ (made.folder), p, b).catch((err) => { if (err.code !== 'NOT_ALLOWED') throw err })
     }
     return made
   }
 
   // A co-author's invite: a private files space (never a site or a circle, whose links have one use).
+  /** @param {unknown} link */
   async function join (link) {
     if (typeof link !== 'string' || !link.startsWith('hg:')) throw error('INVALID_PARAMS', "join takes a project's invite (hg:...)")
     const before = new Set(hg.spaces().map((x) => x.key))
@@ -231,6 +293,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return view(drive.key)
   }
 
+  /** @param {string} key */
   async function invite (key) {
     await project(key)
     return { link: await sfs.space(key).invite({ role: 'editor' }) }
@@ -238,6 +301,12 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   // Synced paths only: never .git (git runs its hooks outside the sandbox), node_modules or ignored paths. No link
   // out of the folder: checked again on the path as the disk resolves it (a link to .git, a short name like GIT~1).
+  /**
+   * @param {string} folder
+   * @param {unknown} p a page's path
+   * @param {boolean} [write]
+   * @returns {Promise<string>} the full path
+   */
   async function inside (folder, p, write = false) {
     const clean = typeof p === 'string' && !p.startsWith('/') ? sitePath(p) : null
     if (!clean || clean.split('/').some((s) => s === '.' || s.includes(':') || RESERVED.test(s) || /[. ]$/.test(s) || /~\d/.test(s))) throw error('INVALID_PATH', 'not a path inside the project: ' + JSON.stringify(p))
@@ -245,6 +314,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     const real = await realpath(folder)
     const full = path.join(real, ...clean.split('/'))
     let probe = full
+    /** @type {string} */
     let r
     for (;;) {
       try { r = await realpath(probe); break } catch {}
@@ -256,6 +326,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return full
   }
 
+  /** @param {string} folder @param {string} rel @param {boolean} write */
   async function syncs (folder, rel, write) {
     const lower = rel.toLowerCase() // Windows and macOS: .GIT is .git
     const rules = await rulesOf(folder)
@@ -265,18 +336,23 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     if (write && lower === PROJECT) throw error('NOT_ALLOWED', PROJECT + ' is written by HyperBrowser only')
   }
 
+  /** @param {string} folder */
   async function rulesOf (folder) {
     return compile(await fs.promises.readFile(path.join(folder, IGNORE), 'utf-8').catch(() => ''))
   }
 
   // The ignore file changed by a page: .git/ and node_modules/ stay in it.
+  /** @param {string} folder @param {string[]} paths */
   async function kept (folder, ...paths) {
     if (paths.some((p) => p.toLowerCase() === IGNORE)) await ensureIgnore(folder)
   }
 
+  /** @param {string} folder */
   async function files (folder, folders = false) {
     const rules = await rulesOf(folder)
+    /** @type {FileEntry[]} */
     const out = []
+    /** @param {string} d @returns {Promise<void>} */
     const walk = async (d) => {
       for (const e of await fs.promises.readdir(d, { withFileTypes: true })) {
         const full = path.join(d, e.name)
@@ -294,12 +370,14 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return out
   }
 
+  /** @param {string} folder @param {unknown} p */
   async function readFile (folder, p) {
     const full = await inside(folder, p)
     if (!(await fs.promises.stat(full).catch(() => null))?.isFile()) throw error('NOT_FOUND', 'no file ' + p)
     return fs.promises.readFile(full)
   }
 
+  /** @param {string} folder @param {string} p @param {unknown} data */
   async function writeFile (folder, p, data) {
     if (typeof data !== 'string' && !(data instanceof Uint8Array)) throw error('INVALID_PARAMS', 'write takes text or bytes')
     if (data.length > WRITE_MAX) throw error('TOO_BIG', `at most ${WRITE_MAX} bytes a write`)
@@ -310,6 +388,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
+  /** @param {string} folder @param {string} p */
   async function mkdir (folder, p) {
     const full = await inside(folder, p, true)
     if (await fs.promises.lstat(full).catch(() => null)) throw error('EXISTS', p + ' is there already')
@@ -317,6 +396,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
+  /** @param {string} folder @param {string} from @param {string} to */
   async function rename (folder, from, to) {
     const a = await inside(folder, from, true)
     const b = await inside(folder, to, true)
@@ -329,6 +409,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   }
 
   // Links are unlinked, never followed; what the project ignores stays (a nested .git).
+  /** @param {string} folder @param {string} p */
   async function remove (folder, p) {
     const full = await inside(folder, p, true)
     if (!(await fs.promises.lstat(full).catch(() => null))) throw error('NOT_FOUND', 'no file ' + p)
@@ -337,8 +418,10 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
+  /** @param {string} folder @param {string} at */
   async function rmSynced (folder, at) {
     const rules = await rulesOf(folder)
+    /** @param {string} at @returns {Promise<void>} */
     const rm = async (at) => {
       const st = await fs.promises.lstat(at)
       if (st.isSymbolicLink()) return fs.promises.rmdir(at).catch(() => fs.promises.unlink(at)) // a junction is a folder link
@@ -355,6 +438,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     await rm(at)
   }
 
+  /** @param {string} key @param {{ deleteFiles?: boolean } | undefined} opts */
   async function leave (key, opts) {
     const folder = await project(key)
     const deleteFiles = opts?.deleteFiles === true
@@ -375,6 +459,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
+  /** @param {string} key */
   async function status (key) {
     const folder = await project(key)
     const peers = hg.space(key).peers()
@@ -387,15 +472,21 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
 
   // As git's first check (size and mtime): a file touched but unchanged reads as modified.
   // shortcut: an index v4 (path-compressed) or a worktree's .git file gives changed: null; read them if anyone uses them.
+  /**
+   * @param {string} folder
+   * @returns {Promise<{ branch: string, changed: GitChange[] | null } | null>}
+   */
   async function gitState (folder) {
     const git = path.join(folder, '.git')
     let head
     try { head = (await fs.promises.readFile(path.join(git, 'HEAD'), 'utf-8')).trim() } catch { return null }
     const branch = head.startsWith('ref: refs/heads/') ? head.slice(16) : head.slice(0, 7) + ' (detached)'
+    /** @type {Uint8Array | null} */
     let bytes = null
     try { bytes = await fs.promises.readFile(path.join(git, 'index')) } catch {}
     const tracked = bytes ? readIndex(bytes) : new Map()
     if (!tracked) return { branch, changed: null }
+    /** @type {GitChange[]} */
     const changed = []
     for (const [p, { size, mtime }] of tracked) {
       const st = await fs.promises.stat(path.join(folder, ...p.split('/'))).catch(() => null)
@@ -407,6 +498,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return { branch, changed: changed.sort((a, b) => (a.path < b.path ? -1 : 1)).slice(0, GIT_MAX) }
   }
 
+  /** @param {string} folder @returns {Promise<string | null>} */
   async function siteKeyOf (folder) {
     try {
       const key = JSON.parse(await fs.promises.readFile(path.join(folder, PROJECT), 'utf-8')).site
@@ -414,15 +506,19 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     } catch { return null }
   }
 
+  /** @param {string} folder */
   async function publishable (folder) {
     return (await files(folder)).map((f) => f.path).filter((p) => p !== IGNORE && p !== PROJECT)
   }
 
   // Built pages live outside the project: they never sync, never reach git, never meet a co-author's.
 
+  /** @param {string} key */
   const builtDir = (key) => path.join(dir, 'builds', key)
+  /** @param {string} p */
   const slash = (p) => p.split(path.sep).join('/')
 
+  /** @param {string} key @param {unknown} pages a page's { path: html } */
   async function build (key, pages) {
     if (!pages || typeof pages !== 'object' || Array.isArray(pages)) throw error('INVALID_PARAMS', 'build takes { path: html }')
     let size = 0
@@ -446,19 +542,22 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return true
   }
 
+  /** @param {string} key */
   async function builtPages (key) {
     return (await walkFiles(builtDir(key)).catch(() => [])).map(slash)
   }
 
+  /** @param {string} key @param {string} folder @param {string} p */
   async function readSite (key, folder, p) {
     try {
       return await readFile(folder, p)
     } catch (err) {
-      if (err.code !== 'NOT_FOUND' || !(await builtPages(key)).includes(p)) throw err
+      if (/** @type {CodedError} */ (err).code !== 'NOT_FOUND' || !(await builtPages(key)).includes(p)) throw err
       return fs.promises.readFile(path.join(builtDir(key), ...p.split('/')))
     }
   }
 
+  /** @param {string} key */
   async function publish (key) {
     const folder = await project(key)
     const manifest = await readManifest(folder, builtDir(key)) // a broken site.json: refused before anything is written
@@ -466,6 +565,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     const mine = await publishable(folder)
     const have = new Set(mine)
     const built = new Set((await builtPages(key)).filter((p) => !have.has(p)))
+    /** @param {string} p */
     const src = (p) => path.join(built.has(p) ? builtDir(key) : folder, ...p.split('/'))
     const tmp = await snapshot(src, [...mine, ...built], false, known && await newest(known))
     try {
@@ -479,6 +579,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
+  /** @param {string} folder @param {Manifest} manifest @returns {Promise<{ site: Site, created: boolean }>} */
   async function siteFor (folder, manifest) {
     const known = await siteKeyOf(folder)
     if (!known) {
@@ -495,6 +596,13 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return { site, created: false }
   }
 
+  /**
+   * A new version's files, in versions/.new.
+   * @param {string | ((p: string) => string)} from a folder, or each path's source
+   * @param {string[]} list
+   * @param {boolean} link hard-link every file (a roll back: the files are a version already)
+   * @param {string | null} [last] the latest version: a file the same there is linked to it
+   */
   async function snapshot (from, list, link, last) {
     const tmp = path.join(dir, 'versions', '.new')
     await fs.promises.rm(tmp, { recursive: true, force: true })
@@ -511,6 +619,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return tmp
   }
 
+  /** @param {string} site @param {string} tmp */
   async function keep (site, tmp) {
     const base = path.join(dir, 'versions', site)
     await fs.promises.mkdir(base, { recursive: true })
@@ -519,18 +628,22 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return n
   }
 
+  /** @param {string} site */
   async function newest (site) {
     const base = path.join(dir, 'versions', site)
     const n = (await numbers(base))[0]
     return n ? path.join(base, String(n)) : null
   }
 
+  /** @param {string} base */
   async function numbers (base) {
-    const names = await fs.promises.readdir(base).catch(() => [])
+    const names = await fs.promises.readdir(base).catch(() => /** @type {string[]} */ ([]))
     return names.filter((n) => /^[1-9]\d*$/.test(n)).map(Number).sort((a, b) => b - a)
   }
 
+  /** @param {string} d @returns {Promise<string[]>} */
   async function walkFiles (d, prefix = '') {
+    /** @type {string[]} */
     const out = []
     for (const e of await fs.promises.readdir(d, { withFileTypes: true })) {
       if (e.isDirectory()) out.push(...await walkFiles(path.join(d, e.name), prefix + e.name + path.sep))
@@ -539,6 +652,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     return out
   }
 
+  /** @param {string} a @param {string} b */
   async function equal (a, b) {
     const [x, y] = await Promise.all([fs.promises.stat(a).catch(() => null), fs.promises.stat(b).catch(() => null)])
     if (!x || !y || x.size !== y.size) return false
@@ -547,6 +661,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   }
 
   // A first publish here waits for the pages already there, so its files replace them instead of making conflict copies.
+  /** @param {Site} site @param {boolean} created @param {string} version the version's folder */
   async function toPages (site, created, version) {
     const live = path.join(dir, 'published', site.key)
     const linked = (await sfs.links()).some((l) => l.path === live)
@@ -560,6 +675,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     await mirror(version, live)
   }
 
+  /** @param {string} version @param {string} live */
   async function mirror (version, live) {
     const want = new Set(await walkFiles(version))
     for (const p of want) {
@@ -585,16 +701,20 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   // Wait until every page is here at its current version, else the files written next become conflict copies.
   // One query of file records and one of `held` records: a listing with holders costs seconds for 1000 pages.
   // shortcut: reads SwarmFS's own records (requests-to-swarmfs F9: a linked folder's "in step" wanted).
+  /** @param {Site} site */
   async function caughtUp (site) {
     for (const until = Date.now() + CATCH_UP; ; await sleep(250)) {
       const pages = await site.pages.space.query('file').latest(100000)
       const { items } = await hg.personal.query('held').fromDevice(hg.device.publicKey).latest(100000) // no index on space
-      const here = new Map(items.filter((h) => h.space === site.pages.key).map((h) => [h.entry, h.root]))
-      if (pages.complete && pages.items.every((r) => r.parent === BIN || here.get(r.id) === rootOf(r.content))) return
+      const held = /** @type {import('swarmfs/lib/types.js').HeldRecord[]} */ (items)
+      const here = new Map(held.filter((h) => h.space === site.pages.key).map((h) => [h.entry, h.root]))
+      const files = /** @type {import('swarmfs/lib/types.js').FileRecord[]} */ (pages.items)
+      if (pages.complete && files.every((r) => r.parent === BIN || here.get(r.id) === rootOf(r.content))) return
       if (Date.now() > until) throw error('BUSY', "the site's pages are still arriving on this device: publish again in a moment")
     }
   }
 
+  /** @param {string} d @param {string} top */
   async function pruneEmpty (d, top) {
     for (const e of await fs.promises.readdir(d, { withFileTypes: true })) {
       if (e.isDirectory() && e.name !== '.swarmfs-trash') await pruneEmpty(path.join(d, e.name), top)
@@ -602,15 +722,18 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     if (d !== top && !(await fs.promises.readdir(d)).length) await fs.promises.rmdir(d)
   }
 
+  /** @param {string} folder */
   async function versions (folder) {
     const site = await siteKeyOf(folder)
     if (!site) return []
     const base = path.join(dir, 'versions', site)
+    /** @type {Array<{ version: number, at: number }>} */
     const out = []
     for (const n of await numbers(base)) out.push({ version: n, at: (await fs.promises.stat(path.join(base, String(n)))).mtimeMs })
     return out
   }
 
+  /** @param {string} key @param {unknown} n */
   async function rollBack (key, n) {
     const folder = await project(key)
     const site = await siteKeyOf(folder)
@@ -627,6 +750,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
+  /** @param {string} key */
   async function grant (key) {
     const folder = await folderOf(key)
     const siteKey = folder && await siteKeyOf(folder)
@@ -642,6 +766,7 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     }
   }
 
+  /** @param {string} key */
   async function preview (key, reset = false) {
     const folder = await project(key)
     const manifest = await readManifest(folder, builtDir(key))
@@ -663,18 +788,21 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   }
 
   // Synchronous: the engine asks on every open and read.
+  /** @param {string} key */
   function draft (key) {
     return folders.get(key) || null
   }
 
+  /** @param {string} key */
   async function draftManifest (key) {
     const p = folders.get(key)
-    return readManifest(await project(p), builtDir(p))
+    return readManifest(await project(p), builtDir(/** @type {string} */ (p)))
   }
 
+  /** @param {string} key @param {string} p */
   async function readDraft (key, p) {
     const shown = folders.get(key)
-    return readSite(shown, await project(shown), p)
+    return readSite(/** @type {string} */ (shown), await project(shown), p)
   }
 
   function close () {
@@ -683,11 +811,14 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     hg.off('spaces', onChange)
   }
 
+  /** @param {(change: { project: string }) => void} fn */
   function watchFiles (fn) {
+    /** @param {import('swarmfs').SyncEvent} e */
     const each = async (e) => {
       const p = e.space && (await all())[e.space]
-      if (p && !p.left) fn({ project: e.space })
+      if (p && !p.left) fn({ project: /** @type {string} */ (e.space) })
     }
+    /** @param {import('swarmfs').SyncEvent} e */
     const listener = (e) => { each(e).catch(() => {}) }
     sfs.on('sync', listener)
     return () => sfs.off('sync', listener)
@@ -696,6 +827,11 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
   return { start, call, draft, draftManifest, readDraft, onChange: watchFiles, close }
 }
 
+/**
+ * A git index's paths, sizes and mtimes (s); null for a version this doesn't read.
+ * @param {Uint8Array} bytes
+ * @returns {Map<string, { size: number, mtime: number }> | null}
+ */
 function readIndex (bytes) {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (bytes.byteLength < 12 || v.getUint32(0) !== 0x44495243) return null // 'DIRC'
@@ -716,11 +852,17 @@ function readIndex (bytes) {
   return out
 }
 
+/** @param {string} name */
 function safe (name) {
   const s = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '').trim() // eslint-disable-line no-control-regex
   return !s || RESERVED.test(s) ? 'Project' : s
 }
 
+/** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-// Node's realpath resolves links and Windows short names (GIT~1); Bare's is the native one.
+/**
+ * Node's realpath resolves links and Windows short names (GIT~1); Bare's is the native one.
+ * @param {string} p
+ * @returns {Promise<string>}
+ */
 const realpath = (p) => new Promise((resolve, reject) => (fs.realpath.native || fs.realpath)(p, (err, r) => err ? reject(err) : resolve(r)))

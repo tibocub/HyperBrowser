@@ -1,0 +1,10 @@
+{
+  "extends": "../jsconfig.json",
+  "compilerOptions": {
+    "maxNodeModuleJsDepth": 0,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["**/*.js", "*.d.ts", "../shell/ui/*.js", "../shell/selftest/site/*.js"],
+  "exclude": ["*/vendor/**"]
+}

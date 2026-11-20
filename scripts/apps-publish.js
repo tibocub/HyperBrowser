@@ -8,6 +8,7 @@ import { connect, pair } from '../engine/protocol.js'
 import { publishApps } from './apps.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+/** @type {{ dir: string, bootstrap: Array<{ host: string, port: number }> | undefined, preset: string, replace: boolean, stay: boolean }} */
 const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), bootstrap: undefined, preset: path.join(ROOT, 'shell', 'preset.json'), replace: false, stay: false }
 const argv = process.argv.slice(2)
 for (let i = 0; i < argv.length; i++) {
@@ -34,7 +35,8 @@ try {
   const n = changed.filter((c) => !c.kept).length
   console.log(n ? `preset.json: ${n} key(s) written` : 'preset.json: no change')
   if (changed.some((c) => c.kept)) code = 1
-} catch (err) {
+} catch (e) {
+  const err = /** @type {Error & { code?: string }} */ (e)
   console.error(`${err.code || 'ERROR'}: ${err.message}`)
   code = 1
 }

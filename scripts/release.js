@@ -9,6 +9,11 @@ import { fileURLToPath } from 'url'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 
+/**
+ * The folder `pear stage` takes: each build under by-arch/<platform>-<arch>/app.
+ * @param {string[]} builds
+ * @param {{ out?: string, pkg?: { name: string, productName: string, version: string, upgrade?: string }, macArch?: string }} [opts]
+ */
 export function releaseFolder (builds, { out = path.join(ROOT, 'out', 'release'), pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8')), macArch = 'arm64' } = {}) {
   if (!pkg.upgrade) throw new Error('package.json has no "upgrade" link: run `pear touch` first (docs/packaging.md)')
   const dir = path.join(out, pkg.name + '-' + pkg.version)
@@ -31,6 +36,7 @@ export function releaseFolder (builds, { out = path.join(ROOT, 'out', 'release')
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const argv = process.argv.slice(2)
+  /** @param {string} name */
   const opt = (name) => { const i = argv.indexOf(name); return i === -1 ? undefined : argv.splice(i, 2)[1] }
   const out = opt('--out')
   const macArch = opt('--mac-arch')

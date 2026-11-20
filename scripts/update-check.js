@@ -23,11 +23,16 @@ const WIN = process.platform === 'win32'
 const N = '1.0.0'
 const N1 = '1.0.1'
 
+/** @type {boolean[]} */
 const results = []
+/** @param {string} name @param {boolean} pass @param {unknown} [more] */
 const check = (name, pass, more = '') => { results.push(pass); console.log((pass ? 'PASS ' : 'FAIL ') + name + (more && !pass ? '  (' + more + ')' : '')) }
+/** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+/** @param {string} f */
 const hash = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')
 // the installed version: Windows, the folder's package.json; Linux, the AppImage's bytes (null while it moves)
+/** @param {string} p */
 const versionOf = (p) => {
   try {
     if (WIN) return JSON.parse(fs.readFileSync(path.join(p, 'resources', 'app', 'package.json'), 'utf-8')).version
@@ -48,6 +53,7 @@ swarm.on('connection', (c) => store.replicate(c))
 swarm.join(drive.discoveryKey, { server: true, client: false })
 await swarm.flush()
 
+/** @param {string} v */
 const built = (v) => path.join(tmp, 'build-' + v + (WIN ? '' : '.AppImage'))
 for (const v of [N, N1]) {
   if (REUSE && fs.existsSync(built(v))) continue
@@ -82,12 +88,14 @@ function launch () {
   return p
 }
 // Its window closed, as a person quitting (Windows: taskkill without /F; Linux: SIGTERM). Killed after 30 s.
+/** @param {import('child_process').ChildProcess} p */
 async function stop (p) {
   const exited = new Promise((resolve) => p.once('exit', resolve))
+  /** @param {boolean} force */
   const kill = (force) => {
     try {
       if (WIN) execFileSync('taskkill', ['/PID', String(p.pid), ...(force ? ['/T', '/F'] : [])], { stdio: 'ignore' }) // /T without /F gives up on the windowless Bare workers
-      else process.kill(-p.pid, force ? 'SIGKILL' : 'SIGTERM')
+      else process.kill(-(/** @type {number} */ (p.pid)), force ? 'SIGKILL' : 'SIGTERM')
     } catch {}
   }
   kill(false)
@@ -95,10 +103,12 @@ async function stop (p) {
   if (!clean) { kill(true); await exited }
   return clean
 }
+/** @template T @param {() => T} f @param {number} ms @returns {Promise<T | null>} */
 async function until (f, ms) {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(250)) { const v = f(); if (v) return v }
   return null
 }
+/** @param {string} text */
 const identityIn = (text) => [...text.matchAll(/engine up, identity (\S+)/g)].map((m) => m[1])
 
 // 1.0.1's release folder, made now: copying ~430 MB blocks this process, which also seeds the channel

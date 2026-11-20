@@ -6,6 +6,7 @@ export const GB = 1e9 // hypergraph's 1 GB share is 1e9 bytes
 const LIST = 'hyperbrowser/circles' // { [circle key]: true }: hg.spaces() can't tell which spaces are circles until they are open
 const CONTACTS = 'hyperbrowser/contacts'
 const NAME_TYPE = 'circle-name' // a rename: the latest one by the owner or an admin (hypergraph has no rename)
+/** @type {import('./types.js').TypeDeclarations} */
 const TYPES = { [NAME_TYPE]: { fields: { name: 'string' } } }
 const WEEK = 7 * 24 * 3600 * 1000
 const MAX = 50 // hypergraph refuses the 51st (CIRCLE_FULL)
@@ -13,13 +14,24 @@ const MIN_SHARE = 0.1 * GB
 const SPARE = 2 * GB
 const RECORDS = 1000 // hg/holder records read, newest first (as hypergraph does)
 const CHECK = 30000 // share full: hypergraph tells no event for it
+/** @type {Set<string | null>} */
 const DECIDERS = new Set(['owner', 'admin'])
 
+/**
+ * @typedef {import('./types.js').Space} Space
+ * @typedef {import('./types.js').HgRecord} HgRecord
+ * @typedef {import('./types.js').Params} Params
+ * @typedef {{ key: string, name: string, members: number, holders: number, total: number | null, role: string | null }} Circle
+ */
+
+/** @param {string} code @param {string} message */
 const error = (code, message) => Object.assign(new Error(message), { code })
 const noop = () => {}
+/** @param {unknown} n @returns {n is string} */
 const validName = (n) => typeof n === 'string' && n.trim().length > 0 && n.length <= 64 && !/[\x00-\x1f\x7f]/.test(n) // eslint-disable-line no-control-regex
 
 // The newest record of each device since the person's newest `left`, as hypergraph's lib/holding.js reads them.
+/** @param {HgRecord[]} records */
 export function holdsFrom (records) {
   const out = new Set()
   const cut = new Set()
@@ -35,25 +47,46 @@ export function holdsFrom (records) {
 }
 
 // Only current owners and admins count: a removed admin's rename stops counting.
+/**
+ * @param {HgRecord[]} records
+ * @param {Set<string>} deciders
+ * @param {string} made the name it was made with
+ * @returns {string}
+ */
 export function pickName (records, deciders, made) {
   const r = records.find((x) => validName(x.name) && deciders.has(x.author))
-  return r ? r.name : made
+  return r ? /** @type {string} */ (r.name) : made
 }
 
+/**
+ * @param {{ full: boolean }} last
+ * @param {{ on: boolean, used: number, bytes: number }} holding
+ */
 export function shareFull ({ full }, { on, used, bytes }) {
   if (!on) return { full: false, tell: false }
   if (used >= bytes) return { full: true, tell: !full }
   return { full: full && used >= 0.9 * bytes, tell: false }
 }
 
+/**
+ * The shell's circles.* and holding.* calls.
+ * @param {object} opts
+ * @param {import('./types.js').SwarmFS} opts.sfs
+ * @param {string} opts.dir
+ * @param {{ hyperbrowser (n: { id: string, text: string }): Promise<unknown> }} opts.notes
+ * @param {import('./types.js').Emit} opts.emit
+ */
 export function circles ({ sfs, dir, notes, emit }) {
   const hg = sfs.hg
   const FILE = path.join(dir, 'circles.json')
   let local = { set: false, full: false }
   try { local = { ...local, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) } } catch {}
+  /** @type {Promise<unknown>} */
   let writing = Promise.resolve()
   let closed = false
+  /** @type {Map<string, () => void>} */
   const watched = new Map()
+  /** @type {ReturnType<typeof setTimeout> | null} */
   let timer = null
 
   const saveLocal = () => fs.promises.writeFile(FILE, JSON.stringify(local)).catch(noop)
@@ -67,7 +100,9 @@ export function circles ({ sfs, dir, notes, emit }) {
   const check = setInterval(() => full().catch(noop), CHECK)
   check.unref?.()
 
+  /** @returns {Promise<Record<string, true>>} */
   const listed = async () => (await hg.settings())[LIST] || {}
+  /** @param {string} key @param {boolean} on */
   function setListed (key, on) {
     const write = writing.then(async () => {
       const l = await listed()
@@ -79,6 +114,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return write
   }
 
+  /** @param {unknown} key */
   async function circle (key) {
     if (typeof key !== 'string' || !(await listed())[key]) throw error('NOT_FOUND', 'not one of your circles')
     let s
@@ -89,6 +125,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return s
   }
 
+  /** @param {Space} s */
   function watch (s) {
     if (watched.has(s.key)) return
     s.on('status', changed)
@@ -97,11 +134,14 @@ export function circles ({ sfs, dir, notes, emit }) {
   }
 
   const me = () => hg.identity.publicKey
+  /** @param {Space} s */
   const roleOf = (s) => s.getRole(me())
+  /** @param {Space} s @param {string} what */
   async function decider (s, what) {
     if (!DECIDERS.has(await roleOf(s))) throw error('NOT_ALLOWED', 'only the owner and admins ' + what)
   }
 
+  /** @param {Space} s */
   async function nameOf (s) {
     try {
       const deciders = new Set((await s.members()).filter((m) => DECIDERS.has(m.role)).map((m) => m.identity))
@@ -118,6 +158,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return { ...hg.holding(), free: await free() }
   }
 
+  /** @param {Params} p */
   async function setHolding ({ on, bytes }) {
     if (typeof on !== 'boolean') throw error('INVALID_PARAMS', 'holding.set needs { on: true | false }')
     if (bytes !== undefined) {
@@ -154,16 +195,18 @@ export function circles ({ sfs, dir, notes, emit }) {
   }
 
   async function list () {
+    /** @type {Circle[]} */
     const out = []
     for (const key of Object.keys(await listed())) {
       let s
       try { s = await circle(key) } catch { continue } // left on another device, not here yet
       const st = s.status()
-      out.push({ key, name: await nameOf(s), members: st.members, holders: st.holders, total: st.total ?? null, role: await roleOf(s) })
+      out.push({ key, name: await nameOf(s), members: /** @type {number} */ (st.members), holders: /** @type {number} */ (st.holders), total: st.total ?? null, role: await roleOf(s) })
     }
     return out
   }
 
+  /** @param {Params} p */
   async function create ({ name }) {
     if (!validName(name)) throw error('INVALID_PARAMS', "a circle's name is 1 to 64 characters")
     const s = await hg.createCircle({ name: name.trim() })
@@ -174,6 +217,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return { key: s.key, name: name.trim(), holding: await holding() }
   }
 
+  /** @param {Params} p */
   async function join ({ link }) {
     if (typeof link !== 'string' || !link.startsWith('hg:')) throw error('INVALID_PARAMS', 'an invite link (hg:...)')
     const before = new Set(hg.spaces().map((x) => x.key))
@@ -189,14 +233,18 @@ export function circles ({ sfs, dir, notes, emit }) {
     return { key: s.key, name: await nameOf(s), holding: await holding() }
   }
 
+  /** @param {Params} p */
   async function members ({ key }) {
     const s = await circle(key)
     const contacts = (await hg.settings())[CONTACTS] || {}
+    /** @type {HgRecord[]} */
     let records = []
     try { records = (await s.query('hg/holder').latest(RECORDS)).items } catch {}
     const holds = holdsFrom(records)
     if (hg.holding().on) holds.add(me())
-    return (await s.members()).filter((m) => m.role && !m.removed && !m.banned).map((m) => ({
+    // a circle's members also have share and used (hypergraph's type leaves them out)
+    const people = /** @type {Array<Awaited<ReturnType<Space['members']>>[number] & { share?: number | null, used?: number | null }>} */ (await s.members())
+    return people.filter((m) => m.role && !m.removed && !m.banned).map((m) => ({
       identity: m.identity,
       name: contacts[m.identity]?.name || '', // the shell shows a short key for someone not a contact
       role: m.role,
@@ -207,14 +255,16 @@ export function circles ({ sfs, dir, notes, emit }) {
     }))
   }
 
+  /** @param {Params} p */
   async function invite ({ key }) {
     const s = await circle(key)
     await decider(s, 'invite people to a circle')
-    if (s.status().members >= MAX) throw error('CIRCLE_FULL', `This circle is full (${MAX})`)
+    if (/** @type {number} */ (s.status().members) >= MAX) throw error('CIRCLE_FULL', `This circle is full (${MAX})`)
     const expires = Date.now() + WEEK
     return { link: await s.createInvite({ role: 'member', uses: 1, expires }), expires }
   }
 
+  /** @param {Params} p */
   async function rename ({ key, name }) {
     if (!validName(name)) throw error('INVALID_PARAMS', "a circle's name is 1 to 64 characters")
     const s = await circle(key)
@@ -224,6 +274,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return true
   }
 
+  /** @param {Params} p */
   async function setRole ({ key, identity, role }) {
     if (role !== 'admin' && role !== 'member') throw error('INVALID_PARAMS', 'admin or member')
     const s = await circle(key)
@@ -232,6 +283,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return true
   }
 
+  /** @param {Params} p */
   async function remove ({ key, identity }) {
     const s = await circle(key)
     await s.removeRole(identity)
@@ -239,6 +291,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return true
   }
 
+  /** @param {Params} p */
   async function leave ({ key }) {
     await circle(key)
     watched.get(key)?.()
@@ -249,6 +302,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     return true
   }
 
+  /** @param {string} method @param {Params} [p] */
   async function call (method, p = {}) {
     switch (method) {
       case 'circles.list': return list()

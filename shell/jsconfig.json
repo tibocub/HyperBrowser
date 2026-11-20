@@ -1,0 +1,9 @@
+{
+  "extends": "../jsconfig.json",
+  "compilerOptions": {
+    "maxNodeModuleJsDepth": 0,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": ["*.js", "*.cjs", "selftest/*.cjs", "../types/*.d.ts"],
+  "exclude": ["updater.js"]
+}

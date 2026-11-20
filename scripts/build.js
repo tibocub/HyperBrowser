@@ -11,6 +11,7 @@ import { bundleApps } from './bundle.js'
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'))
 const argv = process.argv.slice(2)
+/** @template T @param {string} name @param {T} def @returns {string | T} */
 const arg = (name, def) => { const i = argv.indexOf(name); return i === -1 ? def : argv[i + 1] }
 const version = arg('--version', pkg.version)
 const upgrade = arg('--upgrade', pkg.upgrade || null)
@@ -21,7 +22,8 @@ const app = path.join(out, 'app')
 const vendor = path.join(out, 'vendor')
 const cache = path.join(out, 'cache')
 const SKIP = new Set(['.git', '.claude', '.specify', '.github', 'node_modules', 'test', 'tests', 'docs', 'specs', 'perf', 'bench', 'examples', 'out', 'tmp', '.data'])
-const TARGET = { win32: ['--win', 'dir'], linux: ['--linux', 'AppImage'], darwin: ['--mac', 'zip'] }[process.platform]
+/** @type {string[] | undefined} */
+const TARGET = /** @type {Record<string, string[]>} */ ({ win32: ['--win', 'dir'], linux: ['--linux', 'AppImage'], darwin: ['--mac', 'zip'] })[process.platform]
 const ELECTRON = JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules', 'electron', 'package.json'), 'utf-8')).version
 const BUILDER = '26.18.0' // electron-builder, pinned: only the build uses it, so it stays out of package.json
 
@@ -30,16 +32,21 @@ if (!TARGET) throw new Error('no build for ' + process.platform)
 if (!upgrade) console.warn('no release channel (package.json "upgrade" or --upgrade): this build never updates')
 if (!appsFrom) console.warn('no --apps-from <owner engine folder>: this build ships no apps (a new install opens them only from peers)')
 
+/** @param {string} cmd @param {string[]} args @param {string} cwd */
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32', env: { ...process.env, npm_config_cache: path.join(cache, 'npm'), ELECTRON_BUILDER_CACHE: path.join(cache, 'electron-builder') } })
+/** @param {string} from @param {string} to */
 const copy = (from, to) => fs.cpSync(from, to, { recursive: true, filter: (src) => !SKIP.has(path.basename(src)) || src === from })
 
 // Where a file: dependency really is: the folder its node_modules links to (a worktree's ../ is not the repo's).
+/** @param {string} dir @param {string} name @param {string} spec */
 const linked = (dir, name, spec) => {
   try { return fs.realpathSync(path.join(dir, 'node_modules', name)) } catch { return fs.realpathSync(path.resolve(dir, spec.slice(5))) }
 }
 
 // The linked repos: each in vendor/<its folder name>, so their own file:../x links still point at each other.
+/** @param {string} dir @param {Set<string>} [done] */
 function vendorOf (dir, done = new Set()) {
+  /** @type {Record<string, string>} */
   const deps = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).dependencies || {}
   for (const [name, spec] of Object.entries(deps)) {
     if (!spec.startsWith('file:')) continue
@@ -65,6 +72,7 @@ if (appsFrom) {
   for (const a of await bundleApps(path.resolve(appsFrom), path.join(app, 'apps'), presets)) console.log('bundled ' + a.id + ': ' + a.key)
 }
 vendorOf(ROOT)
+/** @type {Record<string, string>} */
 const dependencies = {}
 for (const [name, spec] of Object.entries(pkg.dependencies)) {
   dependencies[name] = spec.startsWith('file:') ? 'file:../vendor/' + path.basename(linked(ROOT, name, spec)) : spec
@@ -92,6 +100,7 @@ run('npm', ['install', '--install-links', '--no-audit', '--no-fund', '--loglevel
 // Native prebuilds for other platforms (android, ios, darwin, arm64...): ~450 MB in every download and
 // install. Only this OS and arch stay (Holepunch's template prunes the same way).
 const HOST = process.platform + '-' + process.arch
+/** @param {string} dir */
 const prune = (dir) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (!e.isDirectory()) continue
@@ -106,7 +115,7 @@ if (process.platform === 'win32') { // the zip people download: one HyperBrowser
   const dist = path.join(out, 'dist')
   fs.renameSync(path.join(dist, 'win-unpacked'), path.join(dist, pkg.productName))
   try {
-    execFileSync(path.join(process.env.SystemRoot, 'System32', 'tar.exe'), ['-a', '-c', '-f', pkg.productName + '.zip', pkg.productName], { cwd: dist, stdio: 'inherit' })
+    execFileSync(path.join(/** @type {string} */ (process.env.SystemRoot), 'System32', 'tar.exe'), ['-a', '-c', '-f', pkg.productName + '.zip', pkg.productName], { cwd: dist, stdio: 'inherit' })
   } finally {
     fs.renameSync(path.join(dist, pkg.productName), path.join(dist, 'win-unpacked'))
   }

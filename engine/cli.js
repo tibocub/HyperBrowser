@@ -21,6 +21,10 @@ options: --dir <engine folder> (default ~/.hyperbrowser)  --bootstrap host:port,
   --new                   (publish) a fresh site for this folder, with a new key; the folder's old site is left
   --config <file>         (helper) default ~/.config/hyperbrowser-helper.conf; --join hg:... (repeatable) a circle invite`
 
+/**
+ * @type {{ dir: string, dirGiven: boolean, bootstrap: Array<{ host: string, port: number }> | undefined, once: boolean,
+ *   invite: string | null, instance: string | null, fresh: boolean, config: string | null, join: string[] }}
+ */
 const opts = { dir: path.join(os.homedir(), '.hyperbrowser'), dirGiven: false, bootstrap: undefined, once: false, invite: null, instance: null, fresh: false, config: null, join: [] }
 const args = []
 const argv = process.argv.slice(2)
@@ -49,6 +53,7 @@ if (cmd === 'helper' && !target) {
   const [a, b] = pair()
   const engine = start(a)
   const rpc = connect(b)
+  /** @param {number} code */
   const stop = async (code) => {
     await rpc.request('close').catch(() => {})
     await engine.closed
@@ -64,6 +69,7 @@ if (cmd === 'helper' && !target) {
   )
 }
 
+/** @param {import('./protocol.js').Rpc} rpc */
 async function run (rpc) {
   await rpc.request('init', { dir: opts.dir, bootstrap: opts.bootstrap })
   if (cmd === 'publish') {
@@ -103,6 +109,7 @@ async function runHelper () {
   await rpc.request('init', { dir: config.dir, bootstrap: opts.bootstrap })
   console.log(`helper ${(await rpc.request('contacts.me')).identity} in ${config.dir}`)
   const h = helper({ rpc, dir: config.dir, preset })
+  /** @type {ReturnType<typeof setTimeout> | null} */
   let timer = null
   const watcher = fs.watch(path.dirname(file), (event, name) => {
     if (name && name !== path.basename(file)) return

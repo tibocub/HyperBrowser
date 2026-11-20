@@ -3,9 +3,22 @@ import path from 'path'
 
 const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 const LISTS = new Set(['join', 'seed'])
+/**
+ * @typedef {object} HelperConfig
+ * @property {string} dir
+ * @property {string} name
+ * @property {number | null} share GB for its circles; null: half the free disk at first start, at most 100.
+ * @property {'official' | 'none'} apps
+ * @property {string[]} seed
+ * @property {string[]} join
+ */
+
+/** @param {string} n */
 const validName = (n) => n.length > 0 && n.length <= 64 && !/[\x00-\x1f\x7f]/.test(n) // eslint-disable-line no-control-regex
+/** @param {string} p */
 const home = (p) => (p === '~' || p.startsWith('~/') ? path.join(os.homedir(), p.slice(1)) : p)
 
+/** @type {Record<string, (v: string) => string | number | undefined>} */
 const CHECK = {
   dir: (v) => (v ? home(v) : undefined),
   name: (v) => (validName(v) ? v : undefined),
@@ -17,12 +30,19 @@ const CHECK = {
 
 export const configFile = () => path.join(os.homedir(), '.config', 'hyperbrowser-helper.conf')
 
+/** @returns {HelperConfig} */
 export function defaults (hostname = os.hostname()) {
   return { dir: path.join(os.homedir(), '.local', 'share', 'hyperbrowser-helper'), name: `Helper (${hostname})`, share: null, apps: 'official', seed: [], join: [] }
 }
 
+/**
+ * @param {string} text the config file
+ * @returns {{ values: Partial<HelperConfig>, errors: string[] }}
+ */
 export function parse (text) {
-  const values = {}
+  /** @type {Record<string, any>} */
+  const values = {} // checked by CHECK, per key
+  /** @type {string[]} */
   const errors = []
   text.split(/\r?\n/).forEach((raw, i) => {
     const line = raw.trim()
@@ -39,13 +59,22 @@ export function parse (text) {
   return { values, errors }
 }
 
+/**
+ * @param {Partial<Record<keyof HelperConfig, any>>} cli the command line's, undefined where not given
+ * @param {Partial<HelperConfig>} file
+ * @param {HelperConfig} [base]
+ * @returns {HelperConfig}
+ */
 export function merge (cli, file, base = defaults()) {
+  /** @type {Record<string, any>} */
   const out = { ...base, ...file }
+  /** @type {Record<string, any>} */
+  const lists = file
   for (const [k, v] of Object.entries(cli)) {
     if (v === undefined) continue
-    out[k] = LISTS.has(k) ? [...new Set([...(file[k] || []), ...v])] : v
+    out[k] = LISTS.has(k) ? [...new Set([...(lists[k] || []), ...v])] : v
   }
-  return out
+  return /** @type {HelperConfig} */ (out)
 }
 
 export function template (base = defaults()) {

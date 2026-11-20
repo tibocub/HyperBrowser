@@ -18,19 +18,58 @@ const FRAME_MAX = 4096
 const WATCH = 2000
 const LOOKUP = 15000
 
+/**
+ * @typedef {import('./types.js').Site} Site
+ * @typedef {import('./types.js').Space} Space
+ * @typedef {import('./types.js').CodedError} CodedError
+ * @typedef {import('./types.js').TypeDeclarations} TypeDeclarations
+ * @typedef {'incoming' | 'outgoing' | 'friend'} ContactState
+ * @typedef {object} Contact As kept in the person's settings.
+ * @property {string} name
+ * @property {ContactState} state
+ * @property {string} chat the conversation's key
+ * @property {number} at
+ * @property {string} [link] the invite to the conversation, while a request is open
+ * @property {boolean} [named] the name came from their profile (or was given by the person)
+ * @property {boolean} [delivered] an outgoing request reached them
+ * @typedef {{ identity: string, name: string, state: ContactState, chat: string, at: number }} ContactView What a page gets.
+ * @typedef {Record<string, Contact>} Contacts By identity.
+ * @typedef {import('hyperswarm').Connection & { info: import('hyperswarm').PeerInfo, framed: FramedStream }} Conn
+ */
+
+/** @param {string} code @param {string} message */
 const error = (code, message) => Object.assign(new Error(message), { code })
+/** @param {unknown} n @returns {n is string} */
 const validName = (n) => typeof n === 'string' && n.length > 0 && n.length <= 64 && !/[\x00-\x1f\x7f]/.test(n) // eslint-disable-line no-control-regex
+/** @param {string} identity */
 const topicOf = (identity) => crypto.hash(b4a.from('hyperbrowser/contacts/1/' + identity))
 const noop = () => {}
 
+/**
+ * The person's contacts: requests over the DHT, a private Chat conversation per friend.
+ * @param {object} opts
+ * @param {import('./types.js').SwarmFS} opts.sfs
+ * @param {Array<{ host: string, port: number }>} [opts.bootstrap]
+ * @param {(app: string, link: string) => Promise<Site>} opts.joinInstance
+ * @param {(app: string, key: string, on: boolean) => Promise<void>} opts.listInstance
+ * @param {(app: string, key: string) => Promise<boolean>} opts.leaveInstance
+ * @param {(method: string, p?: import('./types.js').Params) => Promise<any>} opts.circles the circles module's call: its answer depends on the method
+ */
 export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveInstance, circles }) {
+  /** @type {string | null} */
   let chat = null
+  /** @type {TypeDeclarations | null} */
   let types = null
+  /** @type {Promise<unknown>} */
   let writing = Promise.resolve()
+  /** @type {import('hyperswarm') | null} */
   let swarm = null
   let announced = false
+  /** @type {Map<string, string>} */
   const wanted = new Map()
+  /** @type {Map<string, import('hyperswarm').Discovery>} */
   const lookups = new Map()
+  /** @type {Map<Conn, Set<string>>} */
   const sent = new Map()
   let watching = false
   let closed = false
@@ -42,9 +81,15 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   refresh().catch(noop)
 
   const settings = () => sfs.hg.settings()
+  /** @returns {Promise<Contacts>} */
   const all = async () => (await settings())[CONTACTS] || {}
 
   // One read-and-write at a time: concurrent writers would drop each other's changes.
+  /**
+   * @template T
+   * @param {(list: Contacts) => T | Promise<T>} fn
+   * @returns {Promise<T>}
+   */
   function update (fn) {
     const write = writing.then(async () => {
       const list = await all()
@@ -56,12 +101,16 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     return write
   }
 
+  /** @param {string} identity @param {Contact} c @returns {ContactView} */
   const view = (identity, c) => ({ identity, name: c.name, state: c.state, chat: c.chat, at: c.at })
 
+  /** @returns {string} the chat app's key */
   function needChat () {
     if (!chat) throw error('NOT_READY', 'no chat app yet')
+    return chat
   }
 
+  /** @param {unknown} identity @returns {asserts identity is string} */
   function checkKey (identity) {
     if (typeof identity !== 'string' || !KEY.test(identity)) throw error('INVALID_PARAMS', 'not a person\'s key')
     if (identity === me) throw error('ALREADY', 'that is you')
@@ -73,30 +122,37 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   }
 
   async function conversation () {
-    needChat()
+    const app = needChat()
     if (!types) {
-      let app
-      try { sfs.hg.space(chat); app = await sfs.site(chat) } catch { app = await sfs.visit('hg:' + chat) }
-      types = parseManifest(await app.read('site.json')).types || {}
+      let site
+      try { sfs.hg.space(app); site = await sfs.site(app) } catch { site = await sfs.visit('hg:' + app) }
+      types = parseManifest(await site.read('site.json')).types || {}
     }
-    const site = await sfs.createSite((await myName()) || 'Chat', { app: chat, types, private: true })
-    await listInstance(chat, site.key, true)
+    const site = await sfs.createSite((await myName()) || 'Chat', { app, types, private: true })
+    await listInstance(app, site.key, true)
     await putName(site.space)
     return site
   }
 
+  /** @param {Space} space */
   async function putName (space) {
     const name = await myName()
     if (name) await space.put('profile', { name })
   }
 
+  /** @param {string} key @param {string} identity */
   async function nameIn (key, identity) {
     try {
       const { items } = await sfs.hg.space(key).query('profile').by(identity).latest(1)
-      return validName(items[0]?.name) ? items[0].name : null
+      const name = items[0]?.name
+      return validName(name) ? name : null
     } catch { return null }
   }
 
+  /**
+   * @param {string} method
+   * @param {any[]} args a page's: checked here
+   */
   async function call (method, args) {
     const [a, b] = args
     switch (method) {
@@ -125,7 +181,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
         const c = (await all())[a]
         if (!c) throw error('NOT_FOUND', 'not a contact')
         await update((list) => { delete list[a] })
-        if (c.chat && c.state !== 'incoming') await leaveInstance(chat, c.chat).catch(noop)
+        if (c.chat && c.state !== 'incoming') await leaveInstance(/** @type {string} */ (chat), c.chat).catch(noop)
         return true
       }
       case 'rename':
@@ -143,13 +199,14 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
         return { link }
       }
       case 'add': return add(a)
-      case 'circles': return (await circles('circles.list')).filter((x) => x.role === 'owner' || x.role === 'admin').map((x) => ({ key: x.key, name: x.name }))
+      case 'circles': return (/** @type {import('./circles.js').Circle[]} */ (await circles('circles.list'))).filter((x) => x.role === 'owner' || x.role === 'admin').map((x) => ({ key: x.key, name: x.name }))
       case 'inviteToCircle': return inviteToCircle(a, b)
       case 'tell': return tell(a, b) // the engine's own (a project's invite), never a page's
       default: throw error('UNKNOWN_METHOD', 'no contacts.' + method)
     }
   }
 
+  /** @param {unknown} identity @param {unknown} name */
   async function request (identity, name) {
     checkKey(identity)
     const known = (await all())[identity]
@@ -165,13 +222,15 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     })
   }
 
+  /** @param {string} identity */
   async function accept (identity) {
     const c = (await all())[identity]
     if (c?.state !== 'incoming') throw error('NOT_FOUND', 'no request from them')
     let site
     try {
-      site = await joinInstance(chat, c.link)
-    } catch (err) {
+      site = await joinInstance(/** @type {string} */ (chat), /** @type {string} */ (c.link))
+    } catch (e) {
+      const err = /** @type {CodedError} */ (e)
       if (err.code === 'NOT_ALLOWED' || err.code?.startsWith('INVITE_') && err.code !== 'INVITE_INVALID') await update((list) => { delete list[identity] })
       throw err
     }
@@ -183,10 +242,11 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   }
 
   // The text keeps the plain link for older Chats; `circle` and `circleName` make the current Chat's button.
+  /** @param {string} identity @param {string} circle */
   async function inviteToCircle (identity, circle) {
     const c = (await all())[identity]
     if (c?.state !== 'friend' || !c.chat) throw error('NOT_FOUND', 'not a friend')
-    const ring = (await circles('circles.list')).find((x) => x.key === circle)
+    const ring = (/** @type {import('./circles.js').Circle[]} */ (await circles('circles.list'))).find((x) => x.key === circle)
     if (!ring) throw error('NOT_FOUND', 'not one of your circles')
     const { link } = await circles('circles.invite', { key: circle })
     const text = `Join my circle "${ring.name}": ${link}`
@@ -194,12 +254,13 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     try {
       await space.put('message', { text, circle: link, circleName: ring.name })
     } catch (err) {
-      if (err.code === 'NOT_ALLOWED') throw err
+      if (/** @type {CodedError} */ (err).code === 'NOT_ALLOWED') throw err
       await space.put('message', { text }) // a conversation whose types predate the fields: the text only
     }
     return true
   }
 
+  /** @param {string} identity @param {string} text */
   async function tell (identity, text) {
     const c = (await all())[identity]
     if (c?.state !== 'friend' || !c.chat) throw error('NOT_FOUND', 'not a friend')
@@ -207,16 +268,17 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     return true
   }
 
+  /** @param {string} link */
   async function add (link) {
-    needChat()
+    const app = needChat()
     let inv
     try { inv = invites.decodeLink(link) } catch { throw error('INVALID_PARAMS', 'not a contact link') }
     const maker = inv.public ? null : z32.encode(inv.maker)
     if (maker === me) throw error('ALREADY', 'your own link')
-    if ((await all())[maker]?.state === 'friend') throw error('ALREADY', 'already a friend')
-    const site = await joinInstance(chat, link)
+    if (maker && (await all())[maker]?.state === 'friend') throw error('ALREADY', 'already a friend')
+    const site = await joinInstance(app, link)
     if (!maker) {
-      await leaveInstance(chat, site.key).catch(noop)
+      await leaveInstance(app, site.key).catch(noop)
       throw error('NOT_ALLOWED', 'a contact link is an invite, not a public link')
     }
     await putName(site.space).catch(noop)
@@ -246,6 +308,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   }
 
   // Anyone but `expected` got hold of the invite (an impostor under the person's DHT topic, B5): banned.
+  /** @param {string} key @param {string | null} expected */
   async function joined (key, expected) {
     let others
     try {
@@ -299,8 +362,10 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     }
   }
 
+  /** @param {Conn} conn */
   const topicsOf = (conn) => (conn.info?.topics || []).map((t) => b4a.toString(t, 'hex'))
 
+  /** @param {Conn} conn @param {import('hyperswarm').PeerInfo} info */
   function onConnection (conn, info) {
     conn.on('error', noop)
     conn.info = info
@@ -315,19 +380,25 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       try { m = JSON.parse(b4a.toString(buf)) } catch { return conn.destroy() }
       receive(conn, m).catch(noop)
     })
-    for (const hex of topicsOf(conn)) if (wanted.has(hex)) send(conn, wanted.get(hex))
+    for (const hex of topicsOf(conn)) {
+      const id = wanted.get(hex)
+      if (id) send(conn, id)
+    }
   }
 
+  /** @param {Conn} conn @param {object} m */
   function write (conn, m) {
     conn.framed.write(b4a.from(JSON.stringify(m)))
   }
 
+  /** @param {Conn} conn @param {string} identity */
   async function send (conn, identity) {
     sent.get(conn)?.add(identity)
     const c = (await all())[identity]
     if (c?.state === 'outgoing' && c.link) write(conn, { t: 'request', link: c.link, name: await myName() })
   }
 
+  /** @param {Conn} conn @param {any} m a peer's JSON: checked here */
   async function receive (conn, m) {
     if (m?.t === 'ok' && typeof m.chat === 'string') {
       return update((list) => {
@@ -362,6 +433,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
 
   return {
     call,
+    /** @param {string | null} key */
     setChat (key) { if (key !== chat) types = null; chat = key },
     close
   }
