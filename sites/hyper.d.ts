@@ -72,7 +72,7 @@ declare namespace Hyper {
   }
 
   /** Records point at records: by a record or its id. */
-  type Target = Record | string
+  type Target = { id: string } | string
 
   /** A query on one type of records. Filters combine; end with latest() or live(). Newest first. */
   interface Query<F extends object = Fields> {
