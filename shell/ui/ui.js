@@ -37,13 +37,13 @@ function setGlyph (el, name) { /** @type {Element} */ (el).replaceChildren(glyph
  * @template {keyof HTMLElementTagNameMap} K
  * @param {K} tag
  * @param {string} [cls]
- * @param {string | number} [text]
+ * @param {string} [text]
  * @returns {HTMLElementTagNameMap[K]}
  */
 function el (tag, cls, text) {
   const e = document.createElement(tag)
   if (cls) e.className = cls
-  if (text !== undefined) e.textContent = String(text)
+  if (text !== undefined) e.textContent = text
   return e
 }
 /** @param {string | null | undefined} src @param {string} name @returns {HTMLElement} */
@@ -56,8 +56,7 @@ function picture (src, name) {
   return img
 }
 
-/** @type {FrameState} */
-let S // set by the first state the shell sends
+let S = /** @type {FrameState} */ (/** @type {unknown} */ (null)) // set by the first state the shell sends
 /** @type {string | null} */
 let selected = null
 /** @type {string | null} */
@@ -392,11 +391,11 @@ frame.onDevices(() => { if (!$('devices').hidden) devices() })
 async function devices () {
   const r = await frame.send('devices')
   if (r?.error) return
-  const list = D = /** @type {import('./frame.js').Devices} */ (r.result)
-  $('dv-note').hidden = !list.removed
+  D = /** @type {import('./frame.js').Devices} */ (r.result)
+  $('dv-note').hidden = !D.removed
   $('dv-note').textContent = 'This computer was removed from your identity: what it does no longer counts. Join with a code to use it again.'
-  $('dv-pass-row').hidden = list.phrase !== 'protected'
-  $('dv-list').replaceChildren(...list.devices.map((d) => {
+  $('dv-pass-row').hidden = D.phrase !== 'protected'
+  $('dv-list').replaceChildren(...D.devices.map((d) => {
     const li = el('li')
     li.append(el('span', '', d.name || 'a device'), el('span', 'dim', d.current ? '(this computer)' : d.publicKey.slice(0, 6) + '…'))
     if (!d.current) {
@@ -465,17 +464,16 @@ const holdOut = $('cf-hold-out')
 async function drawHolding () {
   const r = await frame.send('holding.get')
   if (r?.error) return
-  const h = H = /** @type {import('./frame.js').Holding} */ (r.result)
-  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-hold]'))) b.setAttribute('aria-pressed', String((b.dataset.hold === 'on') === h.on))
-  if (document.activeElement !== $('cf-share')) $('cf-share').value = String(Math.round(h.bytes / 1e8) / 10)
-  $('cf-held').textContent = 'You hold ' + gbs(h.used) + ' of ' + gbs(h.bytes) + (h.on ? '' : ' (off)')
+  H = /** @type {import('./frame.js').Holding} */ (r.result)
+  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-hold]'))) b.setAttribute('aria-pressed', String((b.dataset.hold === 'on') === H.on))
+  if (document.activeElement !== $('cf-share')) $('cf-share').value = String(Math.round(H.bytes / 1e8) / 10)
+  $('cf-held').textContent = 'You hold ' + gbs(H.used) + ' of ' + gbs(H.bytes) + (H.on ? '' : ' (off)')
 }
 for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-hold]'))) {
   b.onclick = () => {
-    const h = H
-    if (!h || (b.dataset.hold === 'on') === h.on) return
+    if (!H || (b.dataset.hold === 'on') === H.on) return
     if (b.dataset.hold === 'on') return frame.send('holding.set', { on: true }).then(drawHolding)
-    holdOut.replaceChildren(line('This deletes the ' + gbs(h.used) + ' you keep for your circles. Their spaces will be kept by others.'),
+    holdOut.replaceChildren(line('This deletes the ' + gbs(H.used) + ' you keep for your circles. Their spaces will be kept by others.'),
       push('Turn off', async () => { holdOut.replaceChildren(); await frame.send('holding.set', { on: false }); drawHolding() }),
       push('Cancel', () => holdOut.replaceChildren()))
   }

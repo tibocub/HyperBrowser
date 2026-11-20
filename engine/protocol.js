@@ -104,7 +104,7 @@ export function toWire (value) {
   if (value && typeof value === 'object') {
     /** @type {Record<string, Wire>} */
     const out = {}
-    for (const [k, v] of Object.entries(value)) out[k] = toWire(v)
+    for (const k of Object.keys(value)) out[k] = toWire(/** @type {Record<string, unknown>} */ (value)[k])
     return out
   }
   return value

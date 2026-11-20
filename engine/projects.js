@@ -706,10 +706,8 @@ export function projects ({ sfs, dir, root, visit, tell, forget }) {
     for (const until = Date.now() + CATCH_UP; ; await sleep(250)) {
       const pages = await site.pages.space.query('file').latest(100000)
       const { items } = await hg.personal.query('held').fromDevice(hg.device.publicKey).latest(100000) // no index on space
-      const held = /** @type {import('swarmfs/lib/types.js').HeldRecord[]} */ (items)
-      const here = new Map(held.filter((h) => h.space === site.pages.key).map((h) => [h.entry, h.root]))
-      const files = /** @type {import('swarmfs/lib/types.js').FileRecord[]} */ (pages.items)
-      if (pages.complete && files.every((r) => r.parent === BIN || here.get(r.id) === rootOf(r.content))) return
+      const here = new Map(/** @type {import('swarmfs/lib/types.js').HeldRecord[]} */ (items).filter((h) => h.space === site.pages.key).map((h) => [h.entry, h.root]))
+      if (pages.complete && /** @type {import('swarmfs/lib/types.js').FileRecord[]} */ (pages.items).every((r) => r.parent === BIN || here.get(r.id) === rootOf(r.content))) return
       if (Date.now() > until) throw error('BUSY', "the site's pages are still arriving on this device: publish again in a moment")
     }
   }

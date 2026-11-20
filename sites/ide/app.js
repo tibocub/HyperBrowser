@@ -45,8 +45,8 @@ let area = null
 let dirty = false
 /** @type {Promise<void> | null} */
 let saving = null
-/** @type {ReturnType<typeof setTimeout> | undefined} */
-let timer
+/** @type {ReturnType<typeof setTimeout> | null} */
+let timer = null
 let lastText = ''
 /** @type {string | null} */
 let image = null
@@ -137,8 +137,8 @@ async function reload () {
   status = await projects.status(cur.key).catch(() => null)
 }
 
-/** @type {ReturnType<typeof setTimeout> | undefined} */
-let changing
+/** @type {ReturnType<typeof setTimeout> | null} */
+let changing = null
 function changed () {
   clearTimeout(changing)
   changing = setTimeout(async () => {

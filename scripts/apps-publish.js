@@ -35,9 +35,8 @@ try {
   const n = changed.filter((c) => !c.kept).length
   console.log(n ? `preset.json: ${n} key(s) written` : 'preset.json: no change')
   if (changed.some((c) => c.kept)) code = 1
-} catch (e) {
-  const err = /** @type {Error & { code?: string }} */ (e)
-  console.error(`${err.code || 'ERROR'}: ${err.message}`)
+} catch (err) {
+  console.error(`${/** @type {{ code?: string }} */ (err).code || 'ERROR'}: ${/** @type {Error} */ (err).message}`)
   code = 1
 }
 const stop = async () => {

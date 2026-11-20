@@ -416,11 +416,11 @@ async function stopEngine () {
   if (r) await r.request('close').catch(() => {})
   if (w) {
     /** @type {Promise<void>} */
-    const exited = new Promise((resolve) => { if (/** @type {{ _exited?: boolean }} */ (/** @type {unknown} */ (w))._exited) resolve(); else w.once('exit', () => resolve()) })
+    const exited = new Promise((resolve) => { if (/** @type {{ _exited?: boolean }} */ (/** @type {unknown} */ (w))._exited) resolve(); else w.once('exit', /** @type {() => void} */ (resolve)) })
     w.destroy() // kills it if it didn't exit by itself
     await exited
   }
-  if (rpc === r) { rpc = /** @type {Rpc} */ (/** @type {unknown} */ (null)); worker = null }
+  if (rpc === r) rpc = /** @type {Rpc} */ (/** @type {unknown} */ (worker = null))
 }
 
 /** @param {BaseWindowT} win @param {SiteView[]} views */
@@ -1036,7 +1036,7 @@ async function checkIde (win, views, out, tmp, chat) {
   await waitFor(() => pv.webContents.executeJavaScript("document.readyState === 'complete'"), 15000)
   const t2 = performance.now()
   /** @type {Promise<void>} */
-  const loaded = new Promise((resolve) => pv.webContents.once('did-finish-load', () => resolve()))
+  const loaded = new Promise((resolve) => pv.webContents.once('did-finish-load', /** @type {() => void} */ (resolve)))
   pv.webContents.reload()
   await loaded
   const reload = performance.now() - t2
@@ -1252,8 +1252,7 @@ async function checkNames (fwc, key) {
   ]
 }
 
-const presetKey = (/** @type {string} */ id) => /** @type {string} */ (/** @type {import('./model.js').Icon} */ (PRESET.find((p) => p.id === id)).key)
-const SCRIPT = { chat: presetKey('preset:chat'), forum: presetKey('preset:forum'), a: 'y'.repeat(52), b: 'b'.repeat(52) }
+const SCRIPT = { chat: /** @type {string} */ (/** @type {import('./model.js').Icon} */ (PRESET.find((p) => p.id === 'preset:chat')).key), forum: /** @type {string} */ (/** @type {import('./model.js').Icon} */ (PRESET.find((p) => p.id === 'preset:forum')).key), a: 'y'.repeat(52), b: 'b'.repeat(52) }
 /**
  * An engine whose notify.* calls and one name are scripted; the rest goes to the real engine.
  * @param {string} site
@@ -1379,7 +1378,7 @@ async function traycheck ({ win, inspect, show }, mode) {
     console.log('TRAYCHECK WAITING') // the test launches HyperBrowser again, on the same data folder
     ok('a second launch shows this window', await until(() => win.isVisible(), 60000))
     console.log('TRAYCHECK QUIT')
-    const quit = /** @type {import('electron').MenuItem} */ (inspect().tray?.item('Quit'))
+    const quit = /** @type {import('electron').MenuItem} */ (/** @type {NonNullable<ReturnType<Frame['inspect']>['tray']>} */ (inspect().tray).item('Quit'))
     quit.click()
   } else {
     ok('the notice was remembered: not shown again', inspect().settings.trayNoticed === true && inspect().notices === 0)
@@ -1403,9 +1402,9 @@ function startUpdates () {
   if (!file) return
   const name = PKG.productName + (process.platform === 'win32' ? '' : path.extname(file))
   const args = [app.getPath('userData'), PKG.version, PKG.upgrade, name, file, process.env.HYPERBROWSER_UPDATE_BOOTSTRAP || '', process.env.HYPERBROWSER_UPDATE_DELAY || '']
-  const run = updater = PearRuntime.run(fileURLToPath(new URL('./updater.js', import.meta.url)), args)
+  updater = PearRuntime.run(fileURLToPath(new URL('./updater.js', import.meta.url)), args)
   let rest = ''
-  run.on('data', (d) => {
+  updater.on('data', (d) => {
     const lines = (rest + /** @type {Uint8Array} */ (d)).split('\n')
     rest = /** @type {string} */ (lines.pop())
     for (const line of lines) {
@@ -1416,9 +1415,9 @@ function startUpdates () {
       incoming = folder.join(' ') || null
     }
   })
-  const stderr = /** @type {NonNullable<typeof run.stderr>} */ (run.stderr) // piped (the default)
+  const stderr = /** @type {NonNullable<typeof updater.stderr>} */ (updater.stderr) // piped (the default)
   stderr.on('data', (d) => log('updater: ' + String(d).trim()))
-  run.on('error', () => {})
+  updater.on('error', () => {})
 }
 
 // Windows can't replace the folder while HyperBrowser or its Bare workers run: a PowerShell step swaps it after the quit,
@@ -1457,10 +1456,10 @@ function restart () {
 
 /** @param {string} dir @param {object} [more] init's other params */
 async function startEngine (dir, more = {}) {
-  const w = worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
-  const stderr = /** @type {NonNullable<typeof w.stderr>} */ (w.stderr) // piped (the default)
+  worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
+  const stderr = /** @type {NonNullable<typeof worker.stderr>} */ (worker.stderr) // piped (the default)
   stderr.on('data', (d) => process.stderr.write('engine: ' + /** @type {Uint8Array} */ (d)))
-  const conn = connect(w, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
+  const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
   const projects = SELFTEST || FRAMECHECK ? path.join(dir, 'projects') : path.join(app.getPath('documents'), 'HyperBrowser')
   const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), projects, ...more })
@@ -1489,7 +1488,7 @@ async function join (dir, code) {
     await move(aside, dir)
     ;({ identity } = await startEngine(dir))
   }
-  ui?.joined({ identity, said })
+  /** @type {Frame} */ (ui).joined({ identity, said }) // the frame asked for this join
 }
 
 // A rename that waits for a just-ended worker to let go of its files (Windows: EBUSY, EPERM for a moment).

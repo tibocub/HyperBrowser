@@ -35,8 +35,7 @@ export function helper ({ rpc, dir, preset, log = console.log, tick = TICK, summ
   let state = { links: {}, share: null, kept: {} }
   try { state = { ...state, ...JSON.parse(fs.readFileSync(FILE, 'utf-8')) } } catch {}
   const save = () => fs.promises.writeFile(FILE, JSON.stringify(state, null, 2))
-  /** @type {HelperConfig} */
-  let config // set by apply() before any pass
+  let config = /** @type {HelperConfig} */ (/** @type {unknown} */ (null)) // set by apply() before any pass
   /** @type {Promise<unknown>} */
   let running = Promise.resolve()
   let closed = false

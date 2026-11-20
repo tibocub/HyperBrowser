@@ -87,8 +87,8 @@ function open (key) {
   current = key
   history.replaceState(null, '', '?instance=' + key)
   hyper.notifications?.viewing(key).catch(() => {}) // shown here, so not notified
-  /** @type {View} */
-  const v = view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null, gone: false, waiting: false, confirm: null, forget: false, trimN: 6, trimUnit: 'months' }
+  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null, gone: false, waiting: false, confirm: null, forget: false, trimN: 6, trimUnit: 'months' }
+  const v = view
   // secured without this person (no new address), or secured here (waiting for another admin's device)
   c.info(key).then((i) => { if (view === v) { v.gone = !!i.moved && !i.movedTo; v.waiting = !!i.renewal?.waiting; draw() } }, () => {})
   const copies = () => c.copies(key).then((x) => { if (view === v) { v.copies = x; draw() } }, () => {})
@@ -115,8 +115,7 @@ function open (key) {
 function draw () {
   const conv = convs.find((x) => x.key === current)
   // a redraw (a message arriving) keeps the writer's caret and the reader's place
-  const active = /** @type {HTMLTextAreaElement | null} */ (document.activeElement)
-  const typing = active?.name === 'text' ? /** @type {[number, number]} */ ([active.selectionStart, active.selectionEnd]) : null
+  const typing = /** @type {HTMLTextAreaElement | null} */ (document.activeElement)?.name === 'text' ? /** @type {[number, number]} */ ([/** @type {HTMLTextAreaElement} */ (document.activeElement).selectionStart, /** @type {HTMLTextAreaElement} */ (document.activeElement).selectionEnd]) : null
   const top = keepScroll(root.querySelector('[data-key]'), view?.key, view?.toEnd)
   if (view) view.toEnd = false
   // overflow-wrap: a long word (an hg: link) wraps anywhere rather than widen the page

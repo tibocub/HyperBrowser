@@ -401,7 +401,7 @@ export function start (ipc) {
       s.scope = sfs.hg.scope(/** @type {string} */ (key), { identity: 'main' })
       s.scope.catch(() => { s.scope = null })
     }
-    const scope = instance === undefined || instance === null ? await s.scope : await instanceScope(s, /** @type {string} */ (key), instance)
+    const scope = instance === undefined || instance === null ? await s.scope : await instanceScope(s, /** @type {string} */ (key), /** @type {string} */ (instance))
     // a sub-space's scope has the space's methods too (hypergraph's type says Scope only)
     return sub === undefined || sub === null ? scope : /** @type {SiteHandle} */ (scope.subspace(/** @type {string} */ (sub)))
   }
@@ -425,10 +425,11 @@ export function start (ipc) {
     return write
   }
 
-  /** @param {Opened} s @param {string} app @param {unknown} instance */
-  async function instanceScope (s, app, instance) {
-    const old = keyOf({ key: instance })
-    let key = current(old)
+  /** @param {Opened} s @param {string} app @param {string} key a page's: keyOf() checks it */
+  async function instanceScope (s, app, key) {
+    keyOf({ key })
+    const old = key
+    key = current(key)
     if (old !== key && !(await listed(app))[key] && (await listed(app))[old]) await listInstance(app, key, true)
     clearTimeout(s.idle.get(key)) // in use: not closed under this call
     try {
@@ -536,9 +537,9 @@ export function start (ipc) {
   }
 
   // Off the list first, so nothing reaches it while it goes.
-  /** @param {string} app @param {unknown} instance */
-  async function leaveInstance (app, instance) {
-    const key = keyOf({ key: instance })
+  /** @param {string} app @param {string} key a page's: keyOf() checks it */
+  async function leaveInstance (app, key) {
+    keyOf({ key })
     if (!(await listed(app))[key]) throw error('NOT_ALLOWED', "not one of this app's instances")
     await listInstance(app, key, false)
     await notes.forget(key)
@@ -958,10 +959,9 @@ export function start (ipc) {
   }
 
   // Told without its stack: that stays in the log.
-  /** @param {unknown} thrown anything: a throw can be of any value */
-  function escaped (thrown) {
-    const err = /** @type {CodedError | undefined} */ (thrown)
-    const e = { message: String(err?.message ?? err), code: err?.code ?? null, method: err?.method ?? null }
+  /** @param {unknown} err anything: a throw can be of any value */
+  function escaped (err) {
+    const e = { message: String(/** @type {CodedError | undefined} */ (err)?.message ?? err), code: /** @type {CodedError | undefined} */ (err)?.code ?? null, method: /** @type {CodedError | undefined} */ (err)?.method ?? null }
     try { rpc.emit('engine.error', e) } catch {} // the channel may be closing: telling must never throw back into guard
     return e
   }
@@ -979,8 +979,7 @@ export function guard (engine, target, { stack = true } = {}) {
   /** @param {unknown} err */
   const on = (err) => {
     const { message, code, method } = engine.escaped(err)
-    const trace = /** @type {Error | undefined} */ (err)?.stack
-    console.error(`escaped error${code ? ' ' + code : ''}${method ? ' in ' + method : ''}: ${stack && trace ? trace : message}`)
+    console.error(`escaped error${code ? ' ' + code : ''}${method ? ' in ' + method : ''}: ${stack && /** @type {Error | undefined} */ (err)?.stack ? /** @type {Error} */ (err).stack : message}`)
   }
   target.on('uncaughtException', on)
   target.on('unhandledRejection', on)
@@ -996,12 +995,11 @@ function plain (value) {
   if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return value
   if (Array.isArray(value)) return value.map(plain)
   const proto = Object.getPrototypeOf(value)
-  const o = /** @type {Record<string, unknown>} */ (value)
   if (proto !== Object.prototype && proto !== null) {
-    return typeof o.key === 'string' ? { key: o.key, name: o.name ?? null } : null
+    return typeof /** @type {{ key?: unknown }} */ (value).key === 'string' ? { key: /** @type {{ key: string }} */ (value).key, name: /** @type {{ name?: unknown }} */ (value).name ?? null } : null
   }
   /** @type {Record<string, unknown>} */
   const out = {}
-  for (const k of Object.keys(o)) if (typeof o[k] !== 'function') out[k] = plain(o[k])
+  for (const k of Object.keys(value)) if (typeof /** @type {Record<string, unknown>} */ (value)[k] !== 'function') out[k] = plain(/** @type {Record<string, unknown>} */ (value)[k])
   return out
 }

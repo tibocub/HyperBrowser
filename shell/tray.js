@@ -41,8 +41,8 @@ export function startTray ({ rpc, show, quit }) {
   const tray = new Tray(image)
   let unread = 0
   let status = 'starting…'
-  /** @type {import('electron').Menu} */
-  let menu
+  /** @type {import('electron').Menu | null} */
+  let menu = null
   const draw = () => {
     menu = Menu.buildFromTemplate([
       { label: 'Open HyperBrowser', click: show },
@@ -71,7 +71,7 @@ export function startTray ({ rpc, show, quit }) {
       tray.setToolTip(n > 0 ? `HyperBrowser: ${n} new` : 'HyperBrowser')
     },
     /** @param {string} label */
-    item: (label) => menu.items.find((i) => i.label === label),
+    item: (label) => /** @type {import('electron').Menu} */ (menu).items.find((i) => i.label === label), // drawn at once
     /** @param {string} text */
     notice (text) {
       if (process.platform === 'win32') tray.displayBalloon({ icon: image, title: 'HyperBrowser', content: text })

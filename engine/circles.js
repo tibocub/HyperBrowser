@@ -243,8 +243,7 @@ export function circles ({ sfs, dir, notes, emit }) {
     const holds = holdsFrom(records)
     if (hg.holding().on) holds.add(me())
     // a circle's members also have share and used (hypergraph's type leaves them out)
-    const people = /** @type {Array<Awaited<ReturnType<Space['members']>>[number] & { share?: number | null, used?: number | null }>} */ (await s.members())
-    return people.filter((m) => m.role && !m.removed && !m.banned).map((m) => ({
+    return /** @type {Array<Awaited<ReturnType<Space['members']>>[number] & { share?: number | null, used?: number | null }>} */ (await s.members()).filter((m) => m.role && !m.removed && !m.banned).map((m) => ({
       identity: m.identity,
       name: contacts[m.identity]?.name || '', // the shell shows a short key for someone not a contact
       role: m.role,

@@ -135,8 +135,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   /** @type {Map<string, Notification>} */
   const popups = new Map()
   let popupsShown = 0
-  /** The current tab: there always is one (the desktop is never closed). */
-  const now = () => /** @type {Tab} */ (tabOf(current))
 
   /** @returns {{ desktop: { icons: Icon[] }, settings: FrameState['settings'] }} */
   function load () {
@@ -200,7 +198,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   function layout () {
     if (win.isDestroyed()) return
     const { width, height } = win.getContentBounds()
-    const tab = now()
+    const tab = /** @type {Tab} */ (tabOf(current)) // the desktop's tab is never closed
     for (const t of tabs) if (t.view) t.view.setVisible(t === tab)
     for (const t of tabs) if (t.side?.view) t.side.view.setVisible(t === tab)
     for (const t of tabs) if (t.side?.handle) t.side.handle.setVisible(t === tab)
@@ -209,9 +207,9 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     if (tab.view) tab.view.setBounds({ x: 0, y: bars, width: main, height: h })
     if (tab.side?.view) tab.side.view.setBounds({ x: main, y: bars, width: width - main, height: h })
     const handle = tab.side?.handle
-    if (tab.side && handle) { // a strip over the line; while dragged, over both views, so the pointer never leaves it
-      handle.setBounds(tab.side.dragging ? { x: 0, y: bars, width, height: h } : { x: main - HANDLE / 2, y: bars, width: HANDLE, height: h })
-      if (!handle.webContents.isDestroyed()) handle.webContents.send('split-at', { at: tab.side.dragging ? main - HANDLE / 2 : 0, value: Math.round(100 * main / width) })
+    if (handle) { // a strip over the line; while dragged, over both views, so the pointer never leaves it
+      handle.setBounds(/** @type {Side} */ (tab.side).dragging ? { x: 0, y: bars, width, height: h } : { x: main - HANDLE / 2, y: bars, width: HANDLE, height: h })
+      if (!handle.webContents.isDestroyed()) handle.webContents.send('split-at', { at: /** @type {Side} */ (tab.side).dragging ? main - HANDLE / 2 : 0, value: Math.round(100 * main / width) })
     }
     frame.setBounds({ x: 0, y: 0, width, height: cover || !tab.view ? height : bars })
   }
@@ -222,7 +220,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     current = /** @type {number} */ (id)
     layout()
     push()
-    const tab = now()
+    const tab = /** @type {Tab} */ (tabOf(id))
     if (tab.wc && !cover) tab.wc.focus()
     looked()
   }
@@ -236,7 +234,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   }
 
   // Believed only while that tab is current and the window focused.
-  const viewingNow = () => win.isFocused() && now().wc ? now().wc : null
+  const viewingNow = () => win.isFocused() && tabOf(current)?.wc ? /** @type {Tab} */ (tabOf(current)).wc : null
   /** @type {string | null} */
   let lookedPlace = null
   async function looked () {
@@ -324,17 +322,17 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     tab.side = side
     openSite(key).then((v) => {
       if (tab.side !== side || !tabs.includes(tab)) return v.close()
-      const open = Object.assign(side, { view: v.view, wc: v.webContents, close: v.close, pending: false })
-      keep(open)
-      const handle = side.handle = new WebContentsView({ webPreferences: { preload: path.join(HERE, 'split-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } })
-      handle.setBackgroundColor('#00000000')
-      handle.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-      handle.webContents.on('will-navigate', (e) => e.preventDefault())
-      handle.webContents.loadFile(path.join(HERE, 'ui', 'split.html'))
-      handle.webContents.on('before-input-event', (e, input) => { if (keys(input, handle.webContents)) e.preventDefault() })
-      handle.webContents.once('did-finish-load', layout)
+      Object.assign(side, { view: v.view, wc: v.webContents, close: v.close, pending: false })
+      keep(/** @type {Side & { wc: WebContents }} */ (side))
+      side.handle = new WebContentsView({ webPreferences: { preload: path.join(HERE, 'split-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } })
+      side.handle.setBackgroundColor('#00000000')
+      side.handle.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+      side.handle.webContents.on('will-navigate', (e) => e.preventDefault())
+      side.handle.webContents.loadFile(path.join(HERE, 'ui', 'split.html'))
+      side.handle.webContents.on('before-input-event', (e, input) => { if (keys(input, /** @type {View} */ (side.handle).webContents)) e.preventDefault() })
+      side.handle.webContents.once('did-finish-load', layout)
       win.contentView.addChildView(v.view)
-      win.contentView.addChildView(handle)
+      win.contentView.addChildView(side.handle)
       win.contentView.addChildView(frame) // on top of every site
       layout()
     }, () => { if (tab.side === side) tab.side = null })
@@ -373,12 +371,13 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
 
   ipcMain.on('split', (evt, msg) => {
     const tab = tabs.find((t) => t.side?.handle?.webContents === evt.sender)
-    if (!tab?.side || !msg || typeof msg !== 'object') return
+    if (!tab || !msg || typeof msg !== 'object') return
     const { width } = win.getContentBounds()
     const now = splitAt(width)
-    if (msg.op === 'start') { tab.side.dragging = true; layout() }
-    if (msg.op === 'move' && tab.side.dragging && Number.isFinite(msg.x)) setSplit(Math.round(msg.x), width)
-    if (msg.op === 'end') { tab.side.dragging = false; layout(); save() }
+    // found by its handle: the tab has a side
+    if (msg.op === 'start') { /** @type {Side} */ (tab.side).dragging = true; layout() }
+    if (msg.op === 'move' && /** @type {Side} */ (tab.side).dragging && Number.isFinite(msg.x)) setSplit(Math.round(msg.x), width)
+    if (msg.op === 'end') { /** @type {Side} */ (tab.side).dragging = false; layout(); save() }
     if (msg.op === 'key' && Number.isFinite(msg.step)) { setSplit(now + Math.max(-100, Math.min(100, msg.step)) * 24, width); save() }
     if (msg.op === 'leave') tab.wc?.focus()
   })
@@ -388,8 +387,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     const a = parseAddress(input)
     if (a.error) return { error: { code: 'INVALID_KEY', message: a.error } }
     if (a.name) return openName(a.name, query)
-    const key = /** @type {string} */ (a.key) // neither an error nor a name
-    const have = tabs.find((t) => t.key === key)
+    const have = tabs.find((t) => t.key === a.key)
     if (have) {
       const at = have.key !== have.site ? '?instance=' + have.key + (query.startsWith('#') ? query : '') : query
       if (query && have.wc) have.wc.loadURL('hyper://' + have.site + '/' + at)
@@ -398,11 +396,11 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       return { result: have.id }
     }
     /** @type {Tab} */
-    const tab = { id: nextId++, key, title: shortKey(key), status: 'opening', icon: iconOf(key)?.icon }
+    const tab = { id: nextId++, key: /** @type {string} */ (a.key), title: shortKey(/** @type {string} */ (a.key)), status: 'opening', icon: iconOf(a.key)?.icon }
     tabs.push(tab)
     select(tab.id)
     show()
-    loadTab(tab, key, query)
+    loadTab(tab, /** @type {string} */ (a.key), query) // neither an error nor a name: a key
     return { result: tab.id }
   }
 
@@ -463,9 +461,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       poll()
       readIcon(v.key, v.manifest).then((icon) => {
         tab.icon = icon
-        const known = iconOf(v.key)
-        if (known) {
-          data.desktop.icons = upsert(data.desktop.icons, { id: known.id, title: v.manifest.title, icon })
+        if (iconOf(v.key)) {
+          data.desktop.icons = upsert(data.desktop.icons, { id: /** @type {Icon} */ (iconOf(v.key)).id, title: v.manifest.title, icon })
           save()
         }
         push()
@@ -480,7 +477,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
 
   /** @param {number} offset */
   function go (offset) {
-    const h = now().wc?.navigationHistory
+    const h = tabOf(current)?.wc?.navigationHistory
     if (h?.canGoToOffset(offset)) h.goToOffset(offset)
   }
 
@@ -498,9 +495,8 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       select(tabs[(i + (input.shift ? -1 : 1) + tabs.length) % tabs.length].id)
       return true
     }
-    if (input.key === 'F5' || (mod && input.key.toLowerCase() === 'r')) { now().wc?.reload(); return true }
-    const line = now().side?.handle
-    if (input.key === 'F6' && line && wc !== line.webContents) { line.webContents.focus(); return true }
+    if (input.key === 'F5' || (mod && input.key.toLowerCase() === 'r')) { tabOf(current)?.wc?.reload(); return true }
+    if (input.key === 'F6' && tabOf(current)?.side?.handle && wc !== /** @type {View} */ (tabOf(current)?.side?.handle).webContents) { /** @type {View} */ (tabOf(current)?.side?.handle).webContents.focus(); return true }
     if (input.alt && input.key === 'ArrowLeft') { go(-1); return true }
     if (input.alt && input.key === 'ArrowRight') { go(1); return true }
     return false
@@ -630,7 +626,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
    * @param {Record<string, any>} [a] the frame's args: checked per op
    */
   function handle (op, a = {}) {
-    const tab = now()
+    const tab = /** @type {Tab} */ (tabOf(current))
     switch (op) {
       case 'hello': return { result: snapshot() }
       case 'glyphs': return { result: glyphs }
@@ -772,7 +768,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
   if (open) openKey(open)
   follow()
   refresh()
-  const side = () => now().side
+  const side = () => tabOf(current)?.side
   const inspect = () => ({ bars, frame: frame.getBounds(), views: tabs.filter((t) => t.view).map((t) => /** @type {View} */ (t.view).getBounds()),
     wcs: tabs.filter((t) => t.wc).map((t) => /** @type {WebContents} */ (t.wc)), side: side()?.view?.getBounds() || null, handle: side()?.handle || null, sideWc: side()?.wc || null, split: data.settings.split, ready: tabs.filter((t) => t.status === 'ready').length - 1, fwc, tray, notices, settings: data.settings, popups: popupsShown })
   const devices = () => { if (!fwc.isDestroyed()) fwc.send('frame-devices') }

@@ -123,8 +123,8 @@ async function start () {
 
 // What is new: since() by message numbers, never by dates.
 
-/** @type {ReturnType<typeof setTimeout> | undefined} */
-let catching
+/** @type {ReturnType<typeof setTimeout> | null} */
+let catching = null
 function catchUpSoon () {
   clearTimeout(catching)
   catching = setTimeout(async () => {
@@ -409,12 +409,11 @@ function route () {
 function enter () {
   const r = route()
   if (r.page === 'r') return toThread(r.id)
-  const id = /** @type {string} */ (r.id) // a thread's page names it
-  if (r.page === 't') opened[id] = new Set(news.unread[id] || [])
+  if (r.page === 't') opened[/** @type {string} */ (r.id)] = new Set(news.unread[/** @type {string} */ (r.id)] || []) // a thread's page names it
   if (r.page === 't' && threadView.id !== r.id) {
     threadView.stop?.()
     threadView = { id: r.id, stop: null, items: [], complete: false }
-    threadView.stop = hyper.query('comment').on(id).live(({ items, complete }) => { threadView.items = items; threadView.complete = complete; schedule() }, { limit: LIMITS.thread })
+    threadView.stop = hyper.query('comment').on(/** @type {string} */ (r.id)).live(({ items, complete }) => { threadView.items = items; threadView.complete = complete; schedule() }, { limit: LIMITS.thread })
   }
   if (r.page === 'members') loadMembers()
   if (r.page === 'mod') loadModeration()
@@ -458,9 +457,8 @@ function schedule () {
 
 function draw () {
   // the element being typed in keeps its focus and caret across the redraw
-  const focused = /** @type {HTMLInputElement | null} */ (document.activeElement)
-  const active = focused?.dataset?.k
-  const sel = active && focused ? /** @type {[number, number]} */ ([focused.selectionStart, focused.selectionEnd]) : null
+  const active = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.k
+  const sel = active ? /** @type {[number, number]} */ ([/** @type {HTMLInputElement} */ (document.activeElement).selectionStart, /** @type {HTMLInputElement} */ (document.activeElement).selectionEnd]) : null
   const r = route()
   const page = /** @type {Record<string, (id: string) => HTMLElement>} */ ({ b: frontPage, t: threadPage, new: newThreadPage, mentions: mentionsPage, you: youPage, members: membersPage, mod: moderationPage, board: boardPage })[r.page] || frontPage
   app.replaceChildren(h('div', { class: 'layout' }, forumsColumn(), boardsColumn(r),

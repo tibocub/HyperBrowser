@@ -646,10 +646,8 @@ export function notifications ({ sfs, dir, emit, turn = 20000, counts = noop }) 
      */
     async follow (app, types, places, spec) {
       watch(spec, types, true)
-      const place = /** @type {string} */ (spec.place) // watch() checked it
-      if (!places.includes(place)) throw error('NOT_ALLOWED', "not one of this app's instances")
-      /** @type {Follow} */
-      const f = { ...spec, place, id: b4a.toString(crypto.randomBytes(8), 'hex'), popup: spec.popup === true }
+      if (!places.includes(/** @type {string} */ (spec.place))) throw error('NOT_ALLOWED', "not one of this app's instances")
+      const f = /** @type {Follow} */ ({ ...spec, id: b4a.toString(crypto.randomBytes(8), 'hex'), popup: spec.popup === true }) // watch() checked place
       await setFollows(app, (list) => {
         if (list.length >= FOLLOWS_MAX) throw error('TOO_BIG', `an app keeps at most ${FOLLOWS_MAX} follows`)
         return [...list, f]

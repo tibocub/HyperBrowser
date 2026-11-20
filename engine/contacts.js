@@ -104,10 +104,8 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   /** @param {string} identity @param {Contact} c @returns {ContactView} */
   const view = (identity, c) => ({ identity, name: c.name, state: c.state, chat: c.chat, at: c.at })
 
-  /** @returns {string} the chat app's key */
   function needChat () {
     if (!chat) throw error('NOT_READY', 'no chat app yet')
-    return chat
   }
 
   /** @param {unknown} identity @returns {asserts identity is string} */
@@ -122,14 +120,14 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   }
 
   async function conversation () {
-    const app = needChat()
+    needChat() // chat is set from here on
     if (!types) {
-      let site
-      try { sfs.hg.space(app); site = await sfs.site(app) } catch { site = await sfs.visit('hg:' + app) }
-      types = parseManifest(await site.read('site.json')).types || {}
+      let app
+      try { sfs.hg.space(/** @type {string} */ (chat)); app = await sfs.site(/** @type {string} */ (chat)) } catch { app = await sfs.visit('hg:' + chat) }
+      types = parseManifest(await app.read('site.json')).types || {}
     }
-    const site = await sfs.createSite((await myName()) || 'Chat', { app, types, private: true })
-    await listInstance(app, site.key, true)
+    const site = await sfs.createSite((await myName()) || 'Chat', { app: /** @type {string} */ (chat), types, private: true })
+    await listInstance(/** @type {string} */ (chat), site.key, true)
     await putName(site.space)
     return site
   }
@@ -144,8 +142,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   async function nameIn (key, identity) {
     try {
       const { items } = await sfs.hg.space(key).query('profile').by(identity).latest(1)
-      const name = items[0]?.name
-      return validName(name) ? name : null
+      return validName(items[0]?.name) ? /** @type {string} */ (items[0].name) : null
     } catch { return null }
   }
 
@@ -270,15 +267,15 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
 
   /** @param {string} link */
   async function add (link) {
-    const app = needChat()
+    needChat() // chat is set from here on
     let inv
     try { inv = invites.decodeLink(link) } catch { throw error('INVALID_PARAMS', 'not a contact link') }
     const maker = inv.public ? null : z32.encode(inv.maker)
     if (maker === me) throw error('ALREADY', 'your own link')
-    if (maker && (await all())[maker]?.state === 'friend') throw error('ALREADY', 'already a friend')
-    const site = await joinInstance(app, link)
+    if ((await all())[/** @type {string} */ (maker)]?.state === 'friend') throw error('ALREADY', 'already a friend')
+    const site = await joinInstance(/** @type {string} */ (chat), link)
     if (!maker) {
-      await leaveInstance(app, site.key).catch(noop)
+      await leaveInstance(/** @type {string} */ (chat), site.key).catch(noop)
       throw error('NOT_ALLOWED', 'a contact link is an invite, not a public link')
     }
     await putName(site.space).catch(noop)
@@ -380,10 +377,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       try { m = JSON.parse(b4a.toString(buf)) } catch { return conn.destroy() }
       receive(conn, m).catch(noop)
     })
-    for (const hex of topicsOf(conn)) {
-      const id = wanted.get(hex)
-      if (id) send(conn, id)
-    }
+    for (const hex of topicsOf(conn)) if (wanted.has(hex)) send(conn, /** @type {string} */ (wanted.get(hex)))
   }
 
   /** @param {Conn} conn @param {object} m */

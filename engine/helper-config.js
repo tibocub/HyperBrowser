@@ -68,11 +68,9 @@ export function parse (text) {
 export function merge (cli, file, base = defaults()) {
   /** @type {Record<string, any>} */
   const out = { ...base, ...file }
-  /** @type {Record<string, any>} */
-  const lists = file
   for (const [k, v] of Object.entries(cli)) {
     if (v === undefined) continue
-    out[k] = LISTS.has(k) ? [...new Set([...(lists[k] || []), ...v])] : v
+    out[k] = LISTS.has(k) ? [...new Set([...(/** @type {Record<string, any>} */ (file)[k] || []), ...v])] : v
   }
   return /** @type {HelperConfig} */ (out)
 }

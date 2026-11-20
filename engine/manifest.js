@@ -37,9 +37,8 @@ export function parseManifest (textOrBytes) {
   if (!entry) throw error('INVALID_MANIFEST', 'site.json: entry must be a path inside the site')
   const out = /** @type {Manifest} */ ({ title, entry }) // permissions set below, in this key order
   if (m.icon !== undefined) {
-    const icon = sitePath(m.icon)
-    if (!icon) throw error('INVALID_MANIFEST', 'site.json: icon must be a path inside the site')
-    out.icon = icon
+    out.icon = /** @type {string} */ (sitePath(m.icon)) // null is refused next
+    if (!out.icon) throw error('INVALID_MANIFEST', 'site.json: icon must be a path inside the site')
   }
   const permissions = m.permissions === undefined ? [] : m.permissions
   if (!Array.isArray(permissions) || !permissions.every((p) => typeof p === 'string')) {
@@ -89,9 +88,8 @@ export function watch (w, types, follow = false) {
   if (follow && (typeof w.place !== 'string' || !w.place)) bad("place is one of the app's instances")
   const names = follow && Array.isArray(w.type) ? w.type : [w.type]
   if (!names.length || names.length > 8 || !names.every((/** @type {unknown} */ n) => typeof n === 'string' && types?.[n])) bad('a watch names one of the types this site declares')
-  const declared = /** @type {TypeDeclarations} */ (types)
   /** @param {unknown} f */
-  const field = (f) => typeof f === 'string' && names.every((/** @type {string} */ n) => Object.hasOwn(declared[n].fields || {}, f))
+  const field = (f) => typeof f === 'string' && names.every((/** @type {string} */ n) => Object.hasOwn(/** @type {TypeDeclarations} */ (types)[n].fields || {}, f))
   const of = names.join(', ')
   if (w.me !== undefined && !field(w.me)) bad(`me names a field of ${of}`)
   if ((w.text === undefined) === (w.says === undefined)) bad('text or says, one of the two')
@@ -120,8 +118,7 @@ export async function readManifest (folder, built = null) {
   let text
   try { text = await fs.promises.readFile(path.join(folder, 'site.json'), 'utf-8') } catch { throw error('NO_MANIFEST', `no site.json in ${folder}`) }
   const manifest = parseManifest(text)
-  for (const p of [manifest.entry, manifest.icon]) {
-    if (!p) continue
+  for (const p of /** @type {string[]} */ ([manifest.entry, manifest.icon].filter(Boolean))) {
     /** @param {string | null} d */
     const there = async (d) => !!d && !!(await fs.promises.stat(path.join(d, ...p.split('/'))).catch(() => null))
     if (!(await there(folder)) && !(await there(built))) throw error('INVALID_MANIFEST', `site.json names ${p}, which isn't in the folder`)
