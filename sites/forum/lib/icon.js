@@ -3,7 +3,9 @@
 export const SIZE = 16
 export const BYTES = 32
 
+/** @param {Uint8Array} bytes @param {number} x @param {number} y */
 export const get = (bytes, x, y) => (bytes[y * 2 + (x >> 3)] >> (7 - (x & 7))) & 1
+/** @param {Uint8Array} bytes @param {number} x @param {number} y @param {boolean} on */
 export function set (bytes, x, y, on) {
   const i = y * 2 + (x >> 3)
   const bit = 1 << (7 - (x & 7))
@@ -11,6 +13,7 @@ export function set (bytes, x, y, on) {
 }
 
 // Made from a key: symmetric left-right, the same on every device (FNV-1a seeds xorshift).
+/** @param {string} key */
 export function fromKey (key) {
   let h = 2166136261
   for (const c of String(key)) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
@@ -29,8 +32,10 @@ export function fromKey (key) {
   return out
 }
 
+/** @param {unknown} bytes @returns {bytes is Uint8Array} */
 export const valid = (bytes) => bytes instanceof Uint8Array && bytes.length === BYTES
 
+/** @param {Uint8Array} bytes */
 export function path (bytes) {
   let d = ''
   for (let y = 0; y < SIZE; y++) {

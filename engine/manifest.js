@@ -3,18 +3,9 @@ import fs from 'fs'
 import path from 'path'
 
 /**
- * @typedef {import('hypergraph/lib/types.js').TypeDeclarations} TypeDeclarations
- * @typedef {{ type: string | string[], me?: string, text?: string, says?: string, open?: string, show?: 'dot',
- *   place?: string, where?: Record<string, string | number | boolean>, by?: string, popup?: boolean }} Watch
- *   A notifications watch of site.json, or a follow (place, where, by, popup: follows only).
- * @typedef {object} Manifest A site.json, checked.
- * @property {string} title
- * @property {string} entry
- * @property {string} [icon]
- * @property {string[]} permissions
- * @property {boolean} [public]
- * @property {TypeDeclarations} [types]
- * @property {Watch[]} [notifications]
+ * @typedef {import('./site-json.js').TypeDeclarations} TypeDeclarations
+ * @typedef {import('./site-json.js').Watch} Watch
+ * @typedef {import('./site-json.js').Manifest} Manifest
  */
 
 /** @param {string} code @param {string} message */

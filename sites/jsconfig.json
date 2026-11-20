@@ -5,6 +5,6 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": []
   },
-  "include": ["**/*.js", "*.d.ts", "../shell/ui/*.js", "../shell/selftest/site/*.js"],
+  "include": ["**/*.js", "*.d.ts", "../shell/selftest/site/*.js", "../shell/selftest/site/*.d.ts"],
   "exclude": ["*/vendor/**"]
 }
