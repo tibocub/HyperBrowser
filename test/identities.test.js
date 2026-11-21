@@ -113,6 +113,42 @@ if (!BARE) {
     t.is((await A2.c('list')).length, 1, 'with its contact')
   })
 
+  test('delete refuses any folder but one closed engine folder, and deletes nothing then', async (t) => {
+    const root = tmpDir(t, 'root')
+    const home = path.join(root, 'data')
+    const ids = identities(home)
+    const open = ids.current()
+    fs.mkdirSync(path.join(open.dir, 'cores'), { recursive: true })
+    const engineAt = (dir) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'instance.json'), '{}') }
+    fs.mkdirSync(path.join(root, 'x'))
+    fs.writeFileSync(path.join(root, 'x', 'keep.txt'), 'mine')
+    fs.mkdirSync(path.join(home, 'plain'))
+    fs.writeFileSync(path.join(home, 'plain', 'keep.txt'), 'mine')
+    engineAt(path.join(home, 'nest', 'inner'))
+    engineAt(path.join(home, 'nest'))
+    engineAt(path.join(root, 'outside'))
+    const list = JSON.parse(fs.readFileSync(path.join(home, 'identities.json'), 'utf-8'))
+    const bad = { '.': 'the data folder', '..': 'a parent', '../x': '../x, not an engine folder', plain: 'not an engine folder', nest: "holding another identity's folder" }
+    for (const [dir, name] of Object.entries(bad)) list.list.push({ id: Buffer.from(dir.padEnd(8, '_')).toString('hex').slice(0, 16), name, dir })
+    list.list.push({ id: 'aaaaaaaaaaaaaaaa', name: 'inner', dir: 'nest/inner' })
+    list.list.push({ id: 'bbbbbbbbbbbbbbbb', name: 'outside', dir: '../outside' })
+    fs.writeFileSync(path.join(home, 'identities.json'), JSON.stringify(list))
+    const again = identities(home)
+    for (const i of again.list().filter((i) => Object.values(bad).includes(i.name))) {
+      t.exception(() => again.remove(i.id), /Not deleted/, 'refused: ' + i.name)
+    }
+    t.ok(fs.existsSync(path.join(root, 'x', 'keep.txt')) && fs.existsSync(path.join(home, 'plain', 'keep.txt')), 'nothing deleted')
+    t.ok(fs.existsSync(path.join(home, 'identities.json')) && fs.existsSync(path.join(open.dir, 'cores')) && fs.existsSync(path.join(home, 'nest', 'inner', 'instance.json')))
+    t.is(again.list().length, 8, 'all still listed')
+    again.remove('aaaaaaaaaaaaaaaa')
+    t.absent(fs.existsSync(path.join(home, 'nest', 'inner')), 'an engine folder is deleted')
+    again.remove('bbbbbbbbbbbbbbbb')
+    t.absent(fs.existsSync(path.join(root, 'outside')), 'outside the data folder too (Main by --dir), being an engine folder')
+    const fresh = again.create('Never opened')
+    again.remove(fresh)
+    t.absent(again.list().some((i) => i.id === fresh), 'one never opened has no folder: just unlisted')
+  })
+
   test('sweep: session folders of deleted identities only', async (t) => {
     const home = tmpDir(t, 'home')
     const parts = tmpDir(t, 'parts')

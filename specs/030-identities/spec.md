@@ -19,6 +19,12 @@ Tor mode (one onion address and circuit per identity, an "only over Tor" switch)
 - **Delete** a closed identity only: show its recovery phrase first, warn that nothing brings it back without it,
   then remove its folder, its desktop file, and its site sessions (cleared, then their folders removed). What
   couldn't be removed (a file still open) goes at the next start, before any view opens.
+- **Delete refuses** (and deletes nothing) unless the folder is an engine folder (`instance.json` or `cores`) that
+  isn't the data folder or one holding it, the open identity's, or one holding another identity's: the list is an
+  editable file, and Main's folder comes from `--dir`. Outside the data folder (Main by `--dir`), the engine-folder
+  check alone.
+- **Restoring from a recovery phrase waits on SwarmFS** passing `mnemonic` on to hypergraph (`SwarmFS.open`); until
+  then the delete warning says it comes later.
 - **No vault yet**: the recovery phrase stays a file in each folder. The docs say plainly that identities aren't
   hidden from someone who has the computer.
 - **Without Tor identities share the IP**: allowed, with one warning line in the manager.

@@ -13,6 +13,7 @@ import { randomBytes } from 'crypto'
 
 const NAME_MAX = 64
 const ID = /^[0-9a-f]{16}$/
+const ENGINE = ['instance.json', 'cores'] // hypergraph's, in every engine folder it opened
 
 /** @param {string} message @param {string} [code] */
 const fail = (message, code = 'INVALID_PARAMS') => Object.assign(new Error(message), { code })
@@ -99,6 +100,15 @@ export function identities (home, main = path.join(home, 'engine')) {
       const i = find(id)
       if (i.id === data.current) throw fail('Open another identity first: this one is open.', 'NOT_ALLOWED')
       const gone = full(i)
+      // the list is a file anyone can edit, and Main's dir comes from --dir: refuse anything but one engine folder
+      /** @param {string} child */
+      const holds = (child) => { const r = path.relative(gone.dir, child); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)) }
+      const unsafe = holds(home) ? 'it is the data folder or holds it'
+        : holds(full(find(data.current)).dir) ? "it holds the open identity's folder"
+          : data.list.some((x) => x !== i && holds(full(x).dir)) ? "it holds another identity's folder"
+            : fs.existsSync(gone.dir) && !ENGINE.some((f) => fs.existsSync(path.join(gone.dir, f))) ? 'it is not an engine folder'
+              : null
+      if (unsafe) throw fail('Not deleted: ' + gone.dir + ' (' + unsafe + ').', 'UNSAFE_FOLDER')
       fs.rmSync(gone.dir, { recursive: true, force: true, maxRetries: 10 })
       fs.rmSync(gone.shell, { force: true })
       data.list = data.list.filter((x) => x !== i)

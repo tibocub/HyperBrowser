@@ -229,7 +229,9 @@ restarts the engine on the same identity's folder).
 
 The id is 16 random hex digits, never derived from a key. An install from before identities gets the list at its
 first start, with **Main** on `engine`: nothing moves, the same identity key. A list that can't be read stops the
-start (Main alone would hide the others). **Delete** removes the engine folder, the desktop file, the entry, then
+start (Main alone would hide the others). **Delete** refuses, deleting nothing, a folder that isn't an engine
+folder (`instance.json` or `cores`), or is or holds the data folder, the open identity's or another's (the list is
+an editable file; Main's folder may come from `--dir`). Otherwise it removes the engine folder, the desktop file, the entry, then
 the site session folders; a session opened since launch keeps its folder locked, so it is cleared
 (`clearStorageData`, `clearCache`) and its folder goes at the next start, before any view opens (`sweep`: only an id
 neither listed nor with a folder). `--dir <folder>` keeps its identities beside it, in `<folder>-identities`; the
