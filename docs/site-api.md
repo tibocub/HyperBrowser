@@ -33,7 +33,8 @@ A site is a folder: pages, scripts, styles, images, and a `site.json` at its roo
 ## What a page can load
 
 Pages load from `hyper://<site key>/`: use relative links (`style.css`, `docs/a.html`). Nothing else loads: no
-web (`https://`), no other site, no files of the computer. Each site has its own storage and cookies.
+web (`https://`), no other site, no files of the computer, no WebRTC connection, no name lookup
+([what is blocked](shell.md#what-a-site-can-reach)). Each site has its own storage and cookies.
 WebAssembly works (`WebAssembly.instantiateStreaming(fetch('app.wasm'))`), in the same sandbox as scripts.
 
 ## The look

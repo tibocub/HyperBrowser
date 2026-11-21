@@ -7,7 +7,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import PearRuntime from 'pear-runtime'
 import { connect, pair } from '../engine/protocol.js'
-import { createSiteView } from './views.js'
+import { createSiteView, resolveNoNames } from './views.js'
 import { startFrame } from './frame.js'
 
 /**
@@ -73,6 +73,7 @@ app.on('second-instance', () => ui?.show())
 if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('org.hyperbrowser.app')
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'hyper', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
+if (GUARDS) resolveNoNames()
 
 // null before startEngine and after stopEngine; what may run then checks (rpc?.)
 let rpc = /** @type {Rpc} */ (/** @type {unknown} */ (null))
