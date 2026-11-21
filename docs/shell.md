@@ -11,6 +11,7 @@ the shell talks to the engine ([engine.md](engine.md)), and it names the site fr
 | `site-preload.cjs` | `window.hyper` in a site's page (typed in `sites/hyper.d.ts`) |
 | `frame-preload.cjs`, `ui/` | the window's own interface (its messages typed in `ui/frame.d.ts`) |
 | `model.js` | the frame's pure logic: addresses, desktop icons and cells, wording (tested in `test/model.test.js`) |
+| `identities.js` | this computer's identities: `identities.json`, each one's folders and site sessions |
 | `tray.js` | the tray icon |
 | `updater.js` | the update worker |
 | `preset.json` | the official apps' keys on a new desktop |
@@ -24,7 +25,8 @@ npm start [-- --open <key>] [-- --dir <engine folder>]
 The window has no OS frame and no menu bar: two bars drawn by HyperBrowser itself (a site only ever draws
 below them):
 
-- **The top bar** is the window's title bar: "HyperBrowser ▾" (your identity, installed sites, open a site by
+- **The top bar** is the window's title bar: "HyperBrowser ▾" ("HyperBrowser · <name> ▾" with two identities or more: the
+  open identity, switching and managing them ([Identities](#identities-several-people-on-one-computer)), installed sites, open a site by
   key, your devices, the look: system, light or dark, and the accent, and what closing the window does), then **the tabs** as a taskbar, `+` right after the
   last tab (goes to the desktop with the address ready), empty space, and the window's buttons (minimize,
   maximize/restore, close). Drag the empty space to move the window (Windows snaps it to screen edges);
@@ -94,7 +96,7 @@ a click on the page, then HyperBrowser's own question, "Install "<the app's titl
 same install as the desktop's right-click. Any site may ask the same way; none can install without both.
 
 The desktop, bookmarks and the look are kept in `shell.json` in the app's data folder
-(`%APPDATA%\HyperBrowser` on Windows).
+(`%APPDATA%\HyperBrowser` on Windows), one per identity (`shell-<id>.json` for the ones made after Main).
 
 ## Notifications
 
@@ -174,7 +176,8 @@ A circle is not a group chat: only a holding group.
   you joined, your roles there, your answers to "use your identity?", sites' own data and your installed
   sites arrive (installed sites appear on the desktop and are kept on this computer too).
 - **What doesn't follow**: bookmarks, the look and the tray choice stay per computer.
-- **This computer's own identity is replaced**: its engine folder is renamed `engine-before-join-<date>` in the
+- **This computer's own identity is replaced** (the open one, with [identities](#identities-several-people-on-one-computer)):
+  its engine folder (`engine`, or `identity-<id>`) is renamed `<that folder>-before-join-<date>` in the
   data folder (`%APPDATA%\HyperBrowser` on Windows, `~/.config/HyperBrowser` on Linux); nothing is deleted.
   The window warns first, and lists the sites that identity owns: nobody updates them from here any more.
   **To switch back**: quit HyperBrowser (tray → Quit), rename `engine` to anything, rename the
@@ -188,6 +191,61 @@ A circle is not a group chat: only a holding group.
 - Install or uninstall on one computer: the other follows within about 10 s while it runs.
 - Wait a minute after joining before quitting: a quit in the first seconds can hang (a hypergraph issue,
   `specs/requests-to-hypergraph.md` B4).
+
+## Identities: several people on one computer
+
+Each identity is a whole HyperBrowser of its own: identity key, device key (also the swarm key pair), personal
+space, contacts, circles, held data, its own copies of the official apps, its desktop and bookmarks (`shell.json`),
+its sites' storage. Nothing is shared, so what someone does under one can't be linked to another by its keys or
+data. One is open at a time.
+
+"HyperBrowser ▾": the first row is the open identity's name; under it **Switch to <name>** for each other one, then
+**New identity…** and **Manage identities…** (the Identities window):
+
+- the warning: "Identities share your IP address unless you use Tor (coming soon); people you meet under two
+  identities may link them.";
+- each identity: **Open** (the others), and **…**: **Rename** (only on this computer), **Show recovery phrase**,
+  **Delete…** (the others);
+- **Name** and **Create**, then **Open "<name>" now**;
+- **Delete…** shows the phrase first (a **Password** field appears if it is protected), says it can't be undone
+  without the phrase, and deletes on **Delete "<name>"**; **Cancel** has the focus. Restoring from a phrase isn't in
+  HyperBrowser yet: SwarmFS's `open` doesn't pass hypergraph's `mnemonic` on.
+- Keyboard: Tab through the window, Enter or Space on a button, Enter in a name field, Escape closes.
+
+**Switching** (`main.js` `switchTo`) destroys the window (every site view, the tray, the popups), stops the engine,
+starts it on the other identity's folder and opens a new window. A window's late calls never reach the next
+engine (`era`), and an identity question answered after a switch goes to the engine that asked, which has closed.
+If the other identity's engine fails to start, the one before opens again. A device join keeps the window (it
+restarts the engine on the same identity's folder).
+
+**On disk** (`identities.js`), in the data folder (`%APPDATA%\HyperBrowser` on Windows):
+
+| | Main (from before identities) | another identity |
+|---|---|---|
+| the list | `identities.json`: `{ current, list: [{ id, name, dir }] }`, outside every identity's folder | |
+| engine folder | `engine` | `identity-<id>` |
+| desktop | `shell.json` | `shell-<id>.json` |
+| site sessions | `Partitions/site-<key>` (`persist:site-<key>`) | `Partitions/<id>-site-<key>` |
+
+The id is 16 random hex digits, never derived from a key. An install from before identities gets the list at its
+first start, with **Main** on `engine`: nothing moves, the same identity key. A list that can't be read stops the
+start (Main alone would hide the others). **Delete** removes the engine folder, the desktop file, the entry, then
+the site session folders; a session opened since launch keeps its folder locked, so it is cleared
+(`clearStorageData`, `clearCache`) and its folder goes at the next start, before any view opens (`sweep`: only an id
+neither listed nor with a folder). `--dir <folder>` keeps its identities beside it, in `<folder>-identities`; the
+self-test and frame check in their own folder each run.
+
+**What still links identities**: the IP address (until Tor mode, one circuit per identity); being online at the same
+moments (one at a time helps, switching back and forth doesn't hide it); a circle or holder they both use; people
+who meet both; writing style. **Not hidden on this computer**: anyone with it sees the list, the folders and the
+recovery phrases (a file in each folder, unless protected). The vault comes later. The IDE's project folders share
+`Documents/HyperBrowser`. `hyperbrowser.log` names no identity.
+
+Disk: a new identity's engine folder is about 2 MB, plus the official apps it imports from a packaged build's
+bundle (1.7 MB of sources), plus about 2 to 3 MB of Chromium files per site it opens.
+
+Tested by `test/identities.test.js` (the list, the upgrade, keys, spaces and contacts) and
+`shell/selftest/identities.js` through `test/sandbox.electron.js` (site storage, the switch, the processes, deleting).
 
 ## The tray
 

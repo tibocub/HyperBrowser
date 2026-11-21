@@ -128,3 +128,22 @@ test('the tray: closing keeps it running, a second launch shows it, Quit ends it
   t.is(two.code, 0, 'with the setting off, closing the window ends the process')
   t.is(JSON.parse(fs.readFileSync(path.join(profile, 'shell.json'), 'utf-8')).settings.tray, false, 'the setting is remembered')
 })
+
+test('identities: a switch leaves nothing of the first running, storage stays with its identity, a delete takes one only', { timeout: 300000 }, async (t) => {
+  const tmp = process.env.HG_TEST_TMP || os.tmpdir()
+  fs.mkdirSync(tmp, { recursive: true })
+  const profile = fs.mkdtempSync(path.join(tmp, 'hb-ids-'))
+  t.teardown(() => { try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 }) } catch {} }) // Chromium may hold a file a moment after exit (EPERM)
+  const user = '--user-data-dir=' + profile
+  const one = await run(['.', user, '--identitycheck', 'run'])
+  t.is(fails(one.out).length, 0, fails(one.out).join('; '))
+  t.ok(one.out.includes('IDENTITYCHECK PASS'))
+  t.is(one.code, 0)
+  const left = /IDENTITYCHECK LEFT (.+)/.exec(one.out)?.[1].trim()
+  t.ok(left)
+  const two = await run(['.', user, '--identitycheck', 'sweep'])
+  t.is(two.code, 0)
+  t.absent(fs.existsSync(left), "the next start sweeps the deleted identity's session folder")
+  t.ok(fs.existsSync(path.join(profile, 'Partitions', 'site-idcheck')), "and keeps Main's")
+  t.is(JSON.parse(fs.readFileSync(path.join(profile, 'identities.json'), 'utf-8')).list.length, 1)
+})

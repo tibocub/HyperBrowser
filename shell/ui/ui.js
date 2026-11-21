@@ -230,6 +230,16 @@ $('backdrop').oncontextmenu = (e) => { e.preventDefault(); closeMenus() }
 $('hb').onclick = () => menuOpen === $('menu') ? closeMenus() : showMenu($('menu'))
 
 function drawMenu () {
+  const me = S.identities.find((i) => i.current)
+  $('me-name').textContent = me?.name || 'You'
+  $('hb-text').textContent = me && S.identities.length > 1 ? 'HyperBrowser · ' + me.name + ' ▾' : 'HyperBrowser ▾'
+  $('switch').replaceChildren(...S.identities.filter((i) => !i.current).map((i) => {
+    const b = el('button', 'item', 'Switch to ' + i.name)
+    b.setAttribute('role', 'menuitem')
+    b.onclick = () => { closeMenus(); send('identities.open', { id: i.id }) }
+    return b
+  }))
+  drawIdentities()
   $('me').textContent = S.identity ? S.identity.slice(0, 6) + '…' + S.identity.slice(-3) : ''
   $('me').title = S.identity || ''
   const installed = S.desktop.icons.filter((i) => i.kind === 'installed')
@@ -256,6 +266,8 @@ for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySele
 for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-tray]'))) b.onclick = () => send('settings', { tray: b.dataset.tray === 'on' })
 $('m-open').onclick = () => { closeMenus(); toAddress() }
 $('m-config').onclick = () => { closeMenus(); openConfig() }
+$('m-new').onclick = () => { closeMenus(); openIdentities(true) }
+$('m-ids').onclick = () => { closeMenus(); openIdentities() }
 $('m-update').onclick = () => { closeMenus(); send('restart') }
 $('m-about').onclick = () => { closeMenus(); say('HyperBrowser ' + S.version + ': sites live with their owner and their visitors.') }
 
@@ -319,7 +331,7 @@ function openConfig () {
 }
 function closeConfig () {
   $('config').hidden = true
-  if (!menuOpen && $('devices').hidden && $('circles').hidden) frame.send('cover', { full: false })
+  if (!menuOpen && $('devices').hidden && $('circles').hidden && $('identities').hidden) frame.send('cover', { full: false })
 }
 $('cf-close').onclick = closeConfig
 $('cf-devices').onclick = () => { closeConfig(); openDevices() }
@@ -452,6 +464,109 @@ $('dv-phrase').onclick = async () => {
       }))
   }
   show(...nodes)
+}
+
+const idOut = $('id-out')
+/** @param {...(Node | string)} nodes */
+const idShow = (...nodes) => idOut.replaceChildren(...nodes)
+
+function openIdentities (naming = false) {
+  $('identities').hidden = false
+  frame.send('cover', { full: true })
+  idShow()
+  drawIdentities()
+  ;(naming ? $('id-name') : /** @type {HTMLElement} */ ($('id-list').querySelector('summary, button') || $('id-name'))).focus()
+}
+function closeIdentities () {
+  $('identities').hidden = true
+  $('id-pass').value = ''
+  $('id-pass-row').hidden = true
+  if (!menuOpen) frame.send('cover', { full: false })
+}
+$('id-close').onclick = closeIdentities
+
+/** @typedef {import('./frame.js').IdentityRow} IdentityRow */
+function drawIdentities () {
+  if ($('identities').hidden) return
+  $('id-list').replaceChildren(...S.identities.map((i) => {
+    const li = el('li')
+    li.append(el('span', 'grow', i.name), el('span', 'dim', i.current ? '(open)' : ''))
+    if (!i.current) {
+      const b = el('button', 'choice', 'Open')
+      b.setAttribute('aria-label', 'Open ' + i.name)
+      b.onclick = () => send('identities.open', { id: i.id })
+      li.append(b)
+    }
+    li.append(more('More for ' + i.name, /** @type {Array<[string, () => void]>} */ ([
+      ['Rename', () => renameIdentity(i)],
+      ['Show recovery phrase', () => showPhrase(i)],
+      ...(i.current ? [] : [['Delete…', () => askDelete(i)]])
+    ])))
+    return li
+  }))
+}
+
+$('id-create').onclick = async () => {
+  const r = await frame.send('identities.create', { name: $('id-name').value })
+  if (r?.error) return idShow(line(r.error.message))
+  const name = $('id-name').value.trim()
+  $('id-name').value = ''
+  const b = push('Open "' + name + '" now', () => send('identities.open', { id: r.result }))
+  idShow(line('"' + name + '" is ready: a new identity of its own, nothing shared with the others.'), b)
+  b.focus()
+}
+$('id-name').onkeydown = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter') $('id-create').click() }
+
+/** @param {IdentityRow} i */
+function renameIdentity (i) {
+  const box = el('input')
+  box.value = i.name
+  box.maxLength = 64
+  box.setAttribute('aria-label', 'New name')
+  const done = async () => {
+    const r = await frame.send('identities.rename', { id: i.id, name: box.value })
+    idShow(...(r?.error ? [line(r.error.message)] : []))
+  }
+  box.onkeydown = (e) => { if (e.key === 'Enter') done() }
+  idShow(line('Rename "' + i.name + '" (only on this computer: nobody else sees this name):'), box, push('Rename', done))
+  box.focus()
+}
+
+// undefined: it couldn't be read (said in the window); null: this computer doesn't keep it
+/** @param {IdentityRow} i @returns {Promise<string | null | undefined>} */
+async function phraseOf (i) {
+  const r = await frame.send('identities.phrase', { id: i.id, password: $('id-pass').value || undefined })
+  if (!r?.error) return r.result.words
+  if (r.error.code !== 'NOT_ALLOWED') { idShow(line(r.error.message)); return undefined }
+  $('id-pass-row').hidden = false
+  idShow(line('The recovery phrase of "' + i.name + '" is protected: type its password above, then try again.'))
+  $('id-pass').focus()
+  return undefined
+}
+
+/** @param {IdentityRow} i */
+async function showPhrase (i) {
+  const words = await phraseOf(i)
+  if (words === undefined) return
+  idShow(...(words
+    ? [line('The recovery phrase of "' + i.name + '": write these 24 words down. Anyone with them is this identity.'), line(words, 'code')]
+    : [line('This computer no longer keeps the recovery phrase of "' + i.name + '".')]))
+}
+
+/** @param {IdentityRow} i */
+async function askDelete (i) {
+  const words = await phraseOf(i)
+  if (words === undefined) return
+  const cancel = push('Cancel', () => idShow())
+  idShow(line('Delete "' + i.name + '" from this computer? Its contacts, conversations, circles, sites and site data here are removed. This cannot be undone without its recovery phrase (restoring from it comes in a later version), and even then not what was kept here.'),
+    ...(words
+      ? [line('Write its recovery phrase down first:'), line(words, 'code')]
+      : [line('This computer no longer keeps its recovery phrase: without your written copy, this identity is gone for good.', 'note')]),
+    push('Delete "' + i.name + '"', async () => {
+      const r = await frame.send('identities.delete', { id: i.id })
+      idShow(line(r?.error ? r.error.message : '"' + i.name + '" was deleted.'))
+    }), cancel)
+  cancel.focus()
 }
 
 /** @param {number} b */
@@ -716,6 +831,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase()
   if (e.key === 'Escape' && menuOpen) { closeMenus(); return }
   if (e.key === 'Escape' && !$('devices').hidden) { closeDevices(); return }
+  if (e.key === 'Escape' && !$('identities').hidden) { closeIdentities(); return }
   if (e.key === 'Escape' && !$('circles').hidden) { closeCircles(); return }
   if (e.key === 'Escape' && !$('config').hidden) { closeConfig(); return }
   if (mod && k === 'l') { e.preventDefault(); toAddress() }

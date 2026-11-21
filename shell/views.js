@@ -27,9 +27,10 @@ export const resolveNoNames = () => app.commandLine.appendSwitch('host-resolver-
  * @param {boolean} [opts.guards]
  * @param {boolean} [opts.persist]
  * @param {string} [opts.query]
+ * @param {string} [opts.prefix] the identity's: its own sessions (identities.js)
  */
-export function createSiteView (key, { dynamic, serve, guards = true, persist = true, query = '' }) {
-  const ses = session.fromPartition((persist ? 'persist:' : '') + 'site-' + key)
+export function createSiteView (key, { dynamic, serve, guards = true, persist = true, query = '', prefix = '' }) {
+  const ses = session.fromPartition((persist ? 'persist:' : '') + prefix + 'site-' + key)
   const origin = 'hyper://' + key + '/'
   if (ses.protocol.isProtocolHandled('hyper')) ses.protocol.unhandle('hyper')
   ses.protocol.handle('hyper', async (req) => {

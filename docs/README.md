@@ -7,7 +7,7 @@ set up and test is in [CONTRIBUTING.md](../CONTRIBUTING.md). User documentation 
 | Doc | What it covers |
 |---|---|
 | [engine.md](engine.md) | the engine: command line, publishing, the official apps, hosting, devices, names, notifications, circles, contacts, projects |
-| [shell.md](shell.md) | the window: tabs, desktop, notifications, Configuration, circles, devices, tray, keys, icons, updates, the IDE's preview |
+| [shell.md](shell.md) | the window: tabs, desktop, notifications, Configuration, circles, devices, identities, tray, keys, icons, updates, the IDE's preview |
 | [site-api.md](site-api.md) | writing a site: `site.json`, the sandbox, `window.hyper` and every call a page has |
 | [forum.md](forum.md) | the forum app and the official forum |
 | [chat.md](chat.md) | Contacts and Chat |

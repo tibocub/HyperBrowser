@@ -9,7 +9,7 @@
 <body>
 <div id="bars">
   <header id="top">
-    <button id="hb" class="btn" aria-haspopup="menu" aria-expanded="false"><span class="g" data-g="hb"></span>HyperBrowser ▾</button>
+    <button id="hb" class="btn" aria-haspopup="menu" aria-expanded="false"><span class="g" data-g="hb"></span><span id="hb-text">HyperBrowser ▾</span></button>
     <nav id="tabs" aria-label="Open tabs"></nav>
     <button id="plus" class="btn" aria-label="Open a site" title="Open a site (Ctrl+T)"><span class="g g10" data-g="plus"></span></button>
     <div id="drag"></div>
@@ -74,6 +74,18 @@
   </div>
 </section>
 
+<section id="identities" class="window" role="dialog" aria-labelledby="id-title" hidden>
+  <div class="title"><span id="id-title">Identities</span></div>
+  <div class="body">
+    <p class="note">Identities share your IP address unless you use Tor (coming soon); people you meet under two identities may link them.</p>
+    <ul id="id-list"></ul>
+    <div class="field"><label for="id-name">Name</label><input id="id-name" autocomplete="off" maxlength="64"><button id="id-create" class="push">Create</button></div>
+    <div id="id-pass-row" class="field" hidden><label for="id-pass">Password</label><input id="id-pass" type="password" autocomplete="off"></div>
+    <div id="id-out" aria-live="polite"></div>
+    <div class="row"><button id="id-close" class="push">Close</button></div>
+  </div>
+</section>
+
 <section id="config" class="window" role="dialog" aria-labelledby="cf-title" hidden>
   <div class="title"><span id="cf-title">Configuration</span></div>
   <div class="body">
@@ -104,7 +116,10 @@
   <div id="notes-list"></div>
 </div>
 <div id="menu" role="menu" aria-label="HyperBrowser" hidden>
-  <div class="who"><span class="g" data-g="me"></span><strong>You</strong><span class="fill"></span><span id="me"></span></div>
+  <div class="who"><span class="g" data-g="me"></span><strong id="me-name">You</strong><span class="fill"></span><span id="me"></span></div>
+  <div id="switch"></div>
+  <button class="item" role="menuitem" id="m-new">New identity…</button>
+  <button class="item" role="menuitem" id="m-ids">Manage identities…</button>
   <div class="sep" aria-hidden="true">────────────────────────────────────</div>
   <div class="head">Installed</div>
   <div id="installed"></div>
