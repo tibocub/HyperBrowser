@@ -2,7 +2,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { WebContentsView, session } from 'electron'
+import { app, WebContentsView, session } from 'electron'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PRELOAD = path.join(HERE, 'site-preload.cjs')
@@ -11,6 +11,12 @@ const CSP = "default-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' data: blob:"
 // the default theme (ui/theme.css), its fonts inlined: a site's CSP loads data: but not the shell's files
 const THEME = fs.readFileSync(path.join(HERE, 'ui', 'theme.css'), 'utf-8')
   .replace(/url\(fonts\/([\w.-]+)\)/g, (m, f) => 'url(data:font/woff2;base64,' + fs.readFileSync(path.join(HERE, 'ui', 'fonts', f)).toString('base64') + ')')
+
+/**
+ * Before the app is ready: Chromium resolves no name, ever. HyperBrowser needs none (the engine has its own
+ * network), and DNS prefetch, WebRTC's STUN and TURN names and proxy auto-detection resolve outside webRequest.
+ */
+export const resolveNoNames = () => app.commandLine.appendSwitch('host-resolver-rules', 'MAP * ~NOTFOUND')
 
 /**
  * A site's view: its own session, the hyper: protocol answering for this site only.
@@ -42,6 +48,10 @@ export function createSiteView (key, { dynamic, serve, guards = true, persist = 
     }
   })
   if (guards) ses.webRequest.onBeforeRequest((d, cb) => cb({ cancel: !d.url.startsWith(origin) && !d.url.startsWith('devtools:') }))
+  // hunspell (Linux) downloads its dictionaries from Google
+  if (guards) ses.setSpellCheckerEnabled(false)
+  // a proxy nobody listens on, for WebRTC's TCP (below); <-loopback>: Chromium never proxies 127.0.0.1 otherwise
+  const proxied = guards ? ses.setProxy({ proxyRules: 'http://127.0.0.1:1', proxyBypassRules: '<-loopback>' }) : Promise.resolve()
   ses.setPermissionRequestHandler((wc, perm, cb) => cb(false))
   ses.setPermissionCheckHandler(() => false)
 
@@ -57,9 +67,11 @@ export function createSiteView (key, { dynamic, serve, guards = true, persist = 
   })
   const wc = view.webContents
   wc.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // WebRTC's STUN and TURN sockets bypass webRequest: no UDP, and TCP only through the proxy
+  if (guards) wc.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
   wc.on('will-navigate', (e, url) => { if (!url.startsWith(origin)) e.preventDefault() })
   // as a user stylesheet: the page's own CSS always wins (and theme.css applies only to pages without any)
   wc.on('dom-ready', () => wc.insertCSS(THEME, { cssOrigin: 'user' }).catch(() => {}))
-  wc.loadURL(origin + query)
+  proxied.then(() => wc.loadURL(origin + query))
   return { view, webContents: wc, close: () => wc.close() }
 }

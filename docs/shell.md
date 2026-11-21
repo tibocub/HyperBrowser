@@ -7,7 +7,7 @@ the shell talks to the engine ([engine.md](engine.md)), and it names the site fr
 |---|---|
 | `main.js` | starts the engine worker, serves `hyper://`, bridges site calls to the engine, the self-test and frame check |
 | `frame.js` | the window: bars, tabs, site views, the docked preview |
-| `views.js` | the sandboxed site views: own session, `hyper://<key>/` only, no pop-ups, no permissions |
+| `views.js` | the sandboxed site views: own session, `hyper://<key>/` only ([what a site can reach](#what-a-site-can-reach)), no pop-ups, no permissions |
 | `site-preload.cjs` | `window.hyper` in a site's page (typed in `sites/hyper.d.ts`) |
 | `frame-preload.cjs`, `ui/` | the window's own interface (its messages typed in `ui/frame.d.ts`) |
 | `model.js` | the frame's pure logic: addresses, desktop icons and cells, wording (tested in `test/model.test.js`) |
@@ -46,6 +46,27 @@ key is in the tab's tooltip. The authority is one you have (created or reached b
 link: `blog@hg:…` (its owner gives it; the first time joins it, read-only). No authority is built in. When it doesn't
 open, the tab says why: no such authority here, no such name, nobody who has it is online (try later), or the name
 doesn't point to a site. A path after the name (`blog@bobsDNS/x`) isn't supported: the site opens at its start.
+
+## What a site can reach
+
+Only `hyper://<its key>/`. A site never learns your IP address and never contacts the network itself: everything
+it gets goes through the engine. `views.js` sets up each site's session:
+
+| What a page could try | Stopped by |
+|---|---|
+| any request: `fetch`, XHR, `<img>`, CSS `url()` and `@import`, fonts, media, `<object>`, iframes, forms, `<meta refresh>`, `sendBeacon`, `<a ping>`, `EventSource`, WebSocket, WebTransport, workers, `rel=prefetch`/`preload` | `webRequest` cancels every URL outside the site's origin; the CSP (`default-src 'self'`) blocks most before |
+| WebRTC: STUN over UDP | `setWebRTCIPHandlingPolicy('disable_non_proxied_udp')`: no UDP |
+| WebRTC: TURN over TCP | the session's proxy is `127.0.0.1:1` (nobody listens), loopback included |
+| a name lookup: `<link rel=dns-prefetch>`, STUN or TURN by name, proxy auto-detection (WPAD) | `resolveNoNames()`: Chromium resolves no name at all (`--host-resolver-rules=MAP * ~NOTFOUND`); HyperBrowser needs none, the engine has its own network |
+| spellcheck dictionaries (Linux downloads them from Google) | the spellchecker is off in site sessions |
+| pop-ups, leaving the site, permissions (geolocation, camera…) | denied |
+
+`preconnect`, `prerender` and speculation rules reach nothing even without these guards (Electron doesn't
+implement them). `navigator.connection` tells a page the connection type, not an address.
+
+`test/sandbox.electron.js` proves it: `shell/selftest/leaks.js` loads a page that tries each of these against local
+listeners (TCP, UDP, a local DNS) and Chromium's net log. With the guards, nothing gets through; its control run
+(`--no-guards`) must see the probes arrive, so a probe that stops working fails the test too.
 
 ## The desktop
 

@@ -4,6 +4,6 @@
     "maxNodeModuleJsDepth": 0,
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["*.js", "*.cjs", "selftest/*.cjs", "ui/frame.d.ts", "../sites/hyper.d.ts", "../types/*.d.ts"],
+  "include": ["*.js", "*.cjs", "selftest/*.cjs", "selftest/*.js", "ui/frame.d.ts", "../sites/hyper.d.ts", "../types/*.d.ts"],
   "exclude": ["updater.js"]
 }

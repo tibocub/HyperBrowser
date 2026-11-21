@@ -83,6 +83,17 @@ test('the frame: no OS frame, no app menu, sites under the bars', { timeout: 150
   t.is(code, 0)
 })
 
+test('a site reaches nothing but hyper://: no request, socket or name lookup', { timeout: 150000 }, async (t) => {
+  const { code, out } = await run(['shell/selftest/leaks.js'])
+  const contacts = out.split('\n').filter((l) => l.startsWith('CONTACT '))
+  t.ok(out.includes('LEAKS NONE'), contacts.join('; '))
+  t.is(code, 0)
+  const control = await run(['shell/selftest/leaks.js', '--no-guards'])
+  for (const probe of ['fetch', 'websocket', 'webtransport', 'stun', 'turn', 'lookup dns-prefetch.leakprobe.test', 'lookup turn.leakprobe.test']) {
+    t.ok(control.out.includes('CONTACT ' + probe + ' '), 'reaches without guards: ' + probe)
+  }
+})
+
 test('the textures: whole device pixels at 100, 125, 150 %, still when the page scrolls', { timeout: 150000 }, async (t) => {
   for (const scale of ['1', '1.25', '1.5']) {
     const { code, out } = await run(['shell/selftest/pixels.cjs', '--force-device-scale-factor=' + scale])
