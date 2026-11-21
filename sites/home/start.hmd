@@ -19,7 +19,7 @@ To run it from its [source code](https://github.com/tibocub/HyperBrowser) instea
 
 HyperBrowser draws its own window. At the top:
 
-- **HyperBrowser ▾**: your identity, your installed sites, open a site by key, your devices, the look (system, light or dark, and the accent colour), and what closing the window does.
+- **HyperBrowser ▾**: your identity (and your other identities, if you made some), your installed sites, open a site by key, your devices, the look (system, light or dark, and the accent colour), and what closing the window does.
 - **The tabs**, one per open site. The desktop is always the first tab. `+` opens a new one.
 - Under them, **the toolbar**: back, forward, reload, the address, the bookmark button ☆, and the site's state.
 
@@ -72,6 +72,21 @@ Your PC and your laptop can be **one identity**: the same you everywhere, the sa
 2. On the other computer: **HyperBrowser ▾** → **Devices…** → **Join with a code**, paste it, **Join**.
 
 The second computer's own identity is set aside (kept, not deleted). Lost a computer? **Remove** it from the Devices window of another one. Write down your **recovery phrase** (Devices → Recovery phrase): it is your identity.
+
+## Identities: keep parts of your life apart
+
+An **identity** is a separate you: its own key, contacts, conversations, circles, forums, desktop and site data. People who meet one of your identities can't tell from HyperBrowser that the others are you. Your first one is called **Main**.
+
+- **New identity…**: **HyperBrowser ▾** → **New identity…**, give it a name (only you see it), **Create**.
+- **Switch**: **HyperBrowser ▾** → **Switch to …**. The window closes and opens again under the other identity: one is open at a time, and nothing of the other keeps running.
+- **Manage identities…**: rename one, show its **recovery phrase**, or delete one you don't use. Write each phrase down: it is that identity.
+- **Delete…** removes everything of that identity from this computer, for good. HyperBrowser shows its recovery phrase first. Keep the phrase: it is the only way to get that identity back (restoring from a phrase comes in a later version), and even then not what this computer kept for it.
+
+What identities don't do yet, honestly:
+
+- **Same IP address.** Every identity connects from your internet connection. Someone who sees two of your identities online from one address may guess they are one person. Tor mode (coming) will give each identity its own route.
+- **Not hidden on this computer.** Anyone who uses your computer can see your identities and their recovery phrases. A protected vault comes later.
+- **You are still you.** People you meet under two identities may recognise how you write, when you are online, or who your friends are.
 
 ## Install or bookmark
 

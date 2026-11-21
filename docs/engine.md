@@ -124,6 +124,8 @@ hypergraph pairs devices; the engine passes it through.
 - `devices.remove`: what that device does from then on counts for nobody (`DEVICE_REMOVED` on it). It needs the
   recovery phrase: plain on this device until protected with `devices.protect`, then behind the password.
 - `devices.list` and the `devices` event: see the protocol.
+- `phrase.read { dir, password? }`: the recovery phrase in another engine folder, closed (the shell's identities:
+  shown before one is deleted). Works before `init`; `NOT_ALLOWED` when protected and the password is wrong.
 
 Known issue: closing an engine within seconds of a join can hang in hypergraph (`specs/requests-to-hypergraph.md`
 B4), so the shell doesn't restart the engine after a join.

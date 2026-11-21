@@ -67,6 +67,8 @@ export interface FrameState {
   settings: Settings
   notes: NotifyState
   identity: string | null
+  /** This computer's identities, the open one marked current. */
+  identities: IdentityRow[]
   joined: { said: string, n: number } | null
   version: string
   update: string | null
@@ -75,6 +77,9 @@ export interface FrameState {
   ready: boolean
   maximized: boolean
 }
+
+/** One of this computer's identities (shell/identities.js). */
+export interface IdentityRow { id: string, name: string, current: boolean }
 
 /** A circle, as circles.list gives it to the frame. */
 export interface Circle { key: string, name: string, members: number, holders: number, total: number | null, role: string | null, totalLine: string }
@@ -112,6 +117,8 @@ interface Elements {
   'cf-share': HTMLInputElement
   'dv-pass': HTMLInputElement
   'cl-name': HTMLInputElement
+  'id-name': HTMLInputElement
+  'id-pass': HTMLInputElement
 }
 
 /** document.getElementById for the frame page, whose elements are all there. */

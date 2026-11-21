@@ -50,6 +50,17 @@ import { startTray, hasTray } from './tray.js'
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
+/**
+ * @typedef {object} Identities
+ * @property {() => import('./ui/frame.js').IdentityRow[]} list
+ * @property {(name: unknown) => string} create
+ * @property {(id: unknown, name: unknown) => void} rename
+ * @property {(id: unknown) => Promise<void>} open closes this window
+ * @property {(id: unknown) => Promise<void>} remove
+ * @property {(id: unknown, password?: string) => Promise<{ words: string | null }>} phrase
+ */
+/** @type {Identities} */
+const NO_IDENTITIES = { list: () => [], create: () => { throw new Error('no identities here') }, rename: () => {}, open: async () => {}, remove: async () => {}, phrase: async () => ({ words: null }) }
 const HANDLE = 6
 const SPLIT_MIN = 240
 const POLL = 2000
@@ -103,8 +114,9 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
  * @param {((code: string) => void) | null} [opts.join] join another device's identity
  * @param {(wc: WebContents) => Promise<string | null>} [opts.readViewed] marks the place the page shows read
  * @param {string | null} [opts.contacts] the Contacts app's key
+ * @param {Identities} [opts.identities] this computer's identities (main.js, identities.js)
  */
-export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null }) {
+export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null, identities = NO_IDENTITIES }) {
   /** @type {FrameState['joined']} */
   let joined = null
   /** @type {Icon[]} */
@@ -182,6 +194,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       settings: data.settings,
       notes,
       identity,
+      identities: identities.list(),
       joined,
       version: app.getVersion(),
       update: update(),
@@ -704,6 +717,16 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         if (Number.isFinite(a.height) && a.height > 0 && a.height < 400) bars = Math.ceil(a.height)
         layout()
         return { result: true }
+      case 'identities.create': {
+        const id = identities.create(a.name)
+        push()
+        if (a.open) identities.open(id)
+        return { result: id }
+      }
+      case 'identities.rename': identities.rename(a.id, a.name); push(); return { result: true }
+      case 'identities.open': identities.open(a.id).catch((/** @type {Error} */ err) => console.error('could not switch:', err.message)); return { result: true }
+      case 'identities.phrase': return identities.phrase(a.id, a.password || undefined).then((result) => ({ result }), (/** @type {Thrown} */ err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
+      case 'identities.delete': return identities.remove(a.id).then(() => { push(); return { result: true } }, (/** @type {Thrown} */ err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
       case 'circles.members': return engine(op, a).then((r) => (r.result ? { result: r.result.map((/** @type {{ share: number | null, used: number | null }} */ m) => ({ ...m, held: storageText(m) })) } : r))
       case 'circles.list': return engine(op, a).then((r) => (r.result ? { result: r.result.map((/** @type {import('../engine/circles.js').Circle} */ c) => ({ ...c, totalLine: totalText(c.total) })) } : r))
       default: return CIRCLES.has(op) ? engine(op, a) : { error: { code: 'UNKNOWN_METHOD', message: 'unknown op ' + op } }
@@ -757,6 +780,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
     clearInterval(timer)
     clearInterval(following)
     if (tray) tray.destroy()
+    for (const n of popups.values()) n.close()
     ipcMain.removeHandler('frame')
     ipcMain.removeAllListeners('split')
     for (const t of tabs) if (t.close) t.close()

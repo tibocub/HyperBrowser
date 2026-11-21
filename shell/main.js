@@ -1,5 +1,5 @@
 // Only this file bridges a site to the engine, and it names the site from the view, never the page.
-import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme, Notification } from 'electron'
+import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme, Notification, session } from 'electron'
 import fs from 'fs'
 import { spawnSync } from 'child_process'
 import os from 'os'
@@ -9,6 +9,7 @@ import PearRuntime from 'pear-runtime'
 import { connect, pair } from '../engine/protocol.js'
 import { createSiteView, resolveNoNames } from './views.js'
 import { startFrame } from './frame.js'
+import { identities } from './identities.js'
 
 /**
  * @typedef {import('electron').WebContents} WebContents
@@ -29,6 +30,7 @@ const SELFTEST = process.argv.includes('--selftest')
 const FRAMECHECK = process.argv.includes('--framecheck')
 const GUARDS = !process.argv.includes('--no-guards')
 const TRAYCHECK = process.argv.includes('--traycheck') ? process.argv[process.argv.indexOf('--traycheck') + 1] : null
+const IDCHECK = process.argv.includes('--identitycheck') ? process.argv[process.argv.indexOf('--identitycheck') + 1] : null
 const HEARTBEAT = 2000
 /** @param {string} name */
 const arg = (name) => { const i = process.argv.indexOf(name); return i === -1 ? null : process.argv[i + 1] }
@@ -157,8 +159,9 @@ function ask (key) {
     const answer = SELFTEST
       ? Promise.resolve(true)
       : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 1, cancelId: 1, message: `Let "${title}" use your identity?`, detail: 'It will read and write in its own space as you. You can change this later.' }).then((r) => r.response === 0)
+    const engine = rpc // answered after a switch: the closed engine refuses it, the new one never hears it
     asking.set(key, answer.then(async (allow) => {
-      await rpc.request('site.consent', { key, allow })
+      await engine.request('site.consent', { key, allow })
       if (allow && declares(/** @type {Opened} */ (sites.get(key)).manifest)) askNotify(key)
     }).finally(() => asking.delete(key)))
   }
@@ -179,7 +182,8 @@ function askPermit (key, permission = 'contacts') {
     const answer = SELFTEST
       ? Promise.resolve(true)
       : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 1, cancelId: 1, message: `Let "${title}" ${what}?`, detail }).then((r) => r.response === 0)
-    permits.set(id, answer.then((allow) => rpc.request('site.permit', { key, permission, allow })).finally(() => permits.delete(id)))
+    const engine = rpc
+    permits.set(id, answer.then((allow) => engine.request('site.permit', { key, permission, allow })).finally(() => permits.delete(id)))
   }
   return permits.get(id)
 }
@@ -191,7 +195,8 @@ function askNotify (key) {
     const answer = SELFTEST
       ? Promise.resolve(true)
       : dialog.showMessageBox({ type: 'question', buttons: ['Allow', 'Refuse'], defaultId: 0, cancelId: 1, message: `Let "${title}" notify you?`, detail: 'HyperBrowser watches what it says (new messages, mentions), even while it is closed, and tells you. You can change this in Configuration.' }).then((r) => r.response === 0)
-    notifyAsks.set(key, answer.then((allow) => rpc.request('site.permit', { key, permission: 'notifications', allow })).catch(() => {}).finally(() => notifyAsks.delete(key)))
+    const engine = rpc
+    notifyAsks.set(key, answer.then((allow) => engine.request('site.permit', { key, permission: 'notifications', allow })).catch(() => {}).finally(() => notifyAsks.delete(key)))
   }
   return notifyAsks.get(key)
 }
@@ -387,7 +392,7 @@ async function openSite (key, query = '') {
   sites.set(real, { manifest, dynamic })
   if (instance) query = '?instance=' + instance + (query.startsWith('#') ? query : '')
   if (rest.notify === 'ask') askNotify(real)
-  const v = createSiteView(real, { dynamic, serve, guards: GUARDS, persist: !SELFTEST, query })
+  const v = createSiteView(real, { dynamic, serve, guards: GUARDS, persist: !SELFTEST, query, prefix: ids.current().prefix })
   viewOf.set(v.webContents.id, real)
   v.webContents.on('destroyed', () => {
     stopAll(v.webContents)
@@ -1479,7 +1484,7 @@ async function join (dir, code) {
   let identity
   try {
     ({ identity } = await startEngine(dir, { joinCode: code, joinTimeout: 60000 }))
-    log("joined another device's identity " + identity + '; the one before is in ' + aside)
+    log("joined another device's identity; the one before is in " + aside)
   } catch (e) {
     const err = /** @type {Thrown} */ (e)
     said = err.message + ' (' + (err.code || 'ERROR') + ')'
@@ -1506,23 +1511,92 @@ async function move (from, to) {
 /** @param {string} key */
 const openSiteOf = (key) => [...viewOf].map(([id, k]) => k === key && webContents.fromId(id)).find(Boolean)
 
+// The self-test and frame check: a fresh folder each run. --dir: another HyperBrowser, its identities beside it.
+const HOME = SELFTEST || FRAMECHECK ? path.join(app.getPath('userData'), 'selftest-' + process.pid) : arg('--dir') ? arg('--dir') + '-identities' : app.getPath('userData')
+const ids = identities(HOME, arg('--dir') || path.join(HOME, 'engine'))
+let switching = false
+let era = 0 // one per identity opened: a window's late calls never reach the next identity's engine
+
+/** @param {string} identity */
+function openFrame (identity) {
+  const me = ids.current()
+  const mine = era
+  /**
+   * @template {unknown[]} A
+   * @template T
+   * @param {(...args: A) => Promise<T>} f
+   * @returns {(...args: A) => Promise<T>}
+   */
+  const own = (f) => (...args) => mine === era && rpc ? f(...args) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' }))
+  const engine = { request: own((/** @type {string} */ method, /** @type {object | undefined} */ params) => rpc.request(method, params)) }
+  const people = { list: ids.list, create: ids.create, rename: ids.rename, open: switchTo, remove: removeIdentity, phrase: own((/** @type {unknown} */ id, /** @type {string | undefined} */ password) => rpc.request('phrase.read', { dir: ids.get(id).dir, password })) }
+  ui = startFrame({ rpc: engine, openSite: own(openSite), readIcon: own(readIcon), readViewed: own(readViewed), contacts: APPS.contacts, identity, file: me.shell, open: switching ? null : arg('--open'), update: () => update, restart, identities: people, join: (code) => join(ids.current().dir, code).catch((/** @type {Error} */ err) => { log('join: ' + err.message); app.exit(1) }) })
+}
+
+// Nothing of the identity before stays: its window (views, tray, popups) goes, then its engine, before the next starts.
+/** @param {unknown} id */
+async function switchTo (id) {
+  const before = ids.current()
+  if (switching || before.id === ids.get(id).id) return
+  switching = true
+  era++
+  try {
+    ui?.win.destroy()
+    ui = null
+    await stopEngine()
+    engineErred = false
+    ids.use(id)
+    let up
+    try {
+      up = await startEngine(ids.current().dir)
+    } catch (e) {
+      log('could not open that identity: ' + /** @type {Error} */ (e).message)
+      await stopEngine()
+      ids.use(before.id)
+      up = await startEngine(before.dir)
+    }
+    openFrame(up.identity)
+  } finally {
+    switching = false
+  }
+}
+
+// A session still open (the identity was used since launch) keeps its folder locked: cleared now, its folder swept at the next start.
+/** @param {unknown} id */
+async function removeIdentity (id) {
+  const { prefix } = ids.remove(id)
+  const root = path.join(app.getPath('userData'), 'Partitions')
+  /** @type {string[]} */
+  let names = []
+  try { names = fs.readdirSync(root).filter((n) => n.startsWith(prefix + 'site-')) } catch {}
+  for (const name of names) {
+    try { fs.rmSync(path.join(root, name), { recursive: true }) } catch {
+      const ses = session.fromPartition('persist:' + name)
+      await ses.clearStorageData()
+      await ses.clearCache()
+    }
+  }
+}
+
 app.whenReady().then(async () => {
   if (!FIRST) return
-  const dir = arg('--dir') || path.join(app.getPath('userData'), SELFTEST || FRAMECHECK ? 'selftest-' + process.pid : 'engine')
+  ids.sweep(path.join(app.getPath('userData'), 'Partitions'))
+  const dir = ids.current().dir
   if (SELFTEST) testnet = await (await import('hyperdht/testnet.js')).default(3)
   const { identity } = await startEngine(dir, testnet ? { bootstrap: testnet.bootstrap } : {})
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
-  log('engine up, identity ' + identity)
-  if (SELFTEST) return selftest(dir)
-  if (FRAMECHECK) return framecheck(dir)
-  if (!TRAYCHECK) startUpdates()
-  const engine = { request: (/** @type {string} */ method, /** @type {object | undefined} */ params) => rpc ? rpc.request(method, params) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' })) }
-  ui = startFrame({ rpc: engine, openSite, readIcon, readViewed, contacts: APPS.contacts, identity, file: path.join(app.getPath('userData'), 'shell.json'), open: arg('--open'), update: () => update, restart, join: (code) => join(dir, code).catch((/** @type {Error} */ err) => { log('join: ' + err.message); app.exit(1) }) })
-  if (TRAYCHECK) traycheck(ui, TRAYCHECK)
+  log('engine up') // no identity named: the log is one file for all of them
+  if (SELFTEST) return selftest(HOME)
+  if (FRAMECHECK) return framecheck(HOME)
+  if (IDCHECK === 'sweep') return app.exit(0)
+  if (!TRAYCHECK && !IDCHECK) startUpdates()
+  openFrame(identity)
+  if (TRAYCHECK) traycheck(/** @type {Frame} */ (ui), TRAYCHECK)
+  if (IDCHECK) (await import('./selftest/identities.js')).identitycheck({ ui: () => ui, ids, engine: () => rpc, pid: () => /** @type {{ _process?: { pid?: number } }} */ (/** @type {unknown} */ (worker))?._process?.pid, switching: () => switching })
 }).catch((err) => { console.error(err); app.exit(1) })
 
 app.on('window-all-closed', async () => {
-  if (SELFTEST || FRAMECHECK) return
+  if (SELFTEST || FRAMECHECK || switching) return
   await shutdown()
   app.quit()
 })

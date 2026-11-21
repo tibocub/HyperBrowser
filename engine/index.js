@@ -9,6 +9,7 @@ import { notifications } from './notifications.js'
 import { circles } from './circles.js'
 import { projects } from './projects.js'
 import hyperdns from 'hyperdns'
+import phrase from 'hypergraph/lib/phrase.js'
 
 /** @typedef {{ id: string, apps: Array<{ key: string, id?: string }> }} Bundle The apps the build bundled (bundle.json). */
 
@@ -120,6 +121,11 @@ export function start (ipc) {
     if (method === 'close') {
       await shutdown('close')
       return true
+    }
+    // another identity's, closed, before deleting it: the shell names its folder
+    if (method === 'phrase.read') {
+      if (typeof p.dir !== 'string' || !p.dir) throw error('INVALID_PARAMS', 'phrase.read needs { dir }')
+      return { words: phrase.open(p.dir, p.password) }
     }
     if (!sfs) throw error('NOT_READY', 'send init first')
     switch (method) {
