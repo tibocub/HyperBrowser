@@ -129,7 +129,7 @@ test('the tray: closing keeps it running, a second launch shows it, Quit ends it
   t.is(JSON.parse(fs.readFileSync(path.join(profile, 'shell.json'), 'utf-8')).settings.tray, false, 'the setting is remembered')
 })
 
-test('identities: a switch leaves nothing of the first running, storage stays with its identity, a delete takes one only', { timeout: 300000 }, async (t) => {
+test('identities: a switch leaves nothing of the first running, storage stays with its identity, a delete takes one only, a phrase restores it', { timeout: 300000 }, async (t) => {
   const tmp = process.env.HG_TEST_TMP || os.tmpdir()
   fs.mkdirSync(tmp, { recursive: true })
   const profile = fs.mkdtempSync(path.join(tmp, 'hb-ids-'))
@@ -145,5 +145,5 @@ test('identities: a switch leaves nothing of the first running, storage stays wi
   t.is(two.code, 0)
   t.absent(fs.existsSync(left), "the next start sweeps the deleted identity's session folder")
   t.ok(fs.existsSync(path.join(profile, 'Partitions', 'site-idcheck')), "and keeps Main's")
-  t.is(JSON.parse(fs.readFileSync(path.join(profile, 'identities.json'), 'utf-8')).list.length, 1)
+  t.is(JSON.parse(fs.readFileSync(path.join(profile, 'identities.json'), 'utf-8')).list.length, 2, 'Main and the restored one')
 })

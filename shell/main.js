@@ -1517,8 +1517,8 @@ const ids = identities(HOME, arg('--dir') || path.join(HOME, 'engine'))
 let switching = false
 let era = 0 // one per identity opened: a window's late calls never reach the next identity's engine
 
-/** @param {string} identity */
-function openFrame (identity) {
+/** @param {string} identity @param {string | null} [note] shown in the identities window as it opens */
+function openFrame (identity, note = null) {
   const me = ids.current()
   const mine = era
   /**
@@ -1529,13 +1529,25 @@ function openFrame (identity) {
    */
   const own = (f) => (...args) => mine === era && rpc ? f(...args) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' }))
   const engine = { request: own((/** @type {string} */ method, /** @type {object | undefined} */ params) => rpc.request(method, params)) }
-  const people = { list: ids.list, create: ids.create, rename: ids.rename, open: switchTo, remove: removeIdentity, phrase: own((/** @type {unknown} */ id, /** @type {string | undefined} */ password) => rpc.request('phrase.read', { dir: ids.get(id).dir, password })) }
-  ui = startFrame({ rpc: engine, openSite: own(openSite), readIcon: own(readIcon), readViewed: own(readViewed), contacts: APPS.contacts, identity, file: me.shell, open: switching ? null : arg('--open'), update: () => update, restart, identities: people, join: (code) => join(ids.current().dir, code).catch((/** @type {Error} */ err) => { log('join: ' + err.message); app.exit(1) }) })
+  const people = { list: ids.list, create: ids.create, rename: ids.rename, open: switchTo, restore, remove: removeIdentity, phrase: own((/** @type {unknown} */ id, /** @type {string | undefined} */ password) => rpc.request('phrase.read', { dir: ids.get(id).dir, password })) }
+  ui = startFrame({ rpc: engine, openSite: own(openSite), readIcon: own(readIcon), readViewed: own(readViewed), contacts: APPS.contacts, identity, note, file: me.shell, open: switching ? null : arg('--open'), update: () => update, restart, identities: people, join: (code) => join(ids.current().dir, code).catch((/** @type {Error} */ err) => { log('join: ' + err.message); app.exit(1) }) })
+}
+
+// A new entry whose engine gets the phrase on its first start only (hypergraph keeps it from then on).
+/** @param {unknown} name @param {unknown} words @returns {string} the new entry's id */
+function restore (name, words) {
+  const mnemonic = typeof words === 'string' ? words.trim().toLowerCase().split(/\s+/).join(' ') : ''
+  if (mnemonic.split(' ').length !== 24) throw Object.assign(new Error('A recovery phrase is 24 words.'), { code: 'INVALID_PARAMS' })
+  if (switching) throw Object.assign(new Error('Another identity is opening: try again in a moment.'), { code: 'BUSY' })
+  const id = ids.create(name)
+  switchTo(id, mnemonic).catch((/** @type {Error} */ err) => console.error('could not restore:', err.message))
+  return id
 }
 
 // Nothing of the identity before stays: its window (views, tray, popups) goes, then its engine, before the next starts.
-/** @param {unknown} id */
-async function switchTo (id) {
+// With a phrase (a restore), a failure deletes the new entry and its folder.
+/** @param {unknown} id @param {string} [mnemonic] */
+async function switchTo (id, mnemonic) {
   const before = ids.current()
   if (switching || before.id === ids.get(id).id) return
   switching = true
@@ -1546,16 +1558,25 @@ async function switchTo (id) {
     await stopEngine()
     engineErred = false
     ids.use(id)
+    const name = ids.current().name
     let up
+    /** @type {string | null} */
+    let note = null
     try {
-      up = await startEngine(ids.current().dir)
+      up = await startEngine(ids.current().dir, mnemonic ? { mnemonic } : {})
+      if (mnemonic) note = '"' + name + '" is restored: this computer is a new device of that identity.'
     } catch (e) {
-      log('could not open that identity: ' + /** @type {Error} */ (e).message)
+      const said = /** @type {Error} */ (e).message // hypergraph's message, never the words
+      log('could not open that identity: ' + said)
       await stopEngine()
       ids.use(before.id)
+      if (mnemonic) {
+        const kept = await removeIdentity(id).then(() => '', (/** @type {Error} */ err) => ' Its new folder could not be deleted: ' + err.message)
+        note = 'Could not restore "' + name + '": ' + said + '. Check the 24 words and try again.' + kept
+      }
       up = await startEngine(before.dir)
     }
-    openFrame(up.identity)
+    openFrame(up.identity, note)
   } finally {
     switching = false
   }

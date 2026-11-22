@@ -69,6 +69,8 @@ export interface FrameState {
   identity: string | null
   /** This computer's identities, the open one marked current. */
   identities: IdentityRow[]
+  /** Shown in the identities window as this window opens: a restore's outcome. */
+  note: string | null
   joined: { said: string, n: number } | null
   version: string
   update: string | null

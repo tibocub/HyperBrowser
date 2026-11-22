@@ -479,6 +479,7 @@ function openIdentities (naming = false) {
 }
 function closeIdentities () {
   $('identities').hidden = true
+  idShow() // a restore's words typed and left go with it
   $('id-pass').value = ''
   $('id-pass-row').hidden = true
   if (!menuOpen) frame.send('cover', { full: false })
@@ -516,6 +517,30 @@ $('id-create').onclick = async () => {
   b.focus()
 }
 $('id-name').onkeydown = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter') $('id-create').click() }
+
+// The words go to the engine once and leave the field: hypergraph keeps them in the new identity's folder, nothing else does.
+$('id-restore').onclick = () => {
+  const name = el('input')
+  name.maxLength = 64
+  name.autocomplete = 'off'
+  name.setAttribute('aria-label', 'Name of the restored identity')
+  const words = el('textarea')
+  words.setAttribute('aria-label', 'Recovery phrase, 24 words')
+  words.spellcheck = false
+  words.autocomplete = 'off'
+  words.setAttribute('autocapitalize', 'off')
+  const go = async () => {
+    const r = await frame.send('identities.restore', { name: name.value, words: words.value })
+    words.value = ''
+    if (r?.error) { idShow(line(r.error.message), name, words, restore, cancel); words.focus(); return }
+    idShow(line('Restoring "' + name.value.trim() + '"…'))
+  }
+  const restore = push('Restore', go)
+  const cancel = push('Cancel', () => { words.value = ''; idShow() })
+  name.onkeydown = (e) => { if (e.key === 'Enter') words.focus() }
+  idShow(line('Restore an identity from its recovery phrase: this computer becomes a new device of it. Name it here, then type its 24 words.'), name, words, restore, cancel)
+  name.focus()
+}
 
 /** @param {IdentityRow} i */
 function renameIdentity (i) {
@@ -558,7 +583,7 @@ async function askDelete (i) {
   const words = await phraseOf(i)
   if (words === undefined) return
   const cancel = push('Cancel', () => idShow())
-  idShow(line('Delete "' + i.name + '" from this computer? Its contacts, conversations, circles, sites and site data here are removed. This cannot be undone without its recovery phrase (restoring from it comes in a later version), and even then not what was kept here.'),
+  idShow(line('Delete "' + i.name + '" from this computer? Its contacts, conversations, circles, sites and site data here are removed. This cannot be undone without its recovery phrase (HyperBrowser ▾ → Manage identities… → Restore from a recovery phrase…), and even then not what was kept here.'),
     ...(words
       ? [line('Write its recovery phrase down first:'), line(words, 'code')]
       : [line('This computer no longer keeps its recovery phrase: without your written copy, this identity is gone for good.', 'note')]),
@@ -877,9 +902,17 @@ new ResizeObserver(measure).observe(bars)
 document.fonts.ready.then(measure)
 
 let joinedSeen = 0
+let noted = false
+function showNote () {
+  if (noted || !S.note) return
+  noted = true
+  openIdentities()
+  idShow(line(S.note))
+}
 frame.onState((s) => {
   S = s
   render()
+  showNote()
   drawConfig()
   if (S.joined && S.joined.n !== joinedSeen) {
     joinedSeen = S.joined.n
@@ -891,4 +924,4 @@ frame.send('glyphs').then((r) => {
   GLYPHS = r.result
   for (const g of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-g]'))) setGlyph(g, /** @type {string} */ (g.dataset.g))
   return frame.send('hello')
-}).then((r) => { S = r.result; render(); measure() })
+}).then((r) => { S = r.result; render(); measure(); showNote() })

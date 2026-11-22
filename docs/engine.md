@@ -124,6 +124,9 @@ hypergraph pairs devices; the engine passes it through.
 - `devices.remove`: what that device does from then on counts for nobody (`DEVICE_REMOVED` on it). It needs the
   recovery phrase: plain on this device until protected with `devices.protect`, then behind the password.
 - `devices.list` and the `devices` event: see the protocol.
+- `init { mnemonic }` on an **empty folder**: SwarmFS restores the identity of that 24-word recovery phrase (same
+  identity key, a new device key). A phrase that isn't one fails `init` with hypergraph's "Invalid mnemonic" (no
+  code); a folder already holding another identity, `NOT_ALLOWED`. The shell passes it on the first start only.
 - `phrase.read { dir, password? }`: the recovery phrase in another engine folder, closed (the shell's identities:
   shown before one is deleted). Works before `init`; `NOT_ALLOWED` when protected and the password is wrong.
 

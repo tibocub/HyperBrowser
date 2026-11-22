@@ -184,10 +184,10 @@ export function start (ipc) {
   }
 
   /** @param {Params} p */
-  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, deviceName, bundle, notifyTurn, idle: i, projects: root }) {
+  async function init ({ dir, bootstrap, heartbeat, appStorageMax, grace: g, joinCode, joinTimeout, mnemonic, deviceName, bundle, notifyTurn, idle: i, projects: root }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
-    starting = SwarmFS.open(dir, { bootstrap, appStorageMax, joinCode, joinTimeout, deviceName })
+    starting = SwarmFS.open(dir, { bootstrap, appStorageMax, joinCode, joinTimeout, mnemonic, deviceName })
     starting.catch(() => { starting = null }) // a failed init may be sent again
     if (g !== undefined) grace = g
     if (i !== undefined) idle = i

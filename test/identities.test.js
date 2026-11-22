@@ -113,6 +113,33 @@ if (!BARE) {
     t.is((await A2.c('list')).length, 1, 'with its contact')
   })
 
+  // main.js restore(): a new entry, its engine's init with the phrase; on a failure, the entry and folder go (ids.remove)
+  test('restore: a new entry with the phrase is the same identity; a bad phrase leaves no new identity', async (t) => {
+    t.timeout(120000)
+    const home = tmpDir(t, 'home')
+    const net = await bootstrap(t)
+    const ids = identities(home)
+    const first = await engine(t, { dir: ids.current().dir, bootstrap: net })
+    const { identity } = await first.rpc.request('devices.list')
+    const { words } = await first.rpc.request('phrase.read', { dir: ids.current().dir })
+    await first.rpc.request('close')
+
+    const back = ids.get(ids.create('Back'))
+    const restored = await engine(t, { dir: back.dir, bootstrap: net, mnemonic: words })
+    t.is((await restored.rpc.request('devices.list')).identity, identity, 'the same identity key')
+    await restored.rpc.request('close')
+
+    const bad = ids.get(ids.create('Bad'))
+    const e = await engine(t, { init: false })
+    const wrong = words.split(' ').reverse().join(' ')
+    const err = await e.rpc.request('init', { dir: bad.dir, bootstrap: net, mnemonic: wrong }).then(() => null, (x) => x)
+    t.ok(err, 'refused: ' + err?.message)
+    t.absent(err?.message.includes(wrong.split(' ')[0] + ' ' + wrong.split(' ')[1]), 'the error names no words')
+    ids.remove(bad.id)
+    t.absent(fs.existsSync(bad.dir), 'its folder is gone')
+    t.alike(ids.list().map((i) => i.name), ['Main', 'Back'], 'no new identity left')
+  })
+
   test('delete refuses any folder but one closed engine folder, and deletes nothing then', async (t) => {
     const root = tmpDir(t, 'root')
     const home = path.join(root, 'data')

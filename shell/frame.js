@@ -56,11 +56,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
  * @property {(name: unknown) => string} create
  * @property {(id: unknown, name: unknown) => void} rename
  * @property {(id: unknown) => Promise<void>} open closes this window
+ * @property {(name: unknown, words: unknown) => string} restore a new entry from a recovery phrase, then opens it (closes this window)
  * @property {(id: unknown) => Promise<void>} remove
  * @property {(id: unknown, password?: string) => Promise<{ words: string | null }>} phrase
  */
 /** @type {Identities} */
-const NO_IDENTITIES = { list: () => [], create: () => { throw new Error('no identities here') }, rename: () => {}, open: async () => {}, remove: async () => {}, phrase: async () => ({ words: null }) }
+const NO_IDENTITIES = { list: () => [], create: () => { throw new Error('no identities here') }, rename: () => {}, open: async () => {}, restore: () => { throw new Error('no identities here') }, remove: async () => {}, phrase: async () => ({ words: null }) }
 const HANDLE = 6
 const SPLIT_MIN = 240
 const POLL = 2000
@@ -107,6 +108,7 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
  * @param {(key: string, query?: string) => Promise<SiteView>} opts.openSite
  * @param {(key: string, manifest: import('../engine/manifest.js').Manifest) => Promise<string | null>} opts.readIcon
  * @param {string | null} opts.identity
+ * @param {string | null} [opts.note] shown in the identities window as it opens (a restore's outcome)
  * @param {string} opts.file shell.json
  * @param {string | null} [opts.open] a key to open at once
  * @param {() => string | null} [opts.update] the version an update has ready
@@ -116,7 +118,7 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
  * @param {string | null} [opts.contacts] the Contacts app's key
  * @param {Identities} [opts.identities] this computer's identities (main.js, identities.js)
  */
-export function startFrame ({ rpc, openSite, readIcon, identity, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null, identities = NO_IDENTITIES }) {
+export function startFrame ({ rpc, openSite, readIcon, identity, note = null, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null, identities = NO_IDENTITIES }) {
   /** @type {FrameState['joined']} */
   let joined = null
   /** @type {Icon[]} */
@@ -195,6 +197,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
       notes,
       identity,
       identities: identities.list(),
+      note,
       joined,
       version: app.getVersion(),
       update: update(),
@@ -723,6 +726,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, file, open = nu
         if (a.open) identities.open(id)
         return { result: id }
       }
+      case 'identities.restore': return { result: identities.restore(a.name, a.words) }
       case 'identities.rename': identities.rename(a.id, a.name); push(); return { result: true }
       case 'identities.open': identities.open(a.id).catch((/** @type {Error} */ err) => console.error('could not switch:', err.message)); return { result: true }
       case 'identities.phrase': return identities.phrase(a.id, a.password || undefined).then((result) => ({ result }), (/** @type {Thrown} */ err) => ({ error: { code: err.code || 'ERROR', message: err.message } }))
