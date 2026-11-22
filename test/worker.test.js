@@ -8,7 +8,7 @@ import { connect } from '../engine/protocol.js'
 
 const onBare = typeof globalThis.Bare !== 'undefined'
 
-test('no heartbeat: the worker process exits; with heartbeats it stays', { skip: onBare }, async (t) => {
+test('no heartbeat: the worker process exits; with heartbeats it stays', { skip: onBare, timeout: 90000 }, async (t) => { // 90 s: the worker's init opens slowly when several files share a slow disk
   const { default: PearRuntime } = await import('pear-runtime')
   const worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
   const exited = new Promise((resolve) => worker.once('exit', resolve))

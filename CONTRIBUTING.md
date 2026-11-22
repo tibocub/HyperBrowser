@@ -28,8 +28,32 @@ npm run selftest       # the sandbox self-test alone, in a window: its last line
 
 `npm run test:all` runs the first three. One file: `node scripts/test-runner.js test/forum.test.js`.
 
-Tests write many temp folders. `HG_TEST_TMP` chooses where (it also sets `TMP` and `TEMP` for the test
-processes); put it on a fast disk with a few GB free. `HB_TEST_JOBS=2` runs two files at a time instead of one
+Three levels, from fast to thorough:
+
+| Level | Command | Runs | When |
+|-------|---------|------|------|
+| quick | `npm run test:quick` | the tests your change affects, on Node | while working |
+| merge | `npm run test:merge` | the affected tests on Node and Bare, plus a few whole flows | before a branch is merged |
+| full | `npm run test:all` | everything | before pushing, after heavy or risky changes, in CI |
+
+"Affected" comes from `.test-map.json` (not committed): every full Node run (`npm test`) records
+which functions of which files each test ran. Your change is what differs from `main`, committed or
+not. A test runs if it ran a changed function, loaded a file changed outside any function, or is
+itself changed; the typecheck test runs on any source change; a change to a site's files (not JS)
+runs everything. A change in `../hypergraph`, `../hyperDNS`, `../SwarmFS` or `../HyperMD` (their
+checkout moved since the map, or has changes of its own) runs every test that ran any of their files.
+The runner prints what it picked and why, and runs everything instead (saying why) when the map is
+missing or older than the last change to a test helper, when a helper, `package.json`, the lockfile
+or the runner changed, or when a source file is new.
+
+A file that fails runs once more, alone, after the others. Passing then, it shows as
+`FLAKY (passed alone)` and the summary counts it: a flaky test is a bug to fix, not a pass. Failing
+twice is a real failure.
+
+Tests use the system temp folder; `HG_TEST_TMP` overrides it. When it has under 3 GB free, the
+runner uses `HG_TEST_TMP_FALLBACK` if set and prints a line. Each test file gets a folder of its own
+there, removed once it is done. The suites mostly wait on that disk (every account open and close
+waits for its writes to be synced), so a fast disk matters more than more jobs. `HB_TEST_JOBS=2` runs two files at a time instead of one
 per core.
 
 Some changes have a cost check under `perf/` (`npm run perf`, `perf:circles`, `perf:helper`, `perf:names`,

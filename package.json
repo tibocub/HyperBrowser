@@ -21,6 +21,8 @@
     "framecheck": "electron . --framecheck",
     "test": "node scripts/test-runner.js",
     "test:bare": "node scripts/test-runner.js --bare",
+    "test:quick": "node scripts/test-runner.js --quick",
+    "test:merge": "node scripts/test-runner.js --merge",
     "test:sandbox": "node test/sandbox.electron.js",
     "typecheck": "tsc -p jsconfig.json && tsc -p shell/jsconfig.json && tsc -p shell/ui/jsconfig.json && tsc -p sites/jsconfig.json",
     "home:build": "node node_modules/hypermd/bin/hypermd.js build sites/home --out out/home",

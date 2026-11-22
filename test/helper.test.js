@@ -66,7 +66,11 @@ test('helper: joins from a link once, remembers it, a used link is refused once;
   const h2 = await engine(t)
   const l2 = lines()
   let drift = 0 // the disk's free space moving a little (logs, other programs) between passes
-  const rpc2 = { request: async (m, a) => { const r = await h2.rpc.request(m, a); if (m === 'holding.get') r.free -= drift; return r } }
+  // The helper sees 3 GB free whatever the disk has: the real figure moved by more than 0.1 GB
+  // between passes while other test files wrote to the same disk. The engine still checks the
+  // real one when the share is set (about 1 GB here, so the disk needs 3 GB free).
+  const FREE = 3e9
+  const rpc2 = { request: async (m, a) => { const r = await h2.rpc.request(m, a); if (m === 'holding.get') r.free = FREE - drift; return r } }
   const hp2 = helper({ rpc: rpc2, dir: h2.dir, preset: '', log: l2.log, tick: 3600000 })
   t.teardown(() => hp2.close())
   await hp2.apply(config({ join: [link, 'hg:nonsense'] }))
