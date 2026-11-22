@@ -12,7 +12,7 @@ const refused = (p) => p.then(() => false, () => true)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const API = ['apps', 'circles', 'completeFrom', 'contacts', 'copies', 'count', 'createInvite', 'createSubspace', 'decisions', 'defineRole', 'del', 'edges',
   'edit', 'get', 'getByTag', 'getRole', 'info', 'instance', 'instances', 'isComplete', 'linked', 'members', 'mine', 'moderateAction', 'notifications', 'on', 'peers', 'people',
-  'projects', 'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'secure', 'setRole',
+  'projects', 'put', 'query', 'redemptions', 'relate', 'removeRole', 'report', 'reports', 'revokeInvite', 'roles', 'rotateKey', 'secure', 'setDisappearing', 'setHistory', 'setRole',
   'since', 'status', 'subspace', 'subspaces', 'sum', 'tag', 'tags', 'trimHistory', 'types', 'unrelate', 'untag']
 
 /** @type {Array<[string, () => Promise<unknown>]>} */

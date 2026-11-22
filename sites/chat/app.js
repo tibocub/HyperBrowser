@@ -1,4 +1,4 @@
-import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore } from './lib/chat.js'
+import { chat, ROLES, MODERATORS, INVITERS, copiesLine, circleOf, acceptLabel, CHANGE_KEY, SECURE_TEXT, FORGET_TEXT, TRIM_TEXT, SUGGEST_SECURE, RENEW_WAITING, renewError, trimBefore, ENCRYPTED, ENCRYPTED_KEPT, KEEP_HISTORY_TEXT, HIDE_HISTORY_TEXT, DISAPPEAR, DISAPPEAR_NOTE, disappearLabel, deviceNotices } from './lib/chat.js'
 import { keepScroll, newLine } from './lib/scroll.js'
 
 /**
@@ -18,7 +18,10 @@ import { keepScroll, newLine } from './lib/scroll.js'
  * @property {Hyper.Copies | null} copies
  * @property {boolean} gone secured without this person
  * @property {boolean} waiting
- * @property {'secure' | 'trim' | null} confirm
+ * @property {'secure' | 'trim' | 'history' | null} confirm
+ * @property {string | null} history 'hidden' or 'visible' (a private conversation's)
+ * @property {number | null} disappearing ms, or null: off
+ * @property {boolean} offerSecure after a removal: offers to secure the group
  * @property {boolean} forget
  * @property {number} trimN
  * @property {string} trimUnit
@@ -87,10 +90,11 @@ function open (key) {
   current = key
   history.replaceState(null, '', '?instance=' + key)
   hyper.notifications?.viewing(key).catch(() => {}) // shown here, so not notified
-  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null, gone: false, waiting: false, confirm: null, forget: false, trimN: 6, trimUnit: 'months' }
+  view = { key, messages: [], invites: [], names: new Map(), members: null, role: null, editing: null, menu: null, unread: counts[key]?.count || 0, line: null, placed: false, copies: null, gone: false, waiting: false, confirm: null, forget: false, trimN: 6, trimUnit: 'months', history: null, disappearing: null, offerSecure: false }
   const v = view
   // secured without this person (no new address), or secured here (waiting for another admin's device)
-  c.info(key).then((i) => { if (view === v) { v.gone = !!i.moved && !i.movedTo; v.waiting = !!i.renewal?.waiting; draw() } }, () => {})
+  const info = () => c.info(key).then((i) => { if (view === v) { v.gone = !!i.moved && !i.movedTo; v.waiting = !!i.renewal?.waiting; v.history = i.private ? i.history : null; v.disappearing = i.disappearing ?? null; draw() } }, () => {})
+  info()
   const copies = () => c.copies(key).then((x) => { if (view === v) { v.copies = x; draw() } }, () => {})
   const names = () => c.names(key).then((n) => { if (view === v) { v.names = n; draw() } }, () => {})
   const members = () => {
@@ -105,6 +109,9 @@ function open (key) {
   }))
   stops.push(c.invites(key, ({ items }) => { v.invites = items; draw() }))
   stops.push(hyper.instance(key).on('members', members))
+  stops.push(hyper.instance(key).on('devices', members)) // "X added a device"
+  stops.push(c.keepProfile(key)) // the name, once this device holds the key
+  stops.push(hyper.instance(key).on('decisions', info)) // the history and timer settings
   stops.push(c.onCopies(key, (x) => { v.copies = x; draw() }))
   copies()
   names()
@@ -154,13 +161,22 @@ function conversation (conv) {
     if (inv.author === me.identity || joined['invite:' + inv.id]) continue
     out.push(h('p', {}, nameOf(inv.author), ' invites you to the group ', h('b', {}, inv.name), ' ', h('button', { onclick: () => join(inv) }, 'Join')))
   }
+  const notices = deviceNotices(view.members || [], nameOf)
+  /** @param {number} stamp */
+  const noticesUntil = (stamp) => {
+    const lines = []
+    while (notices.length && notices[0].at <= stamp) lines.push(h('p', { class: 'small device-notice', role: 'note', style: 'text-align:center; margin:4px 0' }, /** @type {{ text: string }} */ (notices.shift()).text))
+    return lines
+  }
   out.push(h('div', { 'data-key': view.key, style: 'flex:1; min-height:3em; overflow:auto; position:relative' }, view.messages.map((m, i) => [
+    noticesUntil(m.stamp),
     i === view.line ? h('p', { class: 'new-line', role: 'separator', 'aria-label': 'New messages', style: 'text-align:center; color:var(--accent, #1f4fd1); border-top:1px solid; margin:8px 0 0' }, 'New messages') : null,
     h('p', {},
       h('a', { href: '#', onclick: (e) => { e.preventDefault(); act(() => hyper.people.contact(m.author)) } }, h('b', {}, nameOf(m.author))),
       h('span', { class: 'small' }, ' ', new Date(m.stamp).toLocaleString(), m.edited ? ' (edited)' : ''), ' ',
       menu(m, mod), h('br'),
-      body(m))])))
+      body(m))]), noticesUntil(Infinity)))
+  if (view.offerSecure) out.push(h('p', { role: 'alert' }, SUGGEST_SECURE, ' ', h('button', { onclick: () => { view.offerSecure = false; view.confirm = 'secure'; view.forget = false; view.menu = 'info'; draw() } }, 'Secure this group…')))
   out.push(h('form', { onsubmit: send },
     h('textarea', { name: 'text', rows: 3, style: 'width:100%', placeholder: view.editing ? 'Edit your message' : 'Write a message (Enter sends, Shift+Enter: new line)', onkeydown: enter, oninput: (e) => { view.draft = e.target.value }, value: view.draft ?? view.editing?.text ?? '' }),
     h('button', {}, view.editing ? 'Save' : 'Send'), view.editing ? h('button', { type: 'button', onclick: () => { view.editing = view.draft = null; draw() } }, 'Cancel') : null))
@@ -184,15 +200,29 @@ const DROP = 'position:absolute; top:100%; left:0; z-index:10; display:flex; fle
 function info () {
   const line = view.copies && copiesLine(view.copies)
   const owner = view.role === 'owner'
-  const admin = !convs.find((x) => x.key === view.key)?.direct && (owner || view.role === 'admin')
-  if (!line && !owner && !admin && !view.waiting) return null
+  const direct = !!convs.find((x) => x.key === view.key)?.direct
+  const decides = owner || view.role === 'admin' // both people of a direct conversation are admins
+  const admin = !direct && decides
+  const encrypted = view.history ? (view.history === 'hidden' ? ENCRYPTED : ENCRYPTED_KEPT) : null
+  if (!line && !owner && !admin && !view.waiting && !encrypted) return null
   return h('details', { style: MENU + '; font-size:initial; font-weight:normal', open: view.menu === 'info' ? '' : null, ontoggle: (e) => { if (e.target.open) view.menu = 'info'; else if (view.menu === 'info') view.menu = null } },
     h('summary', { 'aria-label': 'About this conversation', style: 'display:inline; cursor:pointer; list-style:none' }, '…'),
     h('div', { style: DROP + '; width:280px; white-space:normal' },
+      encrypted ? h('p', { class: 'encrypted', style: 'margin:0' }, encrypted) : null,
+      view.history ? h('p', { style: 'margin:0' }, 'Messages disappear: ',
+        decides
+          ? h('select', { 'aria-label': 'Messages disappear after', onchange: (e) => act(async () => { const ms = DISAPPEAR[e.target.selectedIndex][0]; await c.disappearAfter(view.key, ms); view.disappearing = ms }) },
+            DISAPPEAR.map(([ms, label]) => h('option', { selected: ms === view.disappearing ? '' : null }, label)))
+          : disappearLabel(view.disappearing)) : null,
+      view.history && (decides || view.disappearing) ? h('p', { role: 'note', class: 'small', style: 'margin:0' }, DISAPPEAR_NOTE) : null,
+      admin && view.history ? h('button', { onclick: () => { view.confirm = 'history'; draw() } }, view.history === 'hidden' ? 'Keep history for new members…' : 'Stop keeping history…') : null,
+      view.confirm === 'history' ? h('div', { role: 'alert' }, h('p', { style: 'margin:0' }, view.history === 'hidden' ? KEEP_HISTORY_TEXT : HIDE_HISTORY_TEXT),
+        h('button', { onclick: () => act(async () => { const keep = view.history === 'hidden'; view.confirm = null; await c.keepHistory(view.key, keep); view.history = keep ? 'visible' : 'hidden' }) }, view.history === 'hidden' ? 'Keep history' : 'Stop keeping it'), ' ',
+        h('button', { onclick: () => { view.confirm = null; draw() } }, 'Cancel')) : null,
       line ? h('p', { class: 'copies', style: 'margin:0' }, line.text) : null,
       line?.warn ? h('p', { class: 'copies-warn', role: 'note', style: 'margin:0' }, line.warn) : null,
       owner ? h('p', { style: 'margin:0' }, h('button', { onclick: () => act(async () => { await c.changeKey(view.key); notice = 'Key changed.' }) }, 'Change key'), ' ', h('span', { class: 'small' }, CHANGE_KEY)) : null,
-      admin ? h('button', { onclick: () => { view.confirm = 'secure'; view.forget = false; draw() } }, 'Secure this place…') : null,
+      admin ? h('button', { onclick: () => { view.confirm = 'secure'; view.forget = false; draw() } }, 'Secure this group…') : null,
       admin ? h('button', { onclick: () => { view.confirm = 'trim'; draw() } }, 'Trim history…') : null,
       view.waiting ? h('p', { role: 'note', style: 'margin:0' }, RENEW_WAITING) : null,
       view.confirm === 'secure' ? h('div', { role: 'alert' }, h('p', { style: 'margin:0' }, SECURE_TEXT),
@@ -276,7 +306,7 @@ const suggested = new Set()
 function suggest () {
   if (suggested.has(view.key) || !['owner', 'admin'].includes(/** @type {string} */ (view.role)) || convs.find((x) => x.key === view.key)?.direct) return
   suggested.add(view.key)
-  notice = SUGGEST_SECURE
+  view.offerSecure = true
 }
 
 /** @param {() => Promise<unknown>} fn */

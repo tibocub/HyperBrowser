@@ -739,7 +739,8 @@ async function checkChatLine ({ key, view }, out, tmp) {
       const end = await waitFor(() => run(`(() => { const l = ${list}; return l.lastElementChild.textContent.includes('from Bob') && l.scrollHeight - l.scrollTop - l.clientHeight <= 8 })()`), 15000)
       pass(`chat: ${kind}: sending takes you to the end`, end)
     }
-    const menu = await run(`(() => { const d = ${list}.querySelector('details'); if (!d) return 'none'; d.querySelector('summary').focus(); return [document.activeElement.tagName, [...d.querySelectorAll('button')].map((b) => b.textContent).join()].join() })()`)
+    // Bob's own message, the last: in a direct conversation he is an admin, so others' messages have a "…" too (Delete only)
+    const menu = await run(`(() => { const d = [...${list}.querySelectorAll('details')].at(-1); if (!d) return 'none'; d.querySelector('summary').focus(); return [document.activeElement.tagName, [...d.querySelectorAll('button')].map((b) => b.textContent).join()].join() })()`)
     pass('chat: Edit and Delete behind one "…" per message, reachable by keyboard', menu === 'SUMMARY,Edit,Delete')
     // A page's instances.join of a circle link doesn't leave Bob in the circle; its one use is still spent (a known limit).
     const ring = await ann.request('circles.create', { name: 'Ann only' })

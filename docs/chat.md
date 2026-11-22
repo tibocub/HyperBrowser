@@ -88,10 +88,34 @@ A conversation's **…** (next to its name) says "Kept by N of 5 copies, M onlin
 copies online: people may not get this while you're offline" under 2 online. Its owner gets **Change key**
 (`rotateKey()`: a new key from now on, for a lost device or a suspected leak).
 
-In a **group**, its owner and admins also get **Secure this place…** (new keys and a new address, with an
+In a **group**, its owner and admins also get **Secure this group…** (new keys and a new address, with an
 optional "Also delete history before now") and **Trim history…** (keep the last N days, weeks, months or
-years). A removal or a ban suggests Secure once; a member left out sees "You no longer have access to this
-group". Not in a direct conversation, which belongs to the two people's contacts entry.
+years). A removal or a ban offers **Secure this group…** once, under the messages; a member left out sees "You
+no longer have access to this group". Not in a direct conversation, which belongs to the two people's contacts
+entry.
+
+## Encrypted conversations
+
+Every conversation hides its history (hypergraph's secure conversations, spec 031): the engine calls
+`setHistory('hidden')` on each direct conversation it creates (`engine/contacts.js`) and Chat on each group
+(`chat.group`). Each message has its own key; a newcomer, or a member's new device, reads from its join on.
+The person's `profile` (their name) is written once this device holds the key, whenever that is: right after
+`chat.join` if a member who may change the key is online, else when its `status` event says access turned
+`'full'` (`chat.keepProfile`, also run when a conversation opens, so a restart catches up). SwarmFS's `site` and `profile` are hypergraph *shared* types, so a newcomer reads the
+site record and everyone's names; someone removed keeps reading those (not messages) until the group is
+secured.
+
+- **Both people of a direct conversation are admins**: the engine makes the friend an admin once it sees
+  them join (`joined()` in `engine/contacts.js`), so either one's devices change the key.
+- The conversation's **…** says "Encrypted. New members and new devices read from when they join." (or
+  "Encrypted. New members read the whole history." after **Keep history**). The UI says "encrypted", never more,
+  until an outside review of the cryptography.
+- **Messages disappear**: Off, 1 hour, 1 day, 7 days, 30 days (`setDisappearing`), set by owners and admins,
+  with "a modified app can still keep them".
+- **Keep history for new members…** (groups, owners and admins, after a warning): `setHistory('visible')`;
+  **Stop keeping history…** switches back.
+- **"X added a device"**: a line in the conversation for each device of a member after their first, at its
+  `members()` device's `added` time, refreshed on the `devices` event.
 
 ## Limits
 

@@ -2,7 +2,7 @@ import test from 'brittle'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, sleep } from './helpers.js'
-import { chat, copiesLine, circleOf, acceptLabel } from '../sites/chat/lib/chat.js'
+import { chat, copiesLine, circleOf, acceptLabel, deviceNotices, disappearLabel, ENCRYPTED, ENCRYPTED_KEPT, KEEP_HISTORY_TEXT, HIDE_HISTORY_TEXT, DISAPPEAR_NOTE, DISAPPEAR } from '../sites/chat/lib/chat.js'
 import { keepScroll, newLine } from '../sites/chat/lib/scroll.js'
 
 const FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'chat')
@@ -85,6 +85,7 @@ test('a direct conversation and a group where the owner hands out rights', async
   t.ok(await eventually(async () => (await bob.c.role(g.key)) === 'inviter', 15000))
   await bob.c.add(g.key, 'Climbing', await contactOf(bob, dan))
   await joinFromInvite(dan, bob)
+  t.ok(await eventually(async () => (await dan.c.status(g.key)).access === 'full', 30000), 'Dan got the key: he reads from here on')
   t.is(await codeOf(bob.c.grant(g.key, dan.id, 'moderator')), 'NOT_ALLOWED', 'an inviter gives no rights')
 
   await ann.c.grant(g.key, cleo.id, 'moderator')
@@ -163,4 +164,97 @@ test("the shell invites two friends to a circle: each finds it in Chat; a pasted
   await b.e.rpc.request('circles.join', { link: mb.circle })
   t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).some((m) => m.identity === b.id), 30000), 'Bob is in')
   t.is(await codeOf(c.e.rpc.request('circles.join', { link: mb.circle })), 'INVITE_USED_UP', "Bob's link is spent: Cid can't use it")
+})
+
+test('conversations are encrypted, each member reading from their join on; both people of a direct one are admins; messages can disappear', async (t) => {
+  t.timeout(300000)
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: FOLDER })
+  const [ann, bob, cleo] = [await person(t, key, 'Ann'), await person(t, key, 'Bob'), await person(t, key, 'Cleo')]
+
+  await befriend(ann, bob)
+  const direct = (await ann.c.conversations()).find((x) => x.direct?.identity === bob.id)
+  t.is((await ann.c.info(direct.key)).history, 'hidden', 'a direct conversation hides its history')
+  t.ok(await eventually(async () => (await bob.c.role(direct.key)) === 'admin', 30000), 'Bob, who joined it, is an admin too')
+  await bob.c.disappearAfter(direct.key, 3600e3)
+  t.ok(await eventually(async () => (await ann.c.info(direct.key)).disappearing === 3600e3, 15000), 'either one sets the timer: Ann sees it')
+  t.is(await codeOf(ann.c.disappearAfter(direct.key, 10)), 'INVALID_PARAMS', 'under a minute: refused')
+
+  const g = await ann.c.group('Book club')
+  t.is((await ann.c.info(g.key)).history, 'hidden', 'a group hides its history')
+  await ann.c.send(g.key, 'before Cleo')
+  await befriend(ann, cleo)
+  await ann.c.add(g.key, 'Book club', await contactOf(ann, cleo))
+  await joinFromInvite(cleo, ann)
+  t.ok(await eventually(async () => (await cleo.c.status(g.key)).access === 'full', 30000), 'Cleo got the key')
+  await ann.c.send(g.key, 'after Cleo')
+  t.ok(await eventually(async () => (await texts(cleo, g.key)).includes('after Cleo'), 15000), 'Cleo reads what came after she joined')
+  t.absent((await texts(cleo, g.key)).includes('before Cleo'), 'not before')
+  t.is(await codeOf(cleo.c.keepHistory(g.key, true)), 'NOT_ALLOWED', 'a member does not choose')
+  await ann.c.keepHistory(g.key, true)
+  t.ok(await eventually(async () => (await cleo.c.info(g.key)).history === 'visible', 15000), 'an admin keeps the history for new members')
+})
+
+test('"X added a device" lines, the labels of the timer, and the wording says encrypted, never more', (t) => {
+  const member = (identity, ...added) => ({ identity, role: 'member', you: false, banned: false, removed: false, devices: added.map((a, i) => ({ device: 'd' + i, log: 'l' + i, added: a })) })
+  const names = { ann: 'Ann', me: 'you' }
+  const lines = deviceNotices([member('ann', 30, 10, 20), member('me', 5, 40), member('bob', null)], (id) => names[id] || id)
+  t.alike(lines.map((l) => [l.at, l.text]), [[20, 'Ann added a device'], [30, 'Ann added a device'], [40, 'You added a device']], 'every device after the first, by when it came')
+  t.alike(DISAPPEAR.map(([ms]) => ms), [null, 3600e3, 24 * 3600e3, 7 * 24 * 3600e3, 30 * 24 * 3600e3], 'off, 1 hour, 1 day, 7 days, 30 days')
+  t.is(disappearLabel(null), 'Off')
+  t.is(disappearLabel(7 * 24 * 3600e3), '7 days')
+  for (const text of [ENCRYPTED, ENCRYPTED_KEPT, KEEP_HISTORY_TEXT, HIDE_HISTORY_TEXT, DISAPPEAR_NOTE]) t.absent(/secure|forward secre|safe/i.test(text), 'no claim beyond "encrypted": ' + text.slice(0, 30))
+  t.ok(ENCRYPTED.startsWith('Encrypted') && ENCRYPTED_KEPT.startsWith('Encrypted'))
+  t.ok(/modified app/.test(DISAPPEAR_NOTE), 'it says a modified app can keep messages')
+})
+
+test('a newcomer whose key comes only later, after the inviter was offline, still publishes its name', async (t) => {
+  t.timeout(300000)
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: FOLDER })
+  const ann = await person(t, key, 'Ann')
+  const cleo = await person(t, key, 'Cleo')
+  await befriend(ann, cleo)
+  const g = await ann.c.group('Night owls')
+  await ann.c.add(g.key, 'Night owls', await contactOf(ann, cleo))
+  const direct = (await contactOf(cleo, ann)).chat
+  let invite = null
+  await eventually(async () => (invite = (await cleo.hyper.instance(direct).query('invite').latest(1)).items[0]), 30000)
+  await cleo.hyper.instances.join(invite.link) // let in; the key comes with the next key change
+  await ann.e.rpc.request('close') // the only member who may change the key goes offline at once
+  const stop = cleo.c.keepProfile(g.key) // as Chat does when the conversation is open
+  t.teardown(stop)
+  await sleep(3000)
+  t.is((await cleo.c.status(g.key)).access, 'waiting', 'no key yet: nobody who may change it is online')
+
+  const back = await engine(t, { dir: ann.e.dir })
+  await back.rpc.request('site.open', { key })
+  const annAgain = chat(siteApi(back, key))
+  t.ok(await eventually(async () => (await annAgain.names(g.key)).get(cleo.id) === 'Cleo', 60000), 'once Ann is back, Cleo gets the key and her name appears')
+})
+
+test('the name is put when access turns full during a check that read waiting: no status event is dropped', async (t) => {
+  let listener = null
+  let release = null
+  let calls = 0
+  const puts = []
+  const space = {
+    on: (event, fn) => { if (event === 'status') listener = fn; return () => { listener = null } },
+    status: () => {
+      calls++
+      if (calls === 1) return new Promise((resolve) => { release = () => resolve({ access: 'waiting' }) }) // read before the key came
+      return Promise.resolve({ access: 'full' })
+    },
+    query: () => ({ by: () => ({ latest: async () => ({ items: [] }) }) }),
+    put: async (type, values) => { puts.push([type, values]) }
+  }
+  const fake = { instance: () => space, contacts: { me: async () => ({ name: 'Cleo' }) }, info: async () => ({ identity: 'cleo' }) }
+  const c = chat(fake)
+  c.keepProfile('k')
+  await eventually(() => release !== null, 5000)
+  listener() // access turned full while the first check still waits on status()
+  release()
+  t.ok(await eventually(() => puts.length === 1, 5000), 'the name is put')
+  t.alike(puts[0], ['profile', { name: 'Cleo' }])
+  t.is(listener, null, 'and it stops listening once the name is in place')
 })
