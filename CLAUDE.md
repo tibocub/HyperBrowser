@@ -9,11 +9,7 @@ sites (`sites/`). Start with [README.md](README.md); setup and workflow: [CONTRI
 npm run typecheck && npm test && npm run test:bare && npm run test:sandbox && npm run selftest
 ```
 
-Point the temp folders at a disk with room. On this machine C: is nearly full, so use E: (PowerShell):
-
-```powershell
-$env:TMP = 'E:\Code\P2P\.tmp\tmp'; $env:TEMP = $env:TMP; $env:HG_TEST_TMP = $env:TMP
-```
+Tests write to the system temp folder (`HG_TEST_TMP` to change it).
 
 ## Where things are written down
 
