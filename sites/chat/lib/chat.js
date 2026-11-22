@@ -83,24 +83,25 @@ export function chat (hyper) {
 
   // This person's name in a conversation, put once its key is here: an encrypted conversation's key
   // comes when a member who may change it is online, maybe much later or after a restart.
-  /** @type {Set<string>} */
-  const naming = new Set()
+  /** @type {Map<string, Promise<unknown>>} */
+  const naming = new Map()
+  // One check at a time per conversation, each after the last: a status event during a check is never dropped.
   /** @param {string} key @returns {Promise<boolean>} whether the name is in place */
-  async function ensureProfile (key) {
-    if (naming.has(key)) return false
-    naming.add(key)
-    try {
-      const name = await myName()
-      if (!name) return true
-      const s = at(key)
-      if ((await s.status()).access !== 'full') return false
-      const { identity } = await hyper.info()
-      const mine = (await s.query('profile').by(identity).latest(1)).items[0]
-      if (!mine || mine.name !== name) await s.put('profile', { name })
-      return true
-    } finally {
-      naming.delete(key)
-    }
+  function ensureProfile (key) {
+    const run = (naming.get(key) || Promise.resolve()).then(() => putProfile(key))
+    naming.set(key, run.catch(() => {}))
+    return run
+  }
+  /** @param {string} key */
+  async function putProfile (key) {
+    const name = await myName()
+    if (!name) return true
+    const s = at(key)
+    if ((await s.status()).access !== 'full') return false
+    const { identity } = await hyper.info()
+    const mine = (await s.query('profile').by(identity).latest(1)).items[0]
+    if (!mine || mine.name !== name) await s.put('profile', { name })
+    return true
   }
   // Puts the name now if it can, else when the conversation's status changes (its key arriving).
   /** @param {string} key @returns {Hyper.Unsubscribe} */

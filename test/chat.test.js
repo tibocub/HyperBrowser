@@ -232,3 +232,29 @@ test('a newcomer whose key comes only later, after the inviter was offline, stil
   const annAgain = chat(siteApi(back, key))
   t.ok(await eventually(async () => (await annAgain.names(g.key)).get(cleo.id) === 'Cleo', 60000), 'once Ann is back, Cleo gets the key and her name appears')
 })
+
+test('the name is put when access turns full during a check that read waiting: no status event is dropped', async (t) => {
+  let listener = null
+  let release = null
+  let calls = 0
+  const puts = []
+  const space = {
+    on: (event, fn) => { if (event === 'status') listener = fn; return () => { listener = null } },
+    status: () => {
+      calls++
+      if (calls === 1) return new Promise((resolve) => { release = () => resolve({ access: 'waiting' }) }) // read before the key came
+      return Promise.resolve({ access: 'full' })
+    },
+    query: () => ({ by: () => ({ latest: async () => ({ items: [] }) }) }),
+    put: async (type, values) => { puts.push([type, values]) }
+  }
+  const fake = { instance: () => space, contacts: { me: async () => ({ name: 'Cleo' }) }, info: async () => ({ identity: 'cleo' }) }
+  const c = chat(fake)
+  c.keepProfile('k')
+  await eventually(() => release !== null, 5000)
+  listener() // access turned full while the first check still waits on status()
+  release()
+  t.ok(await eventually(() => puts.length === 1, 5000), 'the name is put')
+  t.alike(puts[0], ['profile', { name: 'Cleo' }])
+  t.is(listener, null, 'and it stops listening once the name is in place')
+})
