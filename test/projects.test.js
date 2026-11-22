@@ -21,6 +21,8 @@ async function ide (t, opts = {}) {
 }
 
 const read = async (p, project, file) => text(await p('read', project, file))
+// unlinked, never deleted through: a junction is a folder on Windows (rmdir), a symlink elsewhere (unlink)
+const unlinkLink = (at) => (process.platform === 'win32' ? fs.rmdirSync(at) : fs.unlinkSync(at))
 const disk = (file) => { try { return fs.readFileSync(file, 'utf-8') } catch { return null } } // null meanwhile: SwarmFS replaces files by renames
 
 test('the projects permission: declared, asked once, refused after a no; none for other sites', async (t) => {
@@ -72,7 +74,7 @@ test('files: create, write, read, list, rename, remove; .git and node_modules ig
     t.is(await codeOf(p('write', made.key, 'out/x.txt', 'x')), 'NOT_ALLOWED', 'a link out of the project')
     t.is(await codeOf(p('read', made.key, 'out')), 'NOT_ALLOWED', 'read through it too')
     t.absent(fs.existsSync(path.join(outside, 'x.txt')), 'nothing written outside')
-    fs.rmdirSync(path.join(made.folder, 'out')) // a junction: unlinked, never deleted through
+    unlinkLink(path.join(made.folder, 'out'))
   } else t.comment('no junction on this runtime: link escape not checked here')
   t.is(await codeOf(p('read', 'y'.repeat(52), 'index.html')), 'NOT_FOUND', 'not one of the projects')
 })
@@ -130,7 +132,7 @@ test('short names (GIT~1) and links inside the project to its .git are refused t
   if (linked) {
     t.is(await codeOf(p('write', key, 'docs/hooks/pre-commit', 'x')), 'NOT_ALLOWED', 'a link inside the project to its .git')
     t.is(await codeOf(p('read', key, 'docs/hooks')), 'NOT_ALLOWED', 'read through it too')
-    fs.rmdirSync(path.join(folder, 'docs'))
+    unlinkLink(path.join(folder, 'docs'))
   } else t.comment('no junction on this runtime: not checked here')
   t.absent(fs.existsSync(path.join(folder, '.git', 'hooks', 'pre-commit')), 'no hook written')
 })
