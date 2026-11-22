@@ -22,7 +22,32 @@ export const CHANGE_KEY = 'A new key from now on; for a lost device or a suspect
 export const SECURE_TEXT = 'New keys now, and a new address its members follow by themselves: the people removed or banned can no longer see who joins, who writes or when. What they could read before, they keep.'
 export const FORGET_TEXT = "Also delete everything written before now, on every member's device. Copies others already took can't be recalled."
 export const TRIM_TEXT = "Older messages are deleted on every member's device and every copy your circles keep. Copies others already took can't be recalled."
-export const SUGGEST_SECURE = 'They can no longer read what comes next. To also hide who joins and writes from now on: … then Secure this place.'
+export const SUGGEST_SECURE = 'They can no longer read what comes next. To also hide from them who joins and who writes from now on:'
+// Until an outside review, the app says "encrypted", never more.
+export const ENCRYPTED = 'Encrypted. New members and new devices read from when they join.'
+export const ENCRYPTED_KEPT = 'Encrypted. New members read the whole history.'
+export const KEEP_HISTORY_TEXT = 'New members will read what is written from now on, before they joined too: the keys are kept to hand over. What was written until now stays unreadable to them.'
+export const HIDE_HISTORY_TEXT = 'From now on, new members read only what is written after they join, and each message has its own key.'
+export const DISAPPEAR_NOTE = "Messages are deleted from every member's device after this time. Someone using a modified app can still keep them."
+/** @type {Array<[number | null, string]>} */
+export const DISAPPEAR = [[null, 'Off'], [3600e3, '1 hour'], [24 * 3600e3, '1 day'], [7 * 24 * 3600e3, '7 days'], [30 * 24 * 3600e3, '30 days']]
+/** @param {number | null | undefined} ms */
+export const disappearLabel = (ms) => (DISAPPEAR.find(([v]) => v === (ms || null)) || [null, Math.round((ms || 0) / 60000) + ' minutes'])[1]
+
+// "X added a device": each member's devices after their first, by when they came.
+/**
+ * @param {Hyper.Member[]} members
+ * @param {(identity: string) => string} nameOf
+ * @returns {Array<{ at: number, identity: string, text: string }>} oldest first
+ */
+export function deviceNotices (members, nameOf) {
+  const out = []
+  for (const m of members) {
+    const added = m.devices.map((d) => d.added).filter((x) => typeof x === 'number').sort((a, b) => a - b)
+    for (const at of added.slice(1)) out.push({ at, identity: m.identity, text: nameOf(m.identity) === 'you' ? 'You added a device' : nameOf(m.identity) + ' added a device' })
+  }
+  return out.sort((a, b) => a.at - b.at)
+}
 export const RENEW_WAITING = "Keep HyperBrowser open until another admin's device has joined."
 const DAY = 24 * 3600e3
 /** @type {Record<string, number>} */
@@ -56,6 +81,15 @@ export function chat (hyper) {
   /** @param {string} key */
   const at = (key) => hyper.instance(key)
 
+  // An encrypted conversation's key comes once a member who may change it is online and lets this device in.
+  /** @param {string} key @param {number} [ms] @returns {Promise<boolean>} */
+  async function keyCame (key, ms = 30000) {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((resolve) => setTimeout(resolve, 200))) {
+      if ((await at(key).status()).access === 'full') return true
+    }
+    return false
+  }
+
   async function myName () {
     return (await hyper.contacts.me()).name
   }
@@ -73,6 +107,7 @@ export function chat (hyper) {
       need(String(name || '').trim(), 'a group needs a name')
       const g = await hyper.instances.create(String(name).trim(), { private: true })
       const c = at(g.key)
+      await c.setHistory('hidden') // encrypted: each message its own key; a new member reads from its join on
       await c.defineRole('inviter', ['post', 'invite'])
       const me = await myName()
       if (me) await c.put('profile', { name: me })
@@ -115,9 +150,10 @@ export function chat (hyper) {
     async join (link) {
       const g = await hyper.instances.join(link)
       const me = await myName()
-      if (me) await at(g.key).put('profile', { name: me })
+      if (me && await keyCame(g.key)) await at(g.key).put('profile', { name: me })
       return g
     },
+    keyCame,
 
     /** @param {string} key @param {string} identity @param {string} role */
     grant: (key, identity, role) => at(key).setRole(identity, role),
@@ -134,6 +170,10 @@ export function chat (hyper) {
     onCopies: (key, fn) => at(key).on('copies', fn),
     /** @param {string} key */
     changeKey: (key) => at(key).rotateKey(),
+    /** @param {string} key @param {boolean} keep newcomers read the history (a group's choice, after a warning) */
+    keepHistory: (key, keep) => at(key).setHistory(keep ? 'visible' : 'hidden'),
+    /** @param {string} key @param {number | null} ms */
+    disappearAfter: (key, ms) => at(key).setDisappearing(ms),
     /** @param {string} key @param {{ forgetHistory?: boolean }} [opts] */
     secure: (key, { forgetHistory = false } = {}) => at(key).secure({ forget: forgetHistory }),
     /** @param {string} key @param {number} before */

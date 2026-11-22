@@ -105,7 +105,8 @@ declare namespace Hyper {
     you: boolean
     banned: boolean
     removed: boolean
-    devices: Array<{ device: Key, log: string }>
+    /** `added`: when the device joined an encrypted conversation that hides its history (ms), else null. */
+    devices: Array<{ device: Key, log: string, added: number | null }>
   }
 
   interface Peer {
@@ -123,6 +124,8 @@ declare namespace Hyper {
     onePerMember: boolean
     editable: 'author' | 'members' | { permission: string }
     index: string[][]
+    /** Every member reads its records, newcomers to an encrypted conversation too (app state, never content). */
+    shared: boolean
     builtin: boolean
   }
 
@@ -154,8 +157,10 @@ declare namespace Hyper {
     parent: Key | null
     private: boolean
     typesVersion: number
-    /** Who reads a private space's history: 'shared' or 'hidden' (each member from its join on). */
+    /** Who reads a private space's history: 'visible' (newcomers read it) or 'hidden' (each member from its join on, each message with its own key). */
     history: string
+    /** Messages go after this many ms on every member's device; null: they stay. */
+    disappearing: number | null
     helpers: Key[]
     /** It was secured (secure()): a new space took its place. */
     moved: boolean
@@ -172,6 +177,8 @@ declare namespace Hyper {
     change: { types: string[], records: Array<{ id: string, type: string, deleted: Deletion | null }> }
     peers: Peer[]
     members: null
+    /** A member added a device (a conversation that hides its history): it reads from now on. */
+    devices: { identity: Key, device: Key, added: number }
     decisions: null
     status: Status
     copies: Copies
@@ -241,6 +248,10 @@ declare namespace Hyper {
     secure (opts?: { forget?: boolean }): Promise<{ key: Key }>
     /** Deletes the records written before a time (ms), everywhere they are held. Copies already taken stay. */
     trimHistory (opts: { before: number }): Promise<null>
+    /** 'hidden': newcomers read from their join on, each message has its own key, erased when it goes; 'visible': newcomers read the history (owners and admins, private spaces). */
+    setHistory (history: 'visible' | 'hidden'): Promise<null>
+    /** Messages go after `ms` (at least 60000) on every member's device; null: off (owners and admins, private spaces). A modified app can keep what it read. */
+    setDisappearing (ms: number | null): Promise<null>
     on<E extends keyof Events> (event: E, fn: (data: Events[E]) => void): Unsubscribe
   }
 

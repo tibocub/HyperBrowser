@@ -129,6 +129,16 @@ know what is new since the last visit. At most 1000 records a call (the default 
   admins of a private instance only (`NOT_ALLOWED` otherwise, on a public space or a sub-space);
   `ALREADY_RENEWED` if another admin renewed it first (its message names them). The app's instance list and a page
   still on the old key follow by themselves (`info().key` is the new one).
+- `hyper.setHistory('visible' | 'hidden')` (or on an instance): `'hidden'` makes a private space an encrypted
+  conversation (each message its own key; newcomers and new devices read from their join on); `'visible'`
+  keeps the history for newcomers. Owners and admins (`NOT_ALLOWED` otherwise), private spaces only;
+  `INVALID_PARAMS` for another value. `info().history` reads it.
+- `hyper.setDisappearing(ms | null)`: messages go after `ms` (at least 60000) on every member's device; `null`:
+  off. Owners and admins of a private space. `info().disappearing` reads it. Say in your app that a modified
+  app can keep messages.
+- `members()` gives each device `added` (when it joined an encrypted conversation, else null), and
+  `hyper.on('devices', ({ identity, device, added }) => {})` fires when a member adds one: show "X added a
+  device".
 - `hyper.instance(k).trimHistory({ before })`: records written before `before` (ms since 1970) are deleted on
   every member's device and every copy the circles keep; copies others already took can't be recalled. Owners
   and admins, any instance.

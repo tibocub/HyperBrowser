@@ -19,7 +19,7 @@ const KEY = /^[ybndrfg8ejkmcpqxot1uwisza345h769]{52}$/
 const CALLS = new Set(['put', 'get', 'edit', 'del', 'query', 'since', 'linked', 'count', 'sum', 'members', 'decisions', 'tags',
   'relate', 'unrelate', 'edges', 'tag', 'untag', 'getByTag', 'getRole', 'setRole', 'removeRole', 'defineRole', 'roles',
   'moderateAction', 'report', 'reports', 'createInvite', 'revokeInvite', 'createSubspace', 'subspaces', 'redemptions',
-  'peers', 'status', 'isComplete', 'completeFrom', 'types', 'copies', 'rotateKey', 'secure', 'trimHistory'])
+  'peers', 'status', 'isComplete', 'completeFrom', 'types', 'copies', 'rotateKey', 'secure', 'trimHistory', 'setHistory', 'setDisappearing'])
 const MINE = new Set(['mine.all', 'mine.set'])
 const INSTANCES = new Set(['instances.list', 'instances.create', 'instances.join', 'instances.leave'])
 const CONTACTS = new Set(['contacts.me', 'contacts.setMe', 'contacts.list', 'contacts.request', 'contacts.accept',
@@ -35,7 +35,7 @@ const MINE_PREFIX = 'hyperbrowser/site/'
 const MINE_VALUE_MAX = 64 * 1024
 const MINE_SITE_MAX = 1024 * 1024
 const FILTERS = new Set(['by', 'on', 'where', 'tag', 'since', 'until', 'moderated', 'fromDevice'])
-const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'helpers', 'moved', 'movedTo', 'renewal']
+const INFO = ['key', 'name', 'parent', 'private', 'typesVersion', 'history', 'disappearing', 'helpers', 'moved', 'movedTo', 'renewal']
 // hypergraph's grace for a closed topic: a tab closed by mistake comes back without finding peers again.
 const GRACE = 5 * 60 * 1000
 // Long enough that a page coming back at once finds the handle still open.
@@ -619,6 +619,15 @@ export function start (ipc) {
     if (method === 'copies') return sfs.hg.copiesOf((args[0] === undefined || args[0] === null ? t : await ownSpace(key, t, args[0])).key)
     if (method === 'rotateKey') return plain(await sfs.hg.space(t.key).rotateKey()) // the handle has none; t passed the guard
     if (method === 'secure') return secure(t, args[0]) // hypergraph lets owners and admins only
+    if (method === 'setHistory') { // who may decide: checked by hypergraph
+      if (args[0] !== 'visible' && args[0] !== 'hidden') throw error('INVALID_PARAMS', "setHistory('visible' | 'hidden')")
+      return plain(await sfs.hg.space(t.key).setHistory(args[0]))
+    }
+    if (method === 'setDisappearing') {
+      const ms = args[0] ?? null
+      if (ms !== null && (!Number.isSafeInteger(ms) || ms < 60000)) throw error('INVALID_PARAMS', 'setDisappearing(ms): at least 60000, or null: off')
+      return plain(await sfs.hg.space(t.key).setDisappearing(ms))
+    }
     if (method === 'trimHistory') {
       const before = args[0]?.before
       if (typeof before !== 'number' || Number.isNaN(before)) throw error('INVALID_PARAMS', 'trimHistory({ before }): a time in ms')

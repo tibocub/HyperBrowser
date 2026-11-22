@@ -227,8 +227,11 @@ The `circles` event fires 300 ms after a change: read the list again.
 Site calls on a page's own space, sub-spaces and app instances (any other key is `NOT_ALLOWED`):
 
 - `copies`, and `site.on { event: 'copies' }` when hypergraph's `copies` event changes them;
-- `rotateKey`, `secure`, `trimHistory`, through `hg.space(key)` (the site handle has none); hypergraph allows
-  owners and admins only.
+- `rotateKey`, `secure`, `trimHistory`, `setHistory`, `setDisappearing`, through `hg.space(key)` (the site
+  handle has none); hypergraph allows owners and admins only. `setHistory` and `setDisappearing` check their
+  value first (`INVALID_PARAMS`).
+- A direct conversation (`engine/contacts.js`) is created with `setHistory('hidden')`, and the friend becomes
+  an admin once the engine sees them join, so both people change its key.
 
 When a place is renewed (here or on another of the person's devices), every app's instance list is updated to
 its new key on hypergraph's `spaces` event, one pass at a time, and a call naming the old key reaches the new

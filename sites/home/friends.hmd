@@ -38,7 +38,16 @@ By default only you add people and moderate. Give someone more with the menu nex
 | Moderator | delete anyone's messages, remove or ban members |
 | Admin | everything but owning the group: rights, moderation settings |
 
-A member who is removed or banned can't read anything written after that. Click **Leave the group** to leave it.
+A member who is removed or banned can't read anything written after that. Chat then offers **Secure this group…**: it also hides from them who joins and who writes from then on. Click **Leave the group** to leave it.
+
+## Encrypted conversations
+
+Every conversation, with a friend or in a group, is encrypted, and each message has its own key. Someone who joins a group, or a new computer of someone already in it, reads what is written from then on, nothing before. The names people show and the group itself are visible to whoever is in it, including someone removed until the group is secured.
+
+- **Messages disappear**: in a conversation's **…**, owners and admins (in a conversation with a friend, both of you) pick Off, 1 hour, 1 day, 7 days or 30 days. Older messages are then deleted from everyone's computer. Someone using a modified app can still keep them.
+- **"Ann added a device"** shows in the conversation when someone starts using it on another computer.
+- **Keep history for new members…** (in a group's **…**, owners and admins): new members read what is written from then on, before they came too. What was written until then stays unreadable to them.
+- The key changes by itself: when someone joins or leaves, every week, and after many messages.
 
 ## Good to know
 

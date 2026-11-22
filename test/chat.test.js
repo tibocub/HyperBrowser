@@ -2,7 +2,7 @@ import test from 'brittle'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { engine, siteApi, codeOf, eventually, sleep } from './helpers.js'
-import { chat, copiesLine, circleOf, acceptLabel } from '../sites/chat/lib/chat.js'
+import { chat, copiesLine, circleOf, acceptLabel, deviceNotices, disappearLabel, ENCRYPTED, ENCRYPTED_KEPT, KEEP_HISTORY_TEXT, HIDE_HISTORY_TEXT, DISAPPEAR_NOTE, DISAPPEAR } from '../sites/chat/lib/chat.js'
 import { keepScroll, newLine } from '../sites/chat/lib/scroll.js'
 
 const FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'sites', 'chat')
@@ -163,4 +163,46 @@ test("the shell invites two friends to a circle: each finds it in Chat; a pasted
   await b.e.rpc.request('circles.join', { link: mb.circle })
   t.ok(await eventually(async () => (await a.e.rpc.request('circles.members', { key: ring.key })).some((m) => m.identity === b.id), 30000), 'Bob is in')
   t.is(await codeOf(c.e.rpc.request('circles.join', { link: mb.circle })), 'INVITE_USED_UP', "Bob's link is spent: Cid can't use it")
+})
+
+test('conversations are encrypted, each member reading from their join on; both people of a direct one are admins; messages can disappear', async (t) => {
+  t.timeout(300000)
+  const owner = await engine(t)
+  const { key } = await owner.rpc.request('site.publish', { folder: FOLDER })
+  const [ann, bob, cleo] = [await person(t, key, 'Ann'), await person(t, key, 'Bob'), await person(t, key, 'Cleo')]
+
+  await befriend(ann, bob)
+  const direct = (await ann.c.conversations()).find((x) => x.direct?.identity === bob.id)
+  t.is((await ann.c.info(direct.key)).history, 'hidden', 'a direct conversation hides its history')
+  t.ok(await eventually(async () => (await bob.c.role(direct.key)) === 'admin', 30000), 'Bob, who joined it, is an admin too')
+  await bob.c.disappearAfter(direct.key, 3600e3)
+  t.ok(await eventually(async () => (await ann.c.info(direct.key)).disappearing === 3600e3, 15000), 'either one sets the timer: Ann sees it')
+  t.is(await codeOf(ann.c.disappearAfter(direct.key, 10)), 'INVALID_PARAMS', 'under a minute: refused')
+
+  const g = await ann.c.group('Book club')
+  t.is((await ann.c.info(g.key)).history, 'hidden', 'a group hides its history')
+  await ann.c.send(g.key, 'before Cleo')
+  await befriend(ann, cleo)
+  await ann.c.add(g.key, 'Book club', await contactOf(ann, cleo))
+  await joinFromInvite(cleo, ann)
+  t.ok(await cleo.c.keyCame(g.key), 'Cleo got the key')
+  await ann.c.send(g.key, 'after Cleo')
+  t.ok(await eventually(async () => (await texts(cleo, g.key)).includes('after Cleo'), 15000), 'Cleo reads what came after she joined')
+  t.absent((await texts(cleo, g.key)).includes('before Cleo'), 'not before')
+  t.is(await codeOf(cleo.c.keepHistory(g.key, true)), 'NOT_ALLOWED', 'a member does not choose')
+  await ann.c.keepHistory(g.key, true)
+  t.ok(await eventually(async () => (await cleo.c.info(g.key)).history === 'visible', 15000), 'an admin keeps the history for new members')
+})
+
+test('"X added a device" lines, the labels of the timer, and the wording says encrypted, never more', (t) => {
+  const member = (identity, ...added) => ({ identity, role: 'member', you: false, banned: false, removed: false, devices: added.map((a, i) => ({ device: 'd' + i, log: 'l' + i, added: a })) })
+  const names = { ann: 'Ann', me: 'you' }
+  const lines = deviceNotices([member('ann', 30, 10, 20), member('me', 5, 40), member('bob', null)], (id) => names[id] || id)
+  t.alike(lines.map((l) => [l.at, l.text]), [[20, 'Ann added a device'], [30, 'Ann added a device'], [40, 'You added a device']], 'every device after the first, by when it came')
+  t.alike(DISAPPEAR.map(([ms]) => ms), [null, 3600e3, 24 * 3600e3, 7 * 24 * 3600e3, 30 * 24 * 3600e3], 'off, 1 hour, 1 day, 7 days, 30 days')
+  t.is(disappearLabel(null), 'Off')
+  t.is(disappearLabel(7 * 24 * 3600e3), '7 days')
+  for (const text of [ENCRYPTED, ENCRYPTED_KEPT, KEEP_HISTORY_TEXT, HIDE_HISTORY_TEXT, DISAPPEAR_NOTE]) t.absent(/secure|forward secre|safe/i.test(text), 'no claim beyond "encrypted": ' + text.slice(0, 30))
+  t.ok(ENCRYPTED.startsWith('Encrypted') && ENCRYPTED_KEPT.startsWith('Encrypted'))
+  t.ok(/modified app/.test(DISAPPEAR_NOTE), 'it says a modified app can keep messages')
 })

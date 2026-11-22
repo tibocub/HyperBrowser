@@ -127,6 +127,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
       types = parseManifest(await app.read('site.json')).types || {}
     }
     const site = await sfs.createSite((await myName()) || 'Chat', { app: /** @type {string} */ (chat), types, private: true })
+    await site.space.setHistory('hidden') // encrypted: each message its own key; a new device reads from its join on
     await listInstance(/** @type {string} */ (chat), site.key, true)
     await putName(site.space)
     return site
@@ -309,10 +310,12 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
   async function joined (key, expected) {
     let others
     try {
-      others = (await sfs.hg.space(key).members()).filter((m) => !m.you && m.role && !m.banned).map((m) => m.identity)
+      others = (await sfs.hg.space(key).members()).filter((m) => !m.you && m.role && !m.banned)
     } catch { return }
-    for (const id of others) {
+    for (const { identity: id, role } of others) {
       if (expected ? id === expected : true) {
+        // both people of a direct conversation are admins: either one changes its key (a new device, a removal)
+        if (role !== 'admin') await sfs.hg.space(key).setRole(id, 'admin').catch(noop)
         const name = await nameIn(key, id)
         await update((l) => {
           if (expected && l[id]?.state !== 'outgoing') return
