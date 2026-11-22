@@ -80,7 +80,8 @@ An **identity** is a separate you: its own key, contacts, conversations, circles
 - **New identity…**: **HyperBrowser ▾** → **New identity…**, give it a name (only you see it), **Create**.
 - **Switch**: **HyperBrowser ▾** → **Switch to …**. The window closes and opens again under the other identity: one is open at a time, and nothing of the other keeps running.
 - **Manage identities…**: rename one, show its **recovery phrase**, or delete one you don't use. Write each phrase down: it is that identity.
-- **Delete…** removes everything of that identity from this computer, for good. HyperBrowser shows its recovery phrase first. Keep the phrase: it is the only way to get that identity back (restoring from a phrase comes in a later version), and even then not what this computer kept for it.
+- **Delete…** removes everything of that identity from this computer, for good. HyperBrowser shows its recovery phrase first. Keep the phrase: it is the only way to get that identity back, and even then not what this computer kept for it.
+- **Restore from a recovery phrase…**: in **Manage identities…**, give the identity a name, type its 24 words, **Restore**. This computer becomes a new device of that identity: your forums, roles and settings come back from your other devices and circles as they are reached. If the words are wrong, nothing is added and HyperBrowser says so.
 
 What identities don't do yet, honestly:
 

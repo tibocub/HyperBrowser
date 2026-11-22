@@ -207,16 +207,38 @@ data. One is open at a time.
 - each identity: **Open** (the others), and **…**: **Rename** (only on this computer), **Show recovery phrase**,
   **Delete…** (the others);
 - **Name** and **Create**, then **Open "<name>" now**;
+- **Restore from a recovery phrase…**: a name field and a field for the 24 words, **Restore** and **Cancel**. See
+  [Restoring](#restoring-an-identity-from-its-recovery-phrase);
 - **Delete…** shows the phrase first (a **Password** field appears if it is protected), says it can't be undone
-  without the phrase, and deletes on **Delete "<name>"**; **Cancel** has the focus. Restoring from a phrase isn't in
-  HyperBrowser yet: SwarmFS's `open` doesn't pass hypergraph's `mnemonic` on.
-- Keyboard: Tab through the window, Enter or Space on a button, Enter in a name field, Escape closes.
+  without the phrase (and where to restore from it), and deletes on **Delete "<name>"**; **Cancel** has the focus.
+- Keyboard: Tab through the window, Enter or Space on a button, Enter in a name field (the restore's moves to the
+  words), Escape closes.
 
 **Switching** (`main.js` `switchTo`) destroys the window (every site view, the tray, the popups), stops the engine,
 starts it on the other identity's folder and opens a new window. A window's late calls never reach the next
 engine (`era`), and an identity question answered after a switch goes to the engine that asked, which has closed.
 If the other identity's engine fails to start, the one before opens again. A device join keeps the window (it
 restarts the engine on the same identity's folder).
+
+### Restoring an identity from its recovery phrase
+
+`main.js` `restore(name, words)`: the words are trimmed, lowercased and must be 24 (else "A recovery phrase is 24
+words.", nothing made); the name is checked as for **Create**. A new entry (`identity-<id>`) is made, then a switch
+to it whose engine gets `init { mnemonic }` on that first start only: hypergraph restores the identity in the new
+folder and keeps the phrase there (its own file, as for a new identity); later starts don't pass it. The new window
+opens the Identities window with ""<name>" is restored: this computer is a new device of that identity."
+
+On any failure (hypergraph's "Invalid mnemonic" for words that aren't a phrase, or the engine not starting), the one
+before opens again, the new entry and its folder are deleted through the guarded delete (`removeIdentity`, as
+**Delete…**), and its window says "Could not restore "<name>": <hypergraph's message>. Check the 24 words and try
+again." (plus why, if the folder couldn't be deleted). The words are never logged or written anywhere but by
+hypergraph; the field is emptied once sent, on **Cancel**, and when the window closes.
+
+A phrase restores the identity, not this computer's copy of what another device kept: spaces, roles, contacts and
+settings come back from the personal space as the person's other devices (or circles) serve it. If another device of
+that identity is still running, this one is simply a second device of the same person (hypergraph proves each
+device from the identity key): both keep working, and either can remove the other with the phrase. Restoring a
+phrase that is already an identity on this computer makes a second entry of the same person; it isn't refused.
 
 **On disk** (`identities.js`), in the data folder (`%APPDATA%\HyperBrowser` on Windows):
 
@@ -247,7 +269,8 @@ Disk: a new identity's engine folder is about 2 MB, plus the official apps it im
 bundle (1.7 MB of sources), plus about 2 to 3 MB of Chromium files per site it opens.
 
 Tested by `test/identities.test.js` (the list, the upgrade, keys, spaces and contacts) and
-`shell/selftest/identities.js` through `test/sandbox.electron.js` (site storage, the switch, the processes, deleting).
+`shell/selftest/identities.js` through `test/sandbox.electron.js` (site storage, the switch, the processes, deleting,
+restoring: the same identity key, a bad phrase leaving no entry or folder, the words never in the output).
 
 ## The tray
 

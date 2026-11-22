@@ -1,5 +1,6 @@
 // Two identities on one profile, through the frame's own controls: a switch leaves nothing of the first running,
-// site storage stays with its identity, a delete takes all of one and nothing of the other.
+// site storage stays with its identity, a delete takes all of one and nothing of the other, a recovery phrase
+// restores a deleted one and a bad phrase leaves nothing.
 // Used by test/sandbox.electron.js (--identitycheck run, then --identitycheck sweep on the same profile).
 import { app } from 'electron'
 import fs from 'fs'
@@ -110,6 +111,33 @@ export async function identitycheck ({ ui, ids, engine, pid, switching }) {
   ok('its site data is cleared', JSON.parse(await site(b.prefix, READ)).ls === null)
   const afterA = JSON.parse(await site(a.prefix, READ))
   ok('Main is intact: its folder, keys and site data', fs.existsSync(a.dir) && JSON.stringify(await keys()) === JSON.stringify(aKeys) && afterA.ls === 'set' && afterA.idb === true)
+
+  // Restore: everything written meanwhile (the shell's and the engine's output) is kept to check it never has the words.
+  const words = phrase.result.words
+  let said = ''
+  const writes = [process.stdout, process.stderr].map((s) => { const w = s.write; s.write = (/** @type {any} */ c, /** @type {any[]} */ ...r) => { said += String(c); return w.call(s, c, ...r) }; return () => { s.write = w } }) // any: write's overloads
+  /** @param {string} name @param {string} typed */
+  const restore = (name, typed) => inFrame(`document.getElementById('hb').click(); document.getElementById('m-ids').click(); document.getElementById('id-restore').click()
+    document.querySelector('#id-out input').value = ${JSON.stringify(name)}; document.querySelector('#id-out textarea').value = ${JSON.stringify(typed)}
+    ;[...document.querySelectorAll('#id-out button')].find((b) => b.textContent === 'Restore').click()`)
+  await restore('Short', words.split(' ').slice(1).join(' '))
+  await wait(300)
+  ok('23 words: refused in the window, the field cleared, no entry', await inFrame("document.getElementById('id-out').textContent.includes('24 words') && document.querySelector('#id-out textarea').value === ''") && ids.list().length === 1)
+  const main = frameOf()
+  await restore('Work again', words)
+  ok('Restore Work from its phrase: a new window on a new entry', await until(() => ui() && ui() !== main && !switching()) && ids.current().name === 'Work again')
+  ok('the same identity key, a new device key', (await keys()).identity === bKeys.identity && (await keys()).device !== bKeys.device)
+  ok('the identities window says so', String(await inFrame("!document.getElementById('identities').hidden && document.getElementById('id-out').textContent")).includes('"Work again" is restored'))
+  const again = ids.current()
+  const restored = frameOf()
+  await restore('Bad', words.split(' ').reverse().join(' '))
+  ok('a bad phrase: back on the identity before', await until(() => ui() && ui() !== restored && !switching()) && ids.current().id === again.id && (await keys()).identity === bKeys.identity)
+  const folders = fs.readdirSync(app.getPath('userData')).filter((n) => n.startsWith('identity-'))
+  ok('no new entry, no new folder', !ids.list().some((i) => i.name === 'Bad') && folders.length === 1 && folders[0] === 'identity-' + again.id)
+  ok('the window says why', String(await inFrame("document.getElementById('id-out').textContent")).includes('Could not restore "Bad"'))
+  for (const undo of writes) undo()
+  ok('the words were never written out', said.length > 0 && !said.includes(words) && !said.includes(words.split(' ').slice(0, 3).join(' ')))
+
   console.log('IDENTITYCHECK LEFT ' + bSessions) // a session opened since launch keeps its folder: the next start sweeps it
   console.log(all ? 'IDENTITYCHECK PASS' : 'IDENTITYCHECK FAIL')
   frameOf().win.destroy()
