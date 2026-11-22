@@ -1,0 +1,71 @@
+# The full suite on Linux and Windows, Node and Bare, as four parallel jobs.
+# HyperBrowser links ../hypergraph, ../hyperDNS, ../SwarmFS (which links
+# ../swarmwire) and ../HyperMD (file: dependencies): they are checked out side
+# by side at their default branch, installed and their types built first, in
+# dependency order. Local runs pick tests with --quick/--merge; this runs all.
+# The Electron sandbox checks (npm run test:sandbox) need a desktop: not here.
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.runtime }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        runtime: [node, bare]
+    env:
+      HB_TEST_JOBS: 3 # 4 cores on hosted runners; the 4th runs the runner and the DHT
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1 # npm test and test:bare never start Electron
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: HyperBrowser
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/hypergraph
+          path: hypergraph
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/swarmwire
+          path: swarmwire
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/HyperDNS
+          path: hyperDNS
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/SwarmFS
+          path: SwarmFS
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/hypermd
+          path: HyperMD
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: siblings (install, build types)
+        run: |
+          for dir in hypergraph swarmwire HyperMD hyperDNS SwarmFS; do
+            (cd "$dir" && if [ -f package-lock.json ]; then npm ci; else npm install; fi && npm run types)
+          done
+      - run: npm ci
+        working-directory: HyperBrowser
+      - run: npm run typecheck
+        working-directory: HyperBrowser
+        if: matrix.runtime == 'node'
+      - run: npm test
+        working-directory: HyperBrowser
+        if: matrix.runtime == 'node'
+      - run: npm run test:bare
+        working-directory: HyperBrowser
+        if: matrix.runtime == 'bare'

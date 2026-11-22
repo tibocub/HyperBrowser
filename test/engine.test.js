@@ -9,6 +9,7 @@ test('before init: NOT_READY; init gives the identity; a second init: ALREADY', 
   const e = await engine(t, { init: false })
   t.is(await codeOf(e.rpc.request('site.open', { key: 'x' })), 'NOT_READY')
   t.is(await codeOf(e.rpc.request('init', {})), 'INVALID_PARAMS')
+  t.is(await codeOf(e.rpc.request('init', { dir: e.dir, minFree: -1 })), 'INVALID_PARAMS', 'minFree: bytes, not negative')
   const r = await e.rpc.request('init', { dir: e.dir, bootstrap: await bootstrap(t) })
   t.is(typeof r.identity, 'string')
   t.is(r.version, 1)

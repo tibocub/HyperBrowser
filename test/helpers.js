@@ -21,6 +21,10 @@ export async function engine (t, { init = true, dir = tmpDir(t, 'hb'), ...opts }
       for (const fn of listeners) fn(event, data)
     }
   })
+  // SwarmFS fetches nothing while the temp disk has less free than its floor (max(5 GB, 5 % of
+  // the disk)); tests set no floor, as SwarmFS's own tests do.
+  const request = rpc.request.bind(rpc)
+  rpc.request = (method, args) => request(method, method === 'init' ? { minFree: 0, ...args } : args)
   t.teardown(() => within(rpc.request('close').catch(() => {}), 15000)) // before the folders go (order 1000)
   if (init) await rpc.request('init', { dir, bootstrap: await bootstrap(t), ...opts })
   return { rpc, dir, engine: eng, events, listeners, next: () => new Promise((resolve) => waiters.push(resolve)) }
