@@ -81,13 +81,35 @@ export function chat (hyper) {
   /** @param {string} key */
   const at = (key) => hyper.instance(key)
 
-  // An encrypted conversation's key comes once a member who may change it is online and lets this device in.
-  /** @param {string} key @param {number} [ms] @returns {Promise<boolean>} */
-  async function keyCame (key, ms = 30000) {
-    for (const end = Date.now() + ms; Date.now() < end; await new Promise((resolve) => setTimeout(resolve, 200))) {
-      if ((await at(key).status()).access === 'full') return true
+  // This person's name in a conversation, put once its key is here: an encrypted conversation's key
+  // comes when a member who may change it is online, maybe much later or after a restart.
+  /** @type {Set<string>} */
+  const naming = new Set()
+  /** @param {string} key @returns {Promise<boolean>} whether the name is in place */
+  async function ensureProfile (key) {
+    if (naming.has(key)) return false
+    naming.add(key)
+    try {
+      const name = await myName()
+      if (!name) return true
+      const s = at(key)
+      if ((await s.status()).access !== 'full') return false
+      const { identity } = await hyper.info()
+      const mine = (await s.query('profile').by(identity).latest(1)).items[0]
+      if (!mine || mine.name !== name) await s.put('profile', { name })
+      return true
+    } finally {
+      naming.delete(key)
     }
-    return false
+  }
+  // Puts the name now if it can, else when the conversation's status changes (its key arriving).
+  /** @param {string} key @returns {Hyper.Unsubscribe} */
+  function keepProfile (key) {
+    let stop = () => {}
+    const check = () => ensureProfile(key).then((done) => { if (done) stop() }, () => {})
+    stop = at(key).on('status', check)
+    check()
+    return () => stop()
   }
 
   async function myName () {
@@ -149,11 +171,10 @@ export function chat (hyper) {
     /** @param {string} link */
     async join (link) {
       const g = await hyper.instances.join(link)
-      const me = await myName()
-      if (me && await keyCame(g.key)) await at(g.key).put('profile', { name: me })
+      keepProfile(g.key) // until it is put
       return g
     },
-    keyCame,
+    keepProfile,
 
     /** @param {string} key @param {string} identity @param {string} role */
     grant: (key, identity, role) => at(key).setRole(identity, role),

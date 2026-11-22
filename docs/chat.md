@@ -99,8 +99,9 @@ entry.
 Every conversation hides its history (hypergraph's secure conversations, spec 031): the engine calls
 `setHistory('hidden')` on each direct conversation it creates (`engine/contacts.js`) and Chat on each group
 (`chat.group`). Each message has its own key; a newcomer, or a member's new device, reads from its join on.
-`chat.join` waits for the key (`keyCame`: `status().access === 'full'`, up to 30 s) before writing the
-person's `profile`. SwarmFS's `site` and `profile` are hypergraph *shared* types, so a newcomer reads the
+The person's `profile` (their name) is written once this device holds the key, whenever that is: right after
+`chat.join` if a member who may change the key is online, else when its `status` event says access turned
+`'full'` (`chat.keepProfile`, also run when a conversation opens, so a restart catches up). SwarmFS's `site` and `profile` are hypergraph *shared* types, so a newcomer reads the
 site record and everyone's names; someone removed keeps reading those (not messages) until the group is
 secured.
 

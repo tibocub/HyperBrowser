@@ -110,6 +110,7 @@ function open (key) {
   stops.push(c.invites(key, ({ items }) => { v.invites = items; draw() }))
   stops.push(hyper.instance(key).on('members', members))
   stops.push(hyper.instance(key).on('devices', members)) // "X added a device"
+  stops.push(c.keepProfile(key)) // the name, once this device holds the key
   stops.push(hyper.instance(key).on('decisions', info)) // the history and timer settings
   stops.push(c.onCopies(key, (x) => { v.copies = x; draw() }))
   copies()
