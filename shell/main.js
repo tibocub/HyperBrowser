@@ -443,6 +443,9 @@ function layout (win, views) {
 
 /** @param {string} dir */
 async function selftest (dir) {
+  let t0 = Date.now()
+  /** @param {string} name */
+  const step = (name) => { console.log(`STEP ${name} ${Date.now() - t0} ms`); t0 = Date.now() } // which step is slow
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-selftest-'))
   /** @param {string} name @param {object} manifest */
   const folder = (name, manifest) => {
@@ -459,6 +462,7 @@ async function selftest (dir) {
     keys.push((await rpc.request('site.publish', { folder: folder(name, manifest) })).key)
   }
   const [a, b, c] = keys
+  step('publish')
   await rpc.request('apps.set', { chat: a })
   const views = [await openSite(a, '?other=' + b), await openSite(b, '?other=' + a), await openSite(c, '?other=' + a + '&static=1')]
   const win = new BaseWindow({ width: 1500, height: 800, title: 'HyperBrowser self-test' + (GUARDS ? '' : ' (no guards)') })
@@ -477,6 +481,7 @@ async function selftest (dir) {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   clearTimeout(timeout)
+  step('pages')
   /** @type {Check[]} */
   const out = /** @type {Check[][]} */ (results).flat()
   out.push({ site: 'shell', name: 'the identity question: asked once per dynamic site, never for the static one', pass: asked.length === 2 && asked.includes(a) && asked.includes(b) })
@@ -503,13 +508,21 @@ async function selftest (dir) {
   const styled = await views[0].webContents.executeJavaScript(look)
   out.push({ site: 'shell', name: 'a page with no stylesheet gets the default theme (fonts, a fixed dither)', pass: plain === "\"HB Plex Mono\", ui-monospace, monospace|fixed" })
   out.push({ site: 'shell', name: 'a page with its own <style> keeps its look', pass: !styled.includes('HB ') })
+  step('shell checks')
   await checkLoads(views, out)
+  step('loads')
   await checkNotifications(views, out)
+  step('notifications')
   await checkCircles(views, out)
+  step('circles')
   const chat = await checkChat(win, views, out, tmp)
+  step('chat')
   await checkChatLine(chat, out, tmp)
+  step('chat line')
   await checkMenus(win, views, out, tmp, chat)
+  step('menus')
   await checkIde(win, views, out, tmp, chat)
+  step('ide')
   for (const r of out) console.log((r.pass ? 'PASS ' : 'FAIL ') + r.site + '  ' + r.name)
   const ok = out.every((r) => r.pass)
   console.log(ok ? 'SELFTEST PASS' : 'SELFTEST FAIL')
