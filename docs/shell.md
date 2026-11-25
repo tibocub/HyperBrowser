@@ -14,6 +14,7 @@ the shell talks to the engine ([engine.md](engine.md)), and it names the site fr
 | `identities.js` | this computer's identities: `identities.json`, each one's folders and site sessions |
 | `tray.js` | the tray icon |
 | `updater.js` | the update worker |
+| `router.js` | the I2P router's supervisor ([router.md](router.md)) |
 | `preset.json` | the official apps' keys on a new desktop |
 
 ```bash

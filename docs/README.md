@@ -15,6 +15,7 @@ set up and test is in [CONTRIBUTING.md](../CONTRIBUTING.md). User documentation 
 | [home-site.md](home-site.md) | the official site: building, publishing in HyperBrowser and on GitHub Pages |
 | [helper.md](helper.md) | the always-on helper for a server |
 | [packaging.md](packaging.md) | building, releasing, installing and updating |
+| [router.md](router.md) | the I2P router: the i2pd addon, its process and supervisor, builds and the Defender scan, soak |
 
 `specs/` holds the design history: one folder per feature, with its spec, plan and decisions. It records how
 things were decided; these docs say how they work now.

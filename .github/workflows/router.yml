@@ -1,0 +1,66 @@
+# The I2P router addon (i2pd as a Node-API library) for Windows, Linux and macOS. The Windows build is scanned by
+# Defender and the job fails on any detection: a flagged build is never shipped (see docs/router.md).
+name: router
+
+on:
+  push:
+    paths: ['router/addon/**', '.github/workflows/router.yml']
+  workflow_dispatch:
+
+env:
+  I2PD_COMMIT: 137dde2f433b2142eec7a2307608d7d082be086f # i2pd tag 3.0.0, pinned by its commit: a tag can move
+  VCPKG_PORTS: boost-asio boost-beast boost-filesystem boost-program-options boost-atomic boost-property-tree boost-date-time openssl zlib
+
+jobs:
+  addon:
+    name: ${{ matrix.host }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, host: win32-x64, triplet: x64-windows-static }
+          - { os: ubuntu-latest, host: linux-x64, triplet: x64-linux }
+          - { os: macos-latest, host: darwin-arm64, triplet: arm64-osx }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: PurpleI2P/i2pd, ref: '${{ env.I2PD_COMMIT }}', path: i2pd-src }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm pack node-api-headers@1.5.0 && tar xzf node-api-headers-1.5.0.tgz
+        shell: bash
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: dependencies (vcpkg, static)
+        shell: bash
+        run: |
+          "$VCPKG_INSTALLATION_ROOT/vcpkg" install --triplet ${{ matrix.triplet }} $VCPKG_PORTS
+          echo "DEPS=$VCPKG_INSTALLATION_ROOT/installed/${{ matrix.triplet }}" >> $GITHUB_ENV
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: build (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          mkdir out
+          lib /nologo /def:router\addon\napi.def /machine:x64 /out:out\napi.lib || exit /b 1
+          cmake -S router\addon -B out -G Ninja -DCMAKE_BUILD_TYPE=Release -DI2PD_SRC=%CD%\i2pd-src -DDEPS=%DEPS% -DNODE_INC=%CD%\package\include -DNODE_LIB=%CD%\out\napi.lib || exit /b 1
+          cmake --build out
+      - name: build (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: router/addon/build.sh "$PWD/i2pd-src" "$DEPS" "$PWD/package/include" out
+      - name: Defender scan, fails on any detection
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -SignatureUpdate
+          & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -Scan -ScanType 3 -File "$PWD\out\i2pd_addon.node" -DisableRemediation
+          if ($LASTEXITCODE -ne 0) { Write-Error "Defender flagged the addon (exit $LASTEXITCODE): do not ship it"; exit 1 }
+      - name: load check (Node)
+        shell: bash
+        run: node -e "const a = require('./out/i2pd_addon.node'); if (typeof a.start !== 'function' || a.status().running !== false) process.exit(1)"
+      - run: mkdir -p prebuilds/${{ matrix.host }} && cp out/i2pd_addon.node prebuilds/${{ matrix.host }}/i2pd.node
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with: { name: 'router-${{ matrix.host }}', path: prebuilds }
