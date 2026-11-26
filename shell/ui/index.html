@@ -10,6 +10,7 @@
 <div id="bars">
   <header id="top">
     <button id="hb" class="btn" aria-haspopup="menu" aria-expanded="false"><span class="g" data-g="hb"></span><span id="hb-text">HyperBrowser ▾</span></button>
+    <span id="anon" class="badge" hidden title="This identity is anonymous: over I2P, your IP is hidden">Anonymous</span>
     <nav id="tabs" aria-label="Open tabs"></nav>
     <button id="plus" class="btn" aria-label="Open a site" title="Open a site (Ctrl+T)"><span class="g g10" data-g="plus"></span></button>
     <div id="drag"></div>
@@ -35,6 +36,10 @@
   <ul id="grid"></ul>
 </main>
 
+<section id="i2p-wait" class="window" role="status" aria-live="polite" hidden>
+  <div class="title"><span>Anonymous</span></div>
+  <div class="body"><p><strong>Connecting to I2P…</strong></p><p class="note">Nothing of this identity goes online before I2P is ready: it never falls back to the regular network.</p><p class="note dim" id="i2p-reason"></p></div>
+</section>
 <section id="panel" class="window" hidden>
   <div class="title"><span id="panel-title"></span></div>
   <div class="body">
@@ -77,9 +82,10 @@
 <section id="identities" class="window" role="dialog" aria-labelledby="id-title" hidden>
   <div class="title"><span id="id-title">Identities</span></div>
   <div class="body">
-    <p class="note">Identities share your IP address unless you use Tor (coming soon); people you meet under two identities may link them.</p>
+    <p class="note">Identities share your IP address, except anonymous ones (over I2P); people you meet under two identities may link them.</p>
     <ul id="id-list"></ul>
-    <div class="field"><label for="id-name">Name</label><input id="id-name" autocomplete="off" maxlength="64"><button id="id-create" class="push">Create</button><button id="id-restore" class="push">Restore from a recovery phrase…</button></div>
+    <div class="field"><label for="id-name">Name</label><input id="id-name" autocomplete="off" maxlength="64"><label class="check"><input type="checkbox" id="id-anon"> Anonymous</label><button id="id-create" class="push">Create</button><button id="id-restore" class="push">Restore from a recovery phrase…</button></div>
+    <p class="note dim" id="id-anon-note" hidden>Anonymous: over I2P, your IP stays hidden from everyone you meet. Slower (fine for chat and forums, big files take minutes), one device only, and it can't be changed later. See "Anonymous identities" on the official site.</p>
     <div id="id-pass-row" class="field" hidden><label for="id-pass">Password</label><input id="id-pass" type="password" autocomplete="off"></div>
     <div id="id-out" aria-live="polite"></div>
     <div class="row"><button id="id-close" class="push">Close</button></div>
@@ -106,6 +112,13 @@
     <p id="cf-held" class="hint"></p>
     <div id="cf-hold-out"></div>
     <div class="row left"><button id="cf-circles" class="push">Your circles…</button></div>
+    <div id="cf-i2p" hidden>
+      <div class="head">I2P</div>
+      <p class="hint">HyperBrowser runs an I2P router for anonymous identities. It relays other people's I2P traffic (up to 256 KB/s, unseen), which keeps I2P working for everyone, and opens its port on your home router (UPnP) so others can reach it.</p>
+      <div class="choices" role="group" aria-label="Relaying"><button class="choice" data-relay="on">Relaying</button><button class="choice" data-relay="off">Don't relay</button></div>
+      <div class="choices" role="group" aria-label="UPnP"><button class="choice" data-upnp="on">UPnP on</button><button class="choice" data-upnp="off">UPnP off</button></div>
+      <p id="cf-i2p-why" class="hint"></p>
+    </div>
     <div class="row"><button id="cf-close" class="push">Close</button></div>
   </div>
 </section>

@@ -96,6 +96,22 @@ sizes.
 An error nobody caught (a bug) is one line, `escaped error <code> in <method>: <message>` (code and method when
 it has them), and the helper keeps running: no restart, nothing re-joined.
 
+## I2P
+
+With `i2p = on` (the default) the helper runs its own I2P router (in its folder, `i2p-router/`, relaying up to
+256 KB/s) and listens on I2P beside the regular network, as a full node of the DHT inside I2P: anonymous identities
+find the spaces it keeps, and it is the node they start from. It needs the router addon for its OS:
+`router/prebuilds/linux-x64/i2pd.node`, from the router workflow ([router.md](router.md)). Once its tunnels are
+built it logs
+
+```text
+i2p: ready, <52 letters>:1
+```
+
+That `<address>:1` goes into `shell/i2p-bootstrap.json` (a list) so every HyperBrowser starts from it. It stays the
+same across restarts: its key is kept in its folder (`i2p-destination`). `i2p = off` (restart): the regular network
+only.
+
 ## Not yet
 
 A helper built into HyperBrowser (pairing code), answering invites, a status command, Docker, Windows or ARM

@@ -53,7 +53,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 /**
  * @typedef {object} Identities
  * @property {() => import('./ui/frame.js').IdentityRow[]} list
- * @property {(name: unknown) => string} create
+ * @property {(name: unknown, opts?: { anonymous?: unknown }) => string} create
  * @property {(id: unknown, name: unknown) => void} rename
  * @property {(id: unknown) => Promise<void>} open closes this window
  * @property {(name: unknown, words: unknown) => string} restore a new entry from a recovery phrase, then opens it (closes this window)
@@ -117,10 +117,13 @@ export function readGlyphs (dir = path.join(HERE, 'icons')) {
  * @param {(wc: WebContents) => Promise<string | null>} [opts.readViewed] marks the place the page shows read
  * @param {string | null} [opts.contacts] the Contacts app's key
  * @param {Identities} [opts.identities] this computer's identities (main.js, identities.js)
+ * @param {{ get (): { relay: boolean, upnp: boolean, strict: string | null }, set (next: { relay?: boolean, upnp?: boolean }): Promise<void> } | null} [opts.i2pSettings] the router's relaying settings (shell/i2p.js); none in the self-tests
  */
-export function startFrame ({ rpc, openSite, readIcon, identity, note = null, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null, identities = NO_IDENTITIES }) {
+export function startFrame ({ rpc, openSite, readIcon, identity, note = null, file, open = null, update = () => null, restart = null, join = null, readViewed = async () => null, contacts = null, identities = NO_IDENTITIES, i2pSettings = null }) {
   /** @type {FrameState['joined']} */
   let joined = null
+  /** @type {FrameState['i2p']} */
+  let i2p = null
   /** @type {Icon[]} */
   const preset = JSON.parse(fs.readFileSync(path.join(HERE, 'preset.json'), 'utf-8'))
   let data = load()
@@ -197,6 +200,7 @@ export function startFrame ({ rpc, openSite, readIcon, identity, note = null, fi
       notes,
       identity,
       identities: identities.list(),
+      i2p,
       note,
       joined,
       version: app.getVersion(),
@@ -721,11 +725,15 @@ export function startFrame ({ rpc, openSite, readIcon, identity, note = null, fi
         layout()
         return { result: true }
       case 'identities.create': {
-        const id = identities.create(a.name)
+        const id = identities.create(a.name, { anonymous: a.anonymous === true })
         push()
         if (a.open) identities.open(id)
         return { result: id }
       }
+      case 'i2p.settings': return { result: i2pSettings ? i2pSettings.get() : null }
+      case 'i2p.set':
+        if (!i2pSettings) return { result: null }
+        return i2pSettings.set({ ...(typeof a.relay === 'boolean' ? { relay: a.relay } : {}), ...(typeof a.upnp === 'boolean' ? { upnp: a.upnp } : {}) }).then(() => ({ result: i2pSettings.get() }))
       case 'identities.restore': return { result: identities.restore(a.name, a.words) }
       case 'identities.rename': identities.rename(a.id, a.name); push(); return { result: true }
       case 'identities.open': identities.open(a.id).catch((/** @type {Error} */ err) => console.error('could not switch:', err.message)); return { result: true }
@@ -819,6 +827,6 @@ export function startFrame ({ rpc, openSite, readIcon, identity, note = null, fi
     setIcons(upsert(data.desktop.icons, { id: icon?.id || key, key, title: icon?.title || title, kind: 'installed' }))
     keepSite(key, true)
   }
-  return { win, inspect, show, devices, circles: circlesChanged, joinCircle, joined: joinedNow, open: openKey, installed, install, notify: (/** @type {Parameters<typeof notify>[0]} */ d) => notify(d).catch(() => {}),
+  return { win, inspect, show, devices, i2p: (/** @type {FrameState['i2p']} */ state) => { i2p = state; push() }, circles: circlesChanged, joinCircle, joined: joinedNow, open: openKey, installed, install, notify: (/** @type {Parameters<typeof notify>[0]} */ d) => notify(d).catch(() => {}),
     notice: (/** @type {string} */ text) => { if (tray) tray.notice(text); else if (Notification.isSupported()) new Notification({ title: 'HyperBrowser', body: text }).show() }, looked: () => looked().catch(() => {}), dock, undock: (/** @type {WebContents} */ wc) => undock(tabs.find((t) => t.wc === wc)) }
 }

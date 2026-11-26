@@ -6,9 +6,10 @@ import path from 'path'
 import { randomBytes } from 'crypto'
 
 /**
- * @typedef {{ id: string, name: string, dir: string }} Saved dir: relative to the data folder
+ * @typedef {{ id: string, name: string, dir: string, anonymous?: boolean }} Saved dir: relative to the data folder;
+ *   anonymous: I2P only (its engine opens with transport 'i2p'), fixed for the identity's life
  * @typedef {{ current: string, list: Saved[] }} List
- * @typedef {{ id: string, name: string, dir: string, shell: string, prefix: string }} Identity its paths, absolute
+ * @typedef {{ id: string, name: string, dir: string, shell: string, prefix: string, anonymous: boolean }} Identity its paths, absolute
  */
 
 const NAME_MAX = 64
@@ -49,7 +50,7 @@ export function identities (home, main = path.join(home, 'engine')) {
   /** @param {Saved} i @returns {Identity} */
   function full (i) {
     const old = i.dir === legacy
-    return { id: i.id, name: i.name, dir: path.resolve(home, i.dir), shell: path.join(home, old ? 'shell.json' : 'shell-' + i.id + '.json'), prefix: old ? '' : i.id + '-' }
+    return { id: i.id, name: i.name, dir: path.resolve(home, i.dir), shell: path.join(home, old ? 'shell.json' : 'shell-' + i.id + '.json'), prefix: old ? '' : i.id + '-', anonymous: !!i.anonymous }
   }
 
   /** @param {unknown} id */
@@ -69,14 +70,14 @@ export function identities (home, main = path.join(home, 'engine')) {
 
   return {
     current: () => full(find(data.current)),
-    list: () => data.list.map((i) => ({ id: i.id, name: i.name, current: i.id === data.current })),
+    list: () => data.list.map((i) => ({ id: i.id, name: i.name, current: i.id === data.current, anonymous: !!i.anonymous })),
     /** @param {unknown} id */
     get: (id) => full(find(id)),
-    /** @param {unknown} name */
-    create (name) {
+    /** @param {unknown} name @param {{ anonymous?: unknown }} [opts] anonymous: I2P only, for good */
+    create (name, { anonymous = false } = {}) {
       const n = checkName(name)
       const id = newId()
-      data.list.push({ id, name: n, dir: 'identity-' + id })
+      data.list.push({ id, name: n, dir: 'identity-' + id, ...(anonymous === true ? { anonymous: true } : {}) })
       save()
       return id
     },

@@ -5,6 +5,7 @@ import { SwarmFS } from 'swarmfs'
 import { connect, VERSION } from './protocol.js'
 import { parseManifest, readManifest, isDynamic, sitePath } from './manifest.js'
 import { contacts } from './contacts.js'
+import { reseed } from './reseed.js'
 import { notifications } from './notifications.js'
 import { circles } from './circles.js'
 import { projects } from './projects.js'
@@ -89,6 +90,8 @@ export function start (ipc) {
   let syncing = null
   // set by init, before any call that uses them (as sfs)
   let people = /** @type {ReturnType<typeof contacts>} */ (/** @type {unknown} */ (null))
+  /** @type {ReturnType<typeof reseed> | null} a regular identity's: router records and I2P DHT nodes with peers */
+  let seeding = null
   let notes = /** @type {ReturnType<typeof notifications>} */ (/** @type {unknown} */ (null))
   let rings = /** @type {ReturnType<typeof circles>} */ (/** @type {unknown} */ (null))
   let works = /** @type {ReturnType<typeof projects>} */ (/** @type {unknown} */ (null))
@@ -164,6 +167,12 @@ export function start (ipc) {
       case 'contacts.list': return people.call('list', [])
       case 'contacts.inviteToCircle': return people.call('inviteToCircle', [p.identity, p.circle])
       case 'names.resolve': return resolveName(p) // the shell's, never a page's (not in CALLS)
+      case 'i2p.nodes': return { nodes: sfs.hg.i2pNodes() } // the shell's: this identity's start next time
+      case 'photos.add': return addPhotos(p) // the shell's: photos a linked folder left out (anonymous identities)
+      case 'i2p.share': // the shell's: what a regular identity hands its peers (router records, I2P DHT nodes)
+        if (!seeding) return { shared: false }
+        await seeding.set({ records: Array.isArray(p.records) ? p.records : [], nodes: [...(Array.isArray(p.nodes) ? p.nodes : []), ...sfs.hg.i2pNodes()] })
+        return { shared: true }
       case 'hosting': return { sites: sfs.hg.spaces().filter((s) => !s.parent).length, handles: [...sites.values()].reduce((/** @type {number} */ n, s) => n + s.instances.size, 0) }
       case 'site.installed': return installed()
       case 'devices.list': return devices()
@@ -184,24 +193,30 @@ export function start (ipc) {
   }
 
   /** @param {Params} p */
-  async function init ({ dir, bootstrap, heartbeat, appStorageMax, minFree, grace: g, joinCode, joinTimeout, mnemonic, deviceName, bundle, notifyTurn, idle: i, projects: root }) {
+  async function init ({ dir, bootstrap, heartbeat, appStorageMax, minFree, grace: g, joinCode, joinTimeout, mnemonic, deviceName, bundle, notifyTurn, idle: i, projects: root, transport, sam }) {
     if (sfs || starting) throw error('ALREADY', 'already initialised')
     if (typeof dir !== 'string' || !dir) throw error('INVALID_PARAMS', 'init needs { dir }')
     if (minFree !== undefined && (typeof minFree !== 'number' || !(minFree >= 0))) throw error('INVALID_PARAMS', 'minFree is a number of bytes')
     // minFree: bytes SwarmFS leaves free when fetching (its default: max(5 GB, 5 % of the disk)); tests set 0
-    starting = SwarmFS.open(dir, { bootstrap, appStorageMax, minFree, joinCode, joinTimeout, mnemonic, deviceName })
+    // transport: 'dual' for a regular identity, 'i2p' for an anonymous one (the shell's); open() waits for I2P then
+    starting = SwarmFS.open(dir, { bootstrap, appStorageMax, minFree, joinCode, joinTimeout, mnemonic, deviceName, transport, sam, ontransport: (/** @type {object} */ e) => rpc.emit('transport', e) }) // also later: the router stopped, came back
     starting.catch(() => { starting = null }) // a failed init may be sent again
     if (g !== undefined) grace = g
     if (i !== undefined) idle = i
     sfs = await starting
     sfs.hg.on('devices', () => rpc.emit('devices', {}))
+    sfs.on('sync', (/** @type {import('swarmfs').SyncEvent} */ e) => {
+      if (e.action === 'skipped' && e.reason === 'photo') rpc.emit('photos.skipped', { space: e.space, path: e.path })
+      else if (e.action === 'fetching') rpc.emit('fetching', { name: e.path, size: e.size })
+    })
     sfs.hg.on('spaces', () => { followMoves().catch(() => {}) })
     const list = typeof bundle === 'string' && bundle ? await readBundle(bundle) : null
     for (const a of list?.apps || []) bundled.add(a.key)
     await sweep()
     if (list) await unbundle(bundle, list, dir)
     syncing = sfs.sync().catch(() => {}) // the owner's published folders follow their edits; owned sites keep uploads
-    people = contacts({ sfs, bootstrap, joinInstance, listInstance, leaveInstance, circles: (method, p) => rings.call(method, p) })
+    if (transport === 'dual') seeding = reseed({ bootstrap, emit: (event, data) => rpc.emit(event, data) })
+    people = contacts({ sfs, bootstrap, sam: transport === 'i2p' ? sam : null, joinInstance, listInstance, leaveInstance, circles: (method, p) => rings.call(method, p) })
     notes = notifications({ sfs, dir, emit: (event, data) => rpc.emit(event, data), turn: notifyTurn, counts: () => { for (const fn of counters) fn() } })
     rings = circles({ sfs, dir, notes, emit: (event, data) => rpc.emit(event, data) })
     works = projects({
@@ -312,6 +327,15 @@ export function start (ipc) {
     if (!clean) throw error('NOT_FOUND', `no page ${p}`)
     if (s.draft) return { bytes: await works.readDraft(s.draft, clean), path: clean }
     return { bytes: await s.site.read(clean, { timeout }), path: clean }
+  }
+
+  /** @param {Params} p */
+  async function addPhotos ({ space, paths }) {
+    if (typeof space !== 'string' || !Array.isArray(paths) || !paths.every((x) => typeof x === 'string')) throw error('INVALID_PARAMS', 'photos.add needs { space, paths }')
+    const drive = sfs.space(space)
+    let added = 0
+    for (const file of paths) { await drive.addPhoto(file); added++ }
+    return { added }
   }
 
   /** @param {Params} p */
@@ -966,6 +990,7 @@ export function start (ipc) {
         if (works) works.close()
         if (notes) await notes.close()
         if (people) await people.close()
+        if (seeding) await seeding.close()
         if (opening) await opening.then((s) => s.close(), () => {})
         sfs = /** @type {SwarmFS} */ (/** @type {unknown} */ (null))
         setTimeout(() => rpc.end(), 0) // after the reply to 'close'

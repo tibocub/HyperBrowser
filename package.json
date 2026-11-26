@@ -41,7 +41,8 @@
     "perf:helper": "node --expose-gc perf/helper.mjs",
     "perf:names": "node perf/names.mjs",
     "perf:projects": "node perf/projects.mjs",
-    "perf:ide": "node perf/ide.mjs"
+    "perf:ide": "node perf/ide.mjs",
+    "perf:router": "node perf/router.mjs"
   },
   "dependencies": {
     "b4a": "^1.9.0",

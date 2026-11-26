@@ -69,6 +69,8 @@ export interface FrameState {
   identity: string | null
   /** This computer's identities, the open one marked current. */
   identities: IdentityRow[]
+  /** null: the open identity uses the regular network only (no router here). */
+  i2p: I2PState | null
   /** Shown in the identities window as this window opens: a restore's outcome. */
   note: string | null
   joined: { said: string, n: number } | null
@@ -81,7 +83,10 @@ export interface FrameState {
 }
 
 /** One of this computer's identities (shell/identities.js). */
-export interface IdentityRow { id: string, name: string, current: boolean }
+export interface IdentityRow { id: string, name: string, current: boolean, anonymous: boolean }
+
+/** The open identity's I2P side: anonymous identities wait for it (nothing of them reaches the network before). */
+export interface I2PState { state: 'connecting' | 'ready', reason: string | null, anonymous: boolean }
 
 /** A circle, as circles.list gives it to the frame. */
 export interface Circle { key: string, name: string, members: number, holders: number, total: number | null, role: string | null, totalLine: string }
@@ -111,6 +116,7 @@ export interface FrameApi {
 
 /** The elements ui.js uses as more than an HTMLElement, by id. */
 interface Elements {
+  'id-anon': HTMLInputElement
   back: HTMLButtonElement
   forward: HTMLButtonElement
   reload: HTMLButtonElement

@@ -153,7 +153,8 @@ test('helper command: writes its config file, reads it again when it changes, st
   const dir = tmpDir(t, 'h')
   const conf = path.join(tmpDir(t, 'conf'), 'helper.conf')
   const nodes = await bootstrap(t)
-  const child = spawn(process.execPath, [CLI, 'helper', '--config', conf, '--dir', dir, '--bootstrap', nodes.map((n) => `${n.host}:${n.port}`).join(',')])
+  // no I2P router here: it would join the real I2P
+  const child = spawn(process.execPath, [CLI, 'helper', '--config', conf, '--dir', dir, '--bootstrap', nodes.map((n) => `${n.host}:${n.port}`).join(',')], { env: { ...process.env, HYPERBROWSER_NO_I2P: '1' } })
   let out = ''
   child.stdout.on('data', (d) => { out += d })
   child.stderr.on('data', (d) => { out += d })

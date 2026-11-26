@@ -11,6 +11,8 @@ const LISTS = new Set(['join', 'seed'])
  * @property {'official' | 'none'} apps
  * @property {string[]} seed
  * @property {string[]} join
+ * @property {'on' | 'off'} i2p on: it also listens on I2P (its own router) and is a node of the DHT inside I2P, so
+ *   anonymous identities find its spaces and others; off: the regular network only
  */
 
 /** @param {string} n */
@@ -25,14 +27,15 @@ const CHECK = {
   share: (v) => (/^\d+(\.\d+)?$/.test(v) && Number(v) >= 0.1 ? Number(v) : undefined), // GB
   apps: (v) => (v === 'official' || v === 'none' ? v : undefined),
   seed: (v) => (KEY.test(v) ? v : undefined),
-  join: (v) => (/^hg:\S+$/.test(v) ? v : undefined)
+  join: (v) => (/^hg:\S+$/.test(v) ? v : undefined),
+  i2p: (v) => (v === 'on' || v === 'off' ? v : undefined)
 }
 
 export const configFile = () => path.join(os.homedir(), '.config', 'hyperbrowser-helper.conf')
 
 /** @returns {HelperConfig} */
 export function defaults (hostname = os.hostname()) {
-  return { dir: path.join(os.homedir(), '.local', 'share', 'hyperbrowser-helper'), name: `Helper (${hostname})`, share: null, apps: 'official', seed: [], join: [] }
+  return { dir: path.join(os.homedir(), '.local', 'share', 'hyperbrowser-helper'), name: `Helper (${hostname})`, share: null, apps: 'official', seed: [], join: [], i2p: 'on' }
 }
 
 /**
@@ -93,6 +96,8 @@ export function template (base = defaults()) {
 
 # Another site or space to keep online (its key).
 # seed = <key>
+# on: also on I2P (its own router, which relays), for anonymous identities. off: the regular network only (restart).
+# i2p = ${base.i2p}
 
 # An invite to a circle; used once.
 # join = hg:...

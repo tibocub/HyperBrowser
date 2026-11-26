@@ -64,7 +64,9 @@ fs.writeFileSync(path.join(cache, 'package.json'), '{ "type": "commonjs" }\n') /
 fs.rmSync(app, { recursive: true, force: true })
 fs.rmSync(vendor, { recursive: true, force: true })
 fs.rmSync(path.join(out, 'dist'), { recursive: true, force: true })
-for (const d of ['shell', 'engine']) copy(path.join(ROOT, d), path.join(app, d))
+for (const d of ['shell', 'engine', 'router']) copy(path.join(ROOT, d), path.join(app, d))
+// the I2P router's addon, built by router/addon (CI's router workflow): without it, anonymous identities can't open
+if (!fs.existsSync(path.join(ROOT, 'router', 'prebuilds', process.platform + '-' + process.arch, 'i2pd.node'))) console.warn('no router/prebuilds/' + process.platform + '-' + process.arch + '/i2pd.node: this build has no I2P router')
 fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(app, 'LICENSE'))
 fs.copyFileSync(preset, path.join(app, 'shell', 'preset.json'))
 if (appsFrom) {
@@ -88,7 +90,7 @@ fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({
     productName: pkg.productName,
     asar: false, // pear-runtime starts the Bare workers from real files
     directories: { output: path.join(out, 'dist') },
-    files: ['shell/**', 'engine/**', 'apps/**', 'package.json', 'LICENSE', 'node_modules/**'],
+    files: ['shell/**', 'engine/**', 'router/**', '!router/addon/**', 'apps/**', 'package.json', 'LICENSE', 'node_modules/**'],
     win: { icon: 'shell/app.png' },
     linux: { icon: 'shell/app.png', category: 'Network' },
     appImage: { artifactName: '${productName}.AppImage' }, // eslint-disable-line no-template-curly-in-string

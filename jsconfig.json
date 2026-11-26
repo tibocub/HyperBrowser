@@ -13,5 +13,5 @@
     "types": ["node"],
     "paths": { "hypergraph/lib/*": ["./node_modules/hypergraph/dist/types/*"] }
   },
-  "include": ["engine/**/*.js", "engine/*.d.ts", "scripts/**/*.js", "scripts/**/*.mjs", "shell/updater.js", "types/*.d.ts"]
+  "include": ["engine/**/*.js", "engine/*.d.ts", "scripts/**/*.js", "scripts/**/*.mjs", "shell/updater.js", "router/process.js", "types/*.d.ts"]
 }

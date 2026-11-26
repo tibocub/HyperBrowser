@@ -146,3 +146,7 @@ button:disabled { cursor: default; opacity: .35; }
 #config .app .choices { padding-left: 8px; flex-wrap: wrap; }
 #config .place { display: flex; align-items: center; gap: 8px; padding: 0 0 0 16px; }
 #config .place label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* anonymous identities */
+#anon.badge, #id-list .badge { padding: 0 6px; border: 1px solid var(--ink); background: var(--accent); color: var(--paper); font-size: 12px; line-height: 18px; align-self: center; }
+#identities .check { display: inline-flex; align-items: center; gap: 4px; }
