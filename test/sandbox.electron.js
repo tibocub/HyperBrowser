@@ -147,3 +147,16 @@ test('identities: a switch leaves nothing of the first running, storage stays wi
   t.ok(fs.existsSync(path.join(profile, 'Partitions', 'site-idcheck')), "and keeps Main's")
   t.is(JSON.parse(fs.readFileSync(path.join(profile, 'identities.json'), 'utf-8')).list.length, 2, 'Main and the restored one')
 })
+
+test('anonymous identities through the frame: the checkbox, the timing warning, "Connecting to I2P…", the mark, the I2P settings (SAM stand-in)', { timeout: 300000 }, async (t) => {
+  const tmp = process.env.HG_TEST_TMP || os.tmpdir()
+  fs.mkdirSync(tmp, { recursive: true })
+  const profile = fs.mkdtempSync(path.join(tmp, 'hb-i2p-'))
+  t.teardown(() => { try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 }) } catch {} })
+  const r = await run(['.', '--user-data-dir=' + profile, '--identitycheck', 'i2p'])
+  t.is(fails(r.out).length, 0, fails(r.out).join('; '))
+  t.ok(r.out.includes('I2PCHECK PASS'), r.out.split('
+').filter((l) => l.includes('i2p')).join('
+'))
+  t.is(r.code, 0)
+})

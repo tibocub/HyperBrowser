@@ -85,3 +85,4 @@ declare module 'localdrive' {
   }
   export = Localdrive
 }
+declare module 'sodium-universal' // hypergraph's lib/i2p uses it

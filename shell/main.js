@@ -98,6 +98,8 @@ const skipped = new Map()
 /** @type {ReturnType<typeof setTimeout> | null} */
 let skippedTimer = null
 let updatesPaused = false
+/** What the I2P self-check (--identitycheck i2p) looks at: the switch warnings given, the wait window shown */
+const i2pSeen = { warned: /** @type {string[]} */ ([]), waited: 0 }
 /** @type {Rpc | null} */
 let stopping = null
 /** @type {Map<string, Opened>} */
@@ -1562,6 +1564,7 @@ async function startEngine (dir, more = {}) {
   rpc = conn
   const projects = SELFTEST || FRAMECHECK ? path.join(dir, 'projects') : path.join(app.getPath('documents'), 'HyperBrowser')
   if (me.anonymous && I2P) waitWin = new BrowserWindow({ width: 460, height: 210, resizable: false, minimizable: false, maximizable: false, title: 'HyperBrowser', webPreferences: { sandbox: true, javascript: false } })
+  if (waitWin) i2pSeen.waited++
   waitWin?.loadURL(waitPage(''))
   /** @type {any} */
   let up
@@ -1654,8 +1657,9 @@ async function switchTo (id, mnemonic) {
   const before = ids.current()
   if (switching || before.id === ids.get(id).id) return
   // before anything closes: a regular and an anonymous identity following each other closely can be linked by timing
-  const why = I2P && !SELFTEST && !IDCHECK ? I2P.warning(ids.get(id), before) : null
-  if (why) {
+  const why = I2P && !SELFTEST && (!IDCHECK || IDCHECK === 'i2p') ? I2P.warning(ids.get(id), before) : null
+  if (why && IDCHECK === 'i2p') i2pSeen.warned.push(why) // the self-check answers "Open anyway"
+  else if (why) {
     const r = await dialog.showMessageBox({ type: 'warning', buttons: ['Open anyway', 'Cancel'], defaultId: 1, cancelId: 1, message: 'These two identities could be linked by timing', detail: why })
     if (r.response !== 0) return
   }
@@ -1715,7 +1719,14 @@ app.whenReady().then(async () => {
   const dir = ids.current().dir
   if (SELFTEST) testnet = await (await import('hyperdht/testnet.js')).default(3)
   // The router: one per install, kept across identity switches; not in the self-tests (it joins the real I2P).
-  if (!SELFTEST && !FRAMECHECK && !TRAYCHECK && !IDCHECK && !process.env.HYPERBROWSER_NO_I2P) {
+  if (IDCHECK === 'i2p') { // the self-check: hypergraph's SAM stand-in and one DHT node of it, no router
+    const SAM = 'hypergraph/test/next/net/_sam.js' // a test file of hypergraph's: not type-checked here
+    const sam = /** @type {{ standIn: () => Promise<{ port: number }> }} */ ((await import(SAM)).default)
+    const { I2PDHT } = (await import('hypergraph/lib/i2p/dht.js')).default
+    const standIn = await sam.standIn()
+    const boot = await I2PDHT.open({ sam: { port: standIn.port }, ephemeral: false, firewalled: false })
+    I2P = makeI2P({ home: HOME, run: () => { throw new Error('no router in the self-check') }, zone: 'UTC', locale: 'en', log, samPort: standIn.port, bootstrap: [boot.bootstrapAddress] })
+  } else if (!SELFTEST && !FRAMECHECK && !TRAYCHECK && !IDCHECK && !process.env.HYPERBROWSER_NO_I2P) {
     I2P = makeI2P({ home: HOME, run: (entry, args) => /** @type {import('./router.js').RouterChild} */ (/** @type {unknown} */ (PearRuntime.run(entry, args))), zone: Intl.DateTimeFormat().resolvedOptions().timeZone, locale: app.getSystemLocale(), log })
     const begun = I2P.begin({ peers: !ids.current().anonymous }) // a fresh router may wait for peers' records first
     begun.catch((/** @type {Error} */ err) => log('i2p router: ' + err.message))
@@ -1733,6 +1744,7 @@ app.whenReady().then(async () => {
   else if (ids.current().anonymous) updatesPaused = true
   openFrame(identity)
   if (TRAYCHECK) traycheck(/** @type {Frame} */ (ui), TRAYCHECK)
+  if (IDCHECK === 'i2p') return (await import('./selftest/i2p.js')).i2pcheck({ ui: () => ui, ids, switching: () => switching, seen: i2pSeen })
   if (IDCHECK) (await import('./selftest/identities.js')).identitycheck({ ui: () => ui, ids, engine: () => rpc, pid: () => /** @type {{ _process?: { pid?: number } }} */ (/** @type {unknown} */ (worker))?._process?.pid, switching: () => switching })
 }).catch((err) => { console.error(err); app.exit(1) })
 

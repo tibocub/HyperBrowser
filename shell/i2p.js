@@ -76,11 +76,12 @@ export function admit (identity, guards) {
  */
 
 /**
- * @param {{ home: string, run: import('./router.js').Run, zone: string, locale: string, log: (line: string) => void, peersMs?: number }} opts
- *   peersMs: how long a fresh router waits for peers' records (tests)
+ * @param {{ home: string, run: import('./router.js').Run, zone: string, locale: string, log: (line: string) => void, peersMs?: number, samPort?: number, bootstrap?: string[] | null }} opts
+ *   peersMs: how long a fresh router waits for peers' records (tests); samPort: a SAM bridge already running (the
+ *   self-check's stand-in): no router process; bootstrap: in place of the shipped list
  *   home: the data folder (the router's own folder and i2p.json go there, outside every identity's)
  */
-export function i2p ({ home, run, zone, locale, log, peersMs = PEERS_MS }) {
+export function i2p ({ home, run, zone, locale, log, peersMs = PEERS_MS, samPort = 0, bootstrap = null }) {
   const file = path.join(home, 'i2p.json')
   /** @type {Settings} */
   let settings = { relay: true, upnp: true }
@@ -88,7 +89,7 @@ export function i2p ({ home, run, zone, locale, log, peersMs = PEERS_MS }) {
   const strict = strictCountry(zone, locale)
   /** @type {string[]} */
   let shipped = []
-  try { shipped = JSON.parse(fs.readFileSync(path.join(HERE, 'i2p-bootstrap.json'), 'utf-8')) } catch {}
+  try { shipped = bootstrap || JSON.parse(fs.readFileSync(path.join(HERE, 'i2p-bootstrap.json'), 'utf-8')) } catch {}
   /** @type {{ anonymous: number | null, regular: number | null }} */
   const last = { anonymous: null, regular: null }
   const netDb = path.join(home, 'i2p-router', 'netDb')
@@ -100,6 +101,7 @@ export function i2p ({ home, run, zone, locale, log, peersMs = PEERS_MS }) {
 
   const options = () => ({ bandwidth: 'O', share: 50, notransit: !!strict || !settings.relay, upnp: settings.upnp, ...(threshold ? { reseedThreshold: threshold } : {}) })
   const make = () => {
+    if (samPort) return /** @type {Router} */ (/** @type {unknown} */ ({ port: samPort, options: options(), on () {}, async pickPort () {}, async start () {}, async stop () {} }))
     const r = new Router({ dataDir: path.join(home, 'i2p-router'), run, options: options() })
     r.on('state', (state, reason) => log('i2p router: ' + state + (reason ? ' (' + reason + ')' : '')))
     return r
