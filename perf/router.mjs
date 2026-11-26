@@ -1,5 +1,7 @@
 // The I2P router's cost, on the live network: start to first tunnels ready (a fresh data folder, then a restart with
 // the router records it saved), then its memory and CPU over `--idle` seconds. `--n` starts of each.
+// `--peers <netDb folder>` (another router's, e.g. the soak's): also fresh routers started from its newest 100
+// records, the official reseed kept on beside them, as a fresh install does from its peers (SC-005).
 // Needs router/prebuilds/<os>-<arch>/i2pd.node. Joins I2P and relays while it runs.
 import fs from 'fs'
 import os from 'os'
@@ -20,9 +22,9 @@ const tmp = fs.mkdtempSync(path.join(process.env.TEMP || os.tmpdir(), 'hb-perf-r
 const PERSIST_MS = 70000 // i2pd saves the router records it learned about once a minute
 
 /** Starts a router on `dir`, returns ms to the first 3-hop session's tunnels, and the router (still running). */
-async function start (dir) {
+async function start (dir, options = {}) {
   const t0 = Date.now()
-  const router = new Router({ dataDir: dir, run: (entry, args) => new Sidecar(entry, args) })
+  const router = new Router({ dataDir: dir, run: (entry, args) => new Sidecar(entry, args), options })
   await router.start()
   for (;;) {
     try {
@@ -53,13 +55,32 @@ for (let i = 0; i < N; i++) {
   await b.router.stop()
   console.log(JSON.stringify({ run: i + 1, freshMs: a.ms, restartMs: b.ms }))
 }
+const PEERS = process.argv.includes('--peers') ? process.argv[process.argv.indexOf('--peers') + 1] : null
+const peers = []
+if (PEERS) {
+  const records = fs.readdirSync(PEERS).filter((d) => /^r.$/.test(d)).flatMap((d) => fs.readdirSync(path.join(PEERS, d)).map((n) => path.join(PEERS, d, n)))
+    .map((f) => ({ f, t: fs.statSync(f).mtimeMs })).sort((a, b) => b.t - a.t).slice(0, 100)
+  for (let i = 0; i < N; i++) {
+    const dir = path.join(tmp, 'p' + i)
+    for (const { f } of records) {
+      const to = path.join(dir, 'netDb', path.basename(path.dirname(f)))
+      fs.mkdirSync(to, { recursive: true })
+      fs.copyFileSync(f, path.join(to, path.basename(f)))
+    }
+    const c = await start(dir, { reseedThreshold: records.length + 25 })
+    peers.push(c.ms)
+    await c.router.stop()
+    console.log(JSON.stringify({ run: i + 1, peersMs: c.ms, records: records.length }))
+  }
+}
 fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 })
 
-const s = { fresh: stats(fresh), restart: stats(restart) }
+const s = { fresh: stats(fresh), restart: stats(restart), ...(peers.length ? { peers: stats(peers) } : {}) }
 console.log(JSON.stringify({ ...s, idle }))
 record([
   ['router.start.fresh', 'ms', s.fresh, N],
   ['router.start.restart', 'ms', s.restart, N],
+  ...(s.peers ? [['router.start.peers', 'ms', s.peers, N]] : []),
   ['router.idle.rss', 'MB', one(idle?.rssMB || 0), 1],
   ['router.idle.cpu', 's/' + IDLE + 's', one(idle?.cpuS || 0), 1]
 ])
