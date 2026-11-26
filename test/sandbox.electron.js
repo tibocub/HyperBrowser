@@ -155,8 +155,6 @@ test('anonymous identities through the frame: the checkbox, the timing warning, 
   t.teardown(() => { try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 }) } catch {} })
   const r = await run(['.', '--user-data-dir=' + profile, '--identitycheck', 'i2p'])
   t.is(fails(r.out).length, 0, fails(r.out).join('; '))
-  t.ok(r.out.includes('I2PCHECK PASS'), r.out.split('
-').filter((l) => l.includes('i2p')).join('
-'))
+  t.ok(r.out.includes('I2PCHECK PASS'), r.out.split(/\r?\n/).filter((l) => l.includes('i2p')).join(' / '))
   t.is(r.code, 0)
 })

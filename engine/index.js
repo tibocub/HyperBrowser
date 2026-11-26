@@ -199,13 +199,12 @@ export function start (ipc) {
     if (minFree !== undefined && (typeof minFree !== 'number' || !(minFree >= 0))) throw error('INVALID_PARAMS', 'minFree is a number of bytes')
     // minFree: bytes SwarmFS leaves free when fetching (its default: max(5 GB, 5 % of the disk)); tests set 0
     // transport: 'dual' for a regular identity, 'i2p' for an anonymous one (the shell's); open() waits for I2P then
-    starting = SwarmFS.open(dir, { bootstrap, appStorageMax, minFree, joinCode, joinTimeout, mnemonic, deviceName, transport, sam, ontransport: (/** @type {object} */ e) => rpc.emit('transport', e) })
+    starting = SwarmFS.open(dir, { bootstrap, appStorageMax, minFree, joinCode, joinTimeout, mnemonic, deviceName, transport, sam, ontransport: (/** @type {object} */ e) => rpc.emit('transport', e) }) // also later: the router stopped, came back
     starting.catch(() => { starting = null }) // a failed init may be sent again
     if (g !== undefined) grace = g
     if (i !== undefined) idle = i
     sfs = await starting
     sfs.hg.on('devices', () => rpc.emit('devices', {}))
-    sfs.hg.on('transport', (/** @type {object} */ e) => rpc.emit('transport', e)) // the router stopped, came back
     sfs.on('sync', (/** @type {import('swarmfs').SyncEvent} */ e) => {
       if (e.action === 'skipped' && e.reason === 'photo') rpc.emit('photos.skipped', { space: e.space, path: e.path })
       else if (e.action === 'fetching') rpc.emit('fetching', { name: e.path, size: e.size })

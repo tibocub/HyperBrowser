@@ -111,7 +111,7 @@ async function runHelper () {
       if (event === 'transport') console.log(data.state === 'ready' ? `i2p: ready, ${data.address}:1` : `i2p: connecting${data.reason ? ' (' + data.reason + ')' : ''}`)
     }
   })
-  const router = config.i2p === 'on' ? await startRouter(config.dir) : null
+  const router = config.i2p === 'on' && !process.env.HYPERBROWSER_NO_I2P ? await startRouter(config.dir) : null // tests: no router
   const i2p = router ? { transport: 'dual', sam: { port: router.port, node: true, bootstrap: shippedNodes() } } : {}
   await rpc.request('init', { dir: config.dir, bootstrap: opts.bootstrap, ...i2p })
   console.log(`helper ${(await rpc.request('contacts.me')).identity} in ${config.dir}`)
