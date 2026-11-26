@@ -10,6 +10,8 @@ set(Boost_USE_STATIC_LIBS ON)
 set(OPENSSL_USE_STATIC_LIBS ON)
 find_package(Boost REQUIRED COMPONENTS atomic filesystem program_options)
 find_package(OpenSSL REQUIRED)
+# zlib 1.4 renamed its static lib (zs.lib), which FindZLIB does not look for
+find_library(ZLIB_LIBRARY NAMES zs zlibstatic zlib z PATHS ${DEPS}/lib NO_DEFAULT_PATH)
 find_package(ZLIB REQUIRED)
 find_package(miniupnpc CONFIG REQUIRED)
 file(GLOB I2P_SRC ${I2PD_SRC}/libi2pd/*.cpp ${I2PD_SRC}/libi2pd_client/*.cpp ${I2PD_SRC}/i18n/*.cpp)
