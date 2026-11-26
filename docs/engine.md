@@ -285,6 +285,16 @@ the circle), and `contacts.setMe { name?, findable? }` → `true`. A page goes t
 `npm run perf:projects [-- --files 1000]`: two devices, 1000 files of 1 KB written into a project, and the
 times to sync and to publish.
 
+## I2P
+
+The shell opens a regular identity's engine with `init { transport: 'dual', sam }` and an anonymous one's with
+`transport: 'i2p'` and an empty `deviceName` ([router.md](router.md#anonymous-identities)); `init` resolves for an
+anonymous identity only once I2P is ready. Events: `transport { state, reason? }` (from the start of `init`, and when
+the router stops and comes back), `photos.skipped { space, path }` (a photo a linked folder left out), `fetching
+{ name, size }` (a page's file coming from peers). Calls, the shell's only: `i2p.nodes` → `{ nodes }` (the DHT nodes
+inside I2P it met), `photos.add { space, paths }` → `{ added }` (those photos, one by one, stripped). Contacts of an
+anonymous identity find and are found over an I2P session of their own, and are not findable by default.
+
 ## Errors that escape
 
 An error nobody caught in the engine (a bug) doesn't stop it. The engine logs it with its stack (in the shell's

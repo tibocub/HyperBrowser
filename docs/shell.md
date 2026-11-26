@@ -15,6 +15,7 @@ the shell talks to the engine ([engine.md](engine.md)), and it names the site fr
 | `tray.js` | the tray icon |
 | `updater.js` | the update worker |
 | `router.js` | the I2P router's supervisor ([router.md](router.md)) |
+| `i2p.js` | I2P for identities: the router, what each identity opens with, relaying settings, the switch warning ([router.md](router.md#anonymous-identities)) |
 | `preset.json` | the official apps' keys on a new desktop |
 
 ```bash

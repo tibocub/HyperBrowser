@@ -1,5 +1,5 @@
 // Only this file bridges a site to the engine, and it names the site from the view, never the page.
-import { app, BaseWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme, Notification, session } from 'electron'
+import { app, BaseWindow, BrowserWindow, ipcMain, protocol, dialog, Menu, webContents, nativeTheme, Notification, session } from 'electron'
 import fs from 'fs'
 import { spawnSync } from 'child_process'
 import os from 'os'
@@ -10,10 +10,12 @@ import { connect, pair } from '../engine/protocol.js'
 import { createSiteView, resolveNoNames } from './views.js'
 import { startFrame } from './frame.js'
 import { identities } from './identities.js'
+import { i2p as makeI2P, admit } from './i2p.js'
 
 /**
  * @typedef {import('electron').WebContents} WebContents
  * @typedef {import('electron').BaseWindow} BaseWindowT
+ * @typedef {import('electron').BrowserWindow} BrowserWindowT
  * @typedef {import('../engine/protocol.js').Rpc} Rpc
  * @typedef {import('../engine/manifest.js').Manifest} Manifest
  * @typedef {import('./frame.js').SiteView} SiteView
@@ -32,6 +34,7 @@ const GUARDS = !process.argv.includes('--no-guards')
 const TRAYCHECK = process.argv.includes('--traycheck') ? process.argv[process.argv.indexOf('--traycheck') + 1] : null
 const IDCHECK = process.argv.includes('--identitycheck') ? process.argv[process.argv.indexOf('--identitycheck') + 1] : null
 const HEARTBEAT = 2000
+const BIG = 5e6 // over I2P a file this big takes minutes: said when one comes
 /** @param {string} name */
 const arg = (name) => { const i = process.argv.indexOf(name); return i === -1 ? null : process.argv[i + 1] }
 
@@ -86,6 +89,15 @@ let updater = null
 /** @type {string | null} */
 let update = null
 let quitting = false
+/** @type {ReturnType<typeof makeI2P> | null} the I2P router and what identities open with; none in the self-tests */
+let I2P = null
+/** @type {BrowserWindowT | null} "Connecting to I2P…" while an anonymous identity's engine waits for its tunnels */
+let waitWin = null
+/** @type {Map<string, Set<string>>} space -> photos a linked folder left out, said once together */
+const skipped = new Map()
+/** @type {ReturnType<typeof setTimeout> | null} */
+let skippedTimer = null
+let updatesPaused = false
 /** @type {Rpc | null} */
 let stopping = null
 /** @type {Map<string, Opened>} */
@@ -130,6 +142,12 @@ async function serve (key, p) {
 
 /** @param {string} event @param {any} data the engine's, per event */
 function onEvent (event, data) {
+  if (event === 'transport') return i2pState(data)
+  if (event === 'photos.skipped') return photoSkipped(data)
+  if (event === 'fetching') {
+    if (ids.current().anonymous && data.size > BIG) ui?.notice('"' + data.name + '" is ' + Math.round(data.size / 1e6) + ' MB: over I2P it takes minutes. I2P suits chat and forums, not big files.')
+    return
+  }
   if (event === 'devices') return ui?.devices()
   if (event === 'circles') return ui?.circles()
   if (event === 'notify') return ui?.notify(data)
@@ -414,11 +432,51 @@ async function shutdown () {
   quitting = true
   if (updater) { updater.end(); updater = null }
   await stopEngine()
+  if (I2P) await I2P.stop().catch(() => {})
+}
+
+/** @param {{ state: 'connecting' | 'ready', reason?: string }} e an engine's I2P side */
+function i2pState (e) {
+  const anonymous = ids.current().anonymous
+  const state = { state: e.state, reason: e.reason || null, anonymous }
+  ui?.i2p(state)
+  if (waitWin && !waitWin.isDestroyed()) waitWin.loadURL(waitPage(e.reason ? 'Not yet: ' + e.reason + '. Trying again.' : ''))
+}
+
+/** @param {string} line */
+function waitPage (line) {
+  const esc = (/** @type {string} */ t) => t.replace(/[&<>"]/g, (c) => '&#' + c.charCodeAt(0) + ';')
+  return 'data:text/html;charset=utf-8,' + encodeURIComponent('<!doctype html><meta charset="utf-8"><body style="font:15px system-ui;margin:24px"><p><b>Connecting to I2P…</b></p><p>Nothing of this anonymous identity goes online before I2P is ready; it never falls back to the regular network.</p><p style="color:#666">' + esc(line) + '</p>')
+}
+
+// Photos a linked folder left out (an anonymous identity): said once, a few seconds after the last, with an offer.
+/** @param {{ space: string, path: string }} e */
+function photoSkipped (e) {
+  const paths = skipped.get(e.space) || new Set()
+  skipped.set(e.space, paths)
+  paths.add(e.path)
+  if (skippedTimer) clearTimeout(skippedTimer)
+  skippedTimer = setTimeout(async () => {
+    skippedTimer = null
+    const all = [...skipped].map(([space, paths]) => ({ space, paths: [...paths] }))
+    skipped.clear()
+    const n = all.reduce((k, x) => k + x.paths.length, 0)
+    if (!n || SELFTEST) return
+    const r = await dialog.showMessageBox({ type: 'info', buttons: ['Add them', 'Not now'], defaultId: 0, cancelId: 1, message: n + (n === 1 ? ' photo was' : ' photos were') + ' left out of a shared folder', detail: 'On an anonymous identity, photos in a linked folder are not shared as they are: their metadata (camera, time, place) could tell who and where you are. Add them one by one, without their metadata? Your own files stay as they are.' })
+    if (r.response !== 0) return
+    for (const x of all) await rpc.request('photos.add', x).catch((/** @type {Error} */ err) => log('photos.add: ' + err.message))
+  }, 3000)
 }
 
 async function stopEngine () {
   const [r, w] = [rpc, worker]
   stopping = r // its stream's end is expected (startEngine's onclose)
+  if (r && I2P) {
+    const me = ids.current()
+    const got = await r.request('i2p.nodes').catch(() => null) // its next start begins from them (its own folder)
+    if (got?.nodes?.length) I2P.learn(me, got.nodes)
+    I2P.closed(me)
+  }
   if (r) await r.request('close').catch(() => {})
   if (w) {
     /** @type {Promise<void>} */
@@ -1416,6 +1474,15 @@ function installed () {
   return path.join(process.resourcesPath, '..', '..')
 }
 
+// While an anonymous identity is open the updater (one per app, on the regular network) stops: no lookups beside it.
+function pauseUpdates () {
+  if (!updater) return
+  updater.end()
+  updater = null
+  updatesPaused = true
+  log('update: paused while an anonymous identity is open')
+}
+
 function startUpdates () {
   const file = installed()
   log('HyperBrowser ' + PKG.version + (file ? ', channel ' + PKG.upgrade : ', no updates'))
@@ -1476,13 +1543,27 @@ function restart () {
 
 /** @param {string} dir @param {object} [more] init's other params */
 async function startEngine (dir, more = {}) {
+  const me = ids.current()
+  const { updates } = admit(me, GUARDS) // an anonymous identity: never without guards, no updater beside it
+  const net = I2P ? I2P.open(me) : {} // transport, SAM; an anonymous identity: no device name either
+  if (updates === 'pause') pauseUpdates()
+  else if (updatesPaused) { updatesPaused = false; startUpdates() }
   worker = PearRuntime.run(fileURLToPath(new URL('../engine/worker.js', import.meta.url)))
   const stderr = /** @type {NonNullable<typeof worker.stderr>} */ (worker.stderr) // piped (the default)
   stderr.on('data', (d) => process.stderr.write('engine: ' + /** @type {Uint8Array} */ (d)))
   const conn = connect(worker, { onEvent, onclose: () => { if (!quitting && stopping !== conn) { console.error('engine stopped without a word'); app.exit(1) } } })
   rpc = conn
   const projects = SELFTEST || FRAMECHECK ? path.join(dir, 'projects') : path.join(app.getPath('documents'), 'HyperBrowser')
-  const up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), projects, ...more })
+  if (me.anonymous && I2P) waitWin = new BrowserWindow({ width: 460, height: 210, resizable: false, minimizable: false, maximizable: false, title: 'HyperBrowser', webPreferences: { sandbox: true, javascript: false } })
+  waitWin?.loadURL(waitPage(''))
+  /** @type {any} */
+  let up
+  try {
+    up = await rpc.request('init', { dir, heartbeat: HEARTBEAT, deviceName: os.hostname(), bundle: path.join(HERE, '..', 'apps'), projects, ...net, ...more })
+  } finally {
+    if (waitWin && !waitWin.isDestroyed()) waitWin.destroy()
+    waitWin = null
+  }
   if (APPS.chat) await rpc.request('apps.set', { chat: APPS.chat }) // friends' conversations are Chat's (also after a join)
   return up
 }
@@ -1544,7 +1625,8 @@ function openFrame (identity, note = null) {
   const own = (f) => (...args) => mine === era && rpc ? f(...args) : Promise.reject(Object.assign(new Error('engine stopped'), { code: 'CLOSED' }))
   const engine = { request: own((/** @type {string} */ method, /** @type {object | undefined} */ params) => rpc.request(method, params)) }
   const people = { list: ids.list, create: ids.create, rename: ids.rename, open: switchTo, restore, remove: removeIdentity, phrase: own((/** @type {unknown} */ id, /** @type {string | undefined} */ password) => rpc.request('phrase.read', { dir: ids.get(id).dir, password })) }
-  ui = startFrame({ rpc: engine, openSite: own(openSite), readIcon: own(readIcon), readViewed: own(readViewed), contacts: APPS.contacts, identity, note, file: me.shell, open: switching ? null : arg('--open'), update: () => update, restart, identities: people, join: (code) => join(ids.current().dir, code).catch((/** @type {Error} */ err) => { log('join: ' + err.message); app.exit(1) }) })
+  ui = startFrame({ rpc: engine, openSite: own(openSite), readIcon: own(readIcon), readViewed: own(readViewed), contacts: APPS.contacts, identity, note, file: me.shell, open: switching ? null : arg('--open'), update: () => update, restart, identities: people, i2pSettings: I2P ? { get: () => /** @type {NonNullable<typeof I2P>} */ (I2P).settings(), set: (/** @type {{ relay?: boolean, upnp?: boolean }} */ n) => /** @type {NonNullable<typeof I2P>} */ (I2P).set(n) } : null, join: (code) => join(ids.current().dir, code).catch((/** @type {Error} */ err) => { log('join: ' + err.message); app.exit(1) }) })
+  if (I2P) ui.i2p({ state: 'ready', reason: null, anonymous: ids.current().anonymous }) // its engine opened: I2P was ready
 }
 
 // A new entry whose engine gets the phrase on its first start only (hypergraph keeps it from then on).
@@ -1564,6 +1646,12 @@ function restore (name, words) {
 async function switchTo (id, mnemonic) {
   const before = ids.current()
   if (switching || before.id === ids.get(id).id) return
+  // before anything closes: a regular and an anonymous identity following each other closely can be linked by timing
+  const why = I2P && !SELFTEST && !IDCHECK ? I2P.warning(ids.get(id), before) : null
+  if (why) {
+    const r = await dialog.showMessageBox({ type: 'warning', buttons: ['Open anyway', 'Cancel'], defaultId: 1, cancelId: 1, message: 'These two identities could be linked by timing', detail: why })
+    if (r.response !== 0) return
+  }
   switching = true
   era++
   try {
@@ -1618,13 +1706,19 @@ app.whenReady().then(async () => {
   ids.sweep(path.join(app.getPath('userData'), 'Partitions'))
   const dir = ids.current().dir
   if (SELFTEST) testnet = await (await import('hyperdht/testnet.js')).default(3)
+  // The router: one per install, kept across identity switches; not in the self-tests (it joins the real I2P).
+  if (!SELFTEST && !FRAMECHECK && !TRAYCHECK && !IDCHECK && !process.env.HYPERBROWSER_NO_I2P) {
+    I2P = makeI2P({ home: HOME, run: (entry, args) => /** @type {import('./router.js').RouterChild} */ (/** @type {unknown} */ (PearRuntime.run(entry, args))), zone: Intl.DateTimeFormat().resolvedOptions().timeZone, locale: app.getSystemLocale(), log })
+    await I2P.start()
+  }
   const { identity } = await startEngine(dir, testnet ? { bootstrap: testnet.bootstrap } : {})
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
   log('engine up') // no identity named: the log is one file for all of them
   if (SELFTEST) return selftest(HOME)
   if (FRAMECHECK) return framecheck(HOME)
   if (IDCHECK === 'sweep') return app.exit(0)
-  if (!TRAYCHECK && !IDCHECK) startUpdates()
+  if (!TRAYCHECK && !IDCHECK && !ids.current().anonymous) startUpdates()
+  else if (ids.current().anonymous) updatesPaused = true
   openFrame(identity)
   if (TRAYCHECK) traycheck(/** @type {Frame} */ (ui), TRAYCHECK)
   if (IDCHECK) (await import('./selftest/identities.js')).identitycheck({ ui: () => ui, ids, engine: () => rpc, pid: () => /** @type {{ _process?: { pid?: number } }} */ (/** @type {unknown} */ (worker))?._process?.pid, switching: () => switching })

@@ -85,9 +85,26 @@ An **identity** is a separate you: its own key, contacts, conversations, circles
 
 What identities don't do yet, honestly:
 
-- **Same IP address.** Every identity connects from your internet connection. Someone who sees two of your identities online from one address may guess they are one person. Tor mode (coming) will give each identity its own route.
+- **Same IP address.** Every regular identity connects from your internet connection. Someone who sees two of your identities online from one address may guess they are one person. An **anonymous** identity doesn't show it (below).
 - **Not hidden on this computer.** Anyone who uses your computer can see your identities and their recovery phrases. A protected vault comes later.
 - **You are still you.** People you meet under two identities may recognise how you write, when you are online, or who your friends are.
+
+## Anonymous identities: hide your IP
+
+Everyone you read or post with sees your IP address next to what you do: HyperBrowser has no servers, so people's computers talk to each other. An **anonymous** identity talks only through **I2P**, a network where your traffic hops through other people's computers first, so nobody you meet learns where you are.
+
+- **Make one**: **Manage identities…**, tick **Anonymous**, give it a name, **Create**. It stays anonymous for good: an identity can't be changed into one, or back.
+- **Opening it** says **Connecting to I2P…** until I2P is ready (tens of seconds, sometimes minutes). Nothing of it goes online before, and it never falls back to your regular connection: if I2P can't be reached, it waits and says why.
+- **Slower.** Fine for chat and forums; a big file (photos, videos) takes minutes. HyperBrowser tells you when one will.
+- **Photos lose their hidden details.** A photo you share loses its camera, time and place data first; your own file stays as it is. Photos in a shared folder aren't shared as they are: HyperBrowser offers to add them one by one, without those details.
+- **One device only.** An anonymous identity can't be added to a second computer (that needs the regular network); you can still restore it from its recovery phrase. It also doesn't keep copies of your circles' forums for them.
+- **Not findable by default.** Being findable (so people can send you a friend request by your key) tells anyone who knows that key when you are online. Turn it on in Contacts if you want it.
+- **Updates pause** while it is open: they come over the regular network.
+- **Switching**: opening an anonymous identity right after a regular one closed (or the other way), HyperBrowser warns you: someone watching both could link them by the timing. Waiting 10 minutes between them is safer.
+
+What it protects you from: the people you meet, site owners, your internet provider and anyone on your local network, who see you use I2P but not what you do or who you are. What it doesn't: someone watching the whole internet at once, or a state set on finding one person (by comparing timings); and what you post yourself (your name, how you write, a face in a photo) still tells.
+
+**HyperBrowser relays for I2P.** Your computer passes along other people's I2P traffic, unseen and capped at 256 KB/s: that is what keeps I2P working for everyone. It opens its port on your home router (UPnP) to do so. Both can be turned off in **Configuration**; in some countries, where relaying I2P is risky, it is off by itself. On a phone's connection (a hotspot) your computer can't be reached and relays little.
 
 ## Install or bookmark
 

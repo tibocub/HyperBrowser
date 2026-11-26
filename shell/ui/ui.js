@@ -240,6 +240,8 @@ function drawMenu () {
     return b
   }))
   drawIdentities()
+  $('anon').hidden = !S.i2p?.anonymous
+  drawI2P()
   $('me').textContent = S.identity ? S.identity.slice(0, 6) + '…' + S.identity.slice(-3) : ''
   $('me').title = S.identity || ''
   const installed = S.desktop.icons.filter((i) => i.kind === 'installed')
@@ -328,6 +330,26 @@ function openConfig () {
   frame.send('cover', { full: true })
   drawConfig()
   drawHolding()
+  drawI2PConfig()
+}
+
+/** @param {{ relay: boolean, upnp: boolean, strict: string | null } | null} [got] */
+async function drawI2PConfig (got) {
+  const r = got === undefined ? (await frame.send('i2p.settings', {}))?.result : got
+  $('cf-i2p').hidden = !r
+  if (!r) return
+  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-relay]'))) {
+    b.setAttribute('aria-pressed', String((b.dataset.relay === 'on') === (r.relay && !r.strict)))
+    b.disabled = !!r.strict
+  }
+  for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-upnp]'))) b.setAttribute('aria-pressed', String((b.dataset.upnp === 'on') === r.upnp))
+  $('cf-i2p-why').textContent = r.strict ? 'Relaying is off: this computer seems to be set up in a country where relaying I2P is risky (by its time zone or region).' : ''
+}
+for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-relay]'))) {
+  b.onclick = async () => drawI2PConfig((await frame.send('i2p.set', { relay: b.dataset.relay === 'on' }))?.result || null)
+}
+for (const b of /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-upnp]'))) {
+  b.onclick = async () => drawI2PConfig((await frame.send('i2p.set', { upnp: b.dataset.upnp === 'on' }))?.result || null)
 }
 function closeConfig () {
   $('config').hidden = true
@@ -491,7 +513,7 @@ function drawIdentities () {
   if ($('identities').hidden) return
   $('id-list').replaceChildren(...S.identities.map((i) => {
     const li = el('li')
-    li.append(el('span', 'grow', i.name), el('span', 'dim', i.current ? '(open)' : ''))
+    li.append(el('span', 'grow', i.name), ...(i.anonymous ? [el('span', 'badge', 'Anonymous')] : []), el('span', 'dim', i.current ? '(open)' : ''))
     if (!i.current) {
       const b = el('button', 'choice', 'Open')
       b.setAttribute('aria-label', 'Open ' + i.name)
@@ -508,15 +530,26 @@ function drawIdentities () {
 }
 
 $('id-create').onclick = async () => {
-  const r = await frame.send('identities.create', { name: $('id-name').value })
+  const anonymous = $('id-anon').checked
+  const r = await frame.send('identities.create', { name: $('id-name').value, anonymous })
   if (r?.error) return idShow(line(r.error.message))
   const name = $('id-name').value.trim()
   $('id-name').value = ''
+  $('id-anon').checked = false
+  $('id-anon-note').hidden = true
   const b = push('Open "' + name + '" now', () => send('identities.open', { id: r.result }))
-  idShow(line('"' + name + '" is ready: a new identity of its own, nothing shared with the others.'), b)
+  idShow(line('"' + name + '" is ready: a new ' + (anonymous ? 'anonymous identity (over I2P, your IP hidden)' : 'identity of its own') + ', nothing shared with the others.'), b)
   b.focus()
 }
 $('id-name').onkeydown = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter') $('id-create').click() }
+$('id-anon').onchange = () => { $('id-anon-note').hidden = !$('id-anon').checked }
+
+// An anonymous identity before I2P is up (or while the router restarts): it says so, and nothing of it is online.
+function drawI2P () {
+  const waiting = !!S.i2p?.anonymous && S.i2p.state !== 'ready'
+  $('i2p-wait').hidden = !waiting
+  $('i2p-reason').textContent = waiting && S.i2p?.reason ? 'Not yet: ' + S.i2p.reason + '. Trying again.' : ''
+}
 
 // The words go to the engine once and leave the field: hypergraph keeps them in the new identity's folder, nothing else does.
 $('id-restore').onclick = () => {

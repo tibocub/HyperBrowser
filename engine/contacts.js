@@ -1,5 +1,4 @@
 // Who sent a request is read from the invite's signature, never from the message.
-import Hyperswarm from 'hyperswarm'
 import crypto from 'hypercore-crypto'
 import FramedStream from 'framed-stream'
 import b4a from 'b4a'
@@ -50,12 +49,18 @@ const noop = () => {}
  * @param {object} opts
  * @param {import('./types.js').SwarmFS} opts.sfs
  * @param {Array<{ host: string, port: number }>} [opts.bootstrap]
+ * @param {import('hypergraph/next').SamOptions | null} [opts.sam] an anonymous identity's I2P router (then I2P only)
  * @param {(app: string, link: string) => Promise<Site>} opts.joinInstance
  * @param {(app: string, key: string, on: boolean) => Promise<void>} opts.listInstance
  * @param {(app: string, key: string) => Promise<boolean>} opts.leaveInstance
  * @param {(method: string, p?: import('./types.js').Params) => Promise<any>} opts.circles the circles module's call: its answer depends on the method
  */
-export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveInstance, circles }) {
+// An anonymous identity (sam given) finds and is found over I2P, on a session of its own: these connections carry
+// contacts' own framing, not the engine's (whose spaces a stranger mustn't see). It isn't findable unless the person
+// turns it on: announcing its identity's topic tells anyone who knows its key when it's online.
+export function contacts ({ sfs, bootstrap, sam = null, joinInstance, listInstance, leaveInstance, circles }) {
+  /** @param {Record<string, unknown>} s */
+  const findableIn = (s) => (sam ? s[FINDABLE] === true : s[FINDABLE] !== false)
   /** @type {string | null} */
   let chat = null
   /** @type {TypeDeclarations | null} */
@@ -156,7 +161,7 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     switch (method) {
       case 'me': {
         const s = await settings()
-        return { identity: me, name: validName(s[NAME]) ? s[NAME] : null, findable: s[FINDABLE] !== false }
+        return { identity: me, name: validName(s[NAME]) ? s[NAME] : null, findable: findableIn(s) }
       }
       case 'setMe': {
         const { name, findable } = a || {}
@@ -333,15 +338,28 @@ export function contacts ({ sfs, bootstrap, joinInstance, listInstance, leaveIns
     }
   }
 
+  // Required here: an anonymous identity's engine never loads Hyperswarm.
+  async function makeSwarm () {
+    if (!sam) {
+      const Hyperswarm = (await import('hyperswarm')).default
+      return new Hyperswarm(bootstrap ? { bootstrap } : {})
+    }
+    const m = await import('hypergraph/lib/i2p/swarm.js')
+    const { I2PSwarm } = /** @type {typeof import('hypergraph/lib/i2p/swarm.js')} */ (m.default || m)
+    const swarm = await I2PSwarm.open({ sam, keyPair: crypto.keyPair(), bootstrap: sam.bootstrap, client: true })
+    return /** @type {import('hyperswarm')} */ (/** @type {unknown} */ (swarm)) // the same join/leave/'connection'
+  }
+
   async function refresh () {
     const s = await settings()
     const list = s[CONTACTS] || {}
-    const findable = s[FINDABLE] !== false
+    const findable = findableIn(s)
     const want = new Map()
     for (const [id, c] of Object.entries(list)) if (c.state === 'outgoing' && c.link && !c.delivered) want.set(b4a.toString(topicOf(id), 'hex'), id)
     if (closed || (!swarm && !findable && !want.size)) return
     if (!swarm) {
-      swarm = new Hyperswarm(bootstrap ? { bootstrap } : {})
+      swarm = await makeSwarm()
+      if (closed) return void swarm.destroy().catch(noop)
       swarm.on('connection', onConnection)
     }
     if (findable !== announced) {

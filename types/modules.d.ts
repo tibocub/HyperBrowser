@@ -20,6 +20,7 @@ declare module 'hypercore-crypto' {
   const crypto: {
     hash (data: Uint8Array | Uint8Array[]): Uint8Array
     randomBytes (n: number): Uint8Array
+    keyPair (seed?: Uint8Array): { publicKey: Uint8Array, secretKey: Uint8Array }
   }
   export = crypto
 }
