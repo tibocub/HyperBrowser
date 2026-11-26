@@ -47,7 +47,8 @@ static std::string str (napi_env env, napi_value v) {
 static int num (napi_env env, napi_value v) { int n = 0; napi_get_value_int32(env, v, &n); return n; }
 static bool flag (napi_env env, napi_value v) { bool b = false; napi_get_value_bool(env, v, &b); return b; }
 
-// start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6?, upnp? }): upnp on unless false
+// start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6?, upnp?, reseedThreshold? }): upnp on unless false;
+// reseedThreshold: the official reseed runs while the router knows fewer routers than this (after peers' records)
 static napi_value start (napi_env env, napi_callback_info info) {
   size_t argc = 1; napi_value argv[1];
   napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
@@ -68,6 +69,7 @@ static napi_value start (napi_env env, napi_callback_info info) {
     if ((v = prop(env, argv[0], "notransit")) && flag(env, v)) a.push_back("--notransit");
     if ((v = prop(env, argv[0], "ipv6")) && flag(env, v)) a.push_back("--ipv6");
     useUpnp = !((v = prop(env, argv[0], "upnp")) && !flag(env, v));
+    if ((v = prop(env, argv[0], "reseedThreshold"))) a.push_back("--reseed.threshold=" + std::to_string(num(env, v)));
     static std::vector<char*> p; p.clear();
     for (auto& s : a) p.push_back(&s[0]);
     i2p::api::InitI2P((int)p.size(), p.data(), "i2pd");

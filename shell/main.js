@@ -144,6 +144,7 @@ async function serve (key, p) {
 function onEvent (event, data) {
   if (event === 'transport') return i2pState(data)
   if (event === 'photos.skipped') return photoSkipped(data)
+  if (event === 'i2p.reseed') return I2P?.heard(data, ids.current())
   if (event === 'fetching') {
     if (ids.current().anonymous && data.size > BIG) ui?.notice('"' + data.name + '" is ' + Math.round(data.size / 1e6) + ' MB: over I2P it takes minutes. I2P suits chat and forums, not big files.')
     return
@@ -485,6 +486,12 @@ async function stopEngine () {
     await exited
   }
   if (rpc === r) rpc = /** @type {Rpc} */ (/** @type {unknown} */ (worker = null))
+}
+
+// A regular identity hands its peers this router's newest records and the I2P DHT nodes it knows, again every 10 min.
+function shareI2P () {
+  if (!I2P || ids.current().anonymous) return
+  rpc?.request('i2p.share', { records: I2P.records(), nodes: [] }).catch(() => {})
 }
 
 /** @param {BaseWindowT} win @param {SiteView[]} views */
@@ -1679,6 +1686,7 @@ async function switchTo (id, mnemonic) {
       up = await startEngine(before.dir)
     }
     openFrame(up.identity, note)
+    shareI2P()
   } finally {
     switching = false
   }
@@ -1709,10 +1717,14 @@ app.whenReady().then(async () => {
   // The router: one per install, kept across identity switches; not in the self-tests (it joins the real I2P).
   if (!SELFTEST && !FRAMECHECK && !TRAYCHECK && !IDCHECK && !process.env.HYPERBROWSER_NO_I2P) {
     I2P = makeI2P({ home: HOME, run: (entry, args) => /** @type {import('./router.js').RouterChild} */ (/** @type {unknown} */ (PearRuntime.run(entry, args))), zone: Intl.DateTimeFormat().resolvedOptions().timeZone, locale: app.getSystemLocale(), log })
-    await I2P.start()
+    const begun = I2P.begin({ peers: !ids.current().anonymous }) // a fresh router may wait for peers' records first
+    begun.catch((/** @type {Error} */ err) => log('i2p router: ' + err.message))
+    await I2P.router.pickPort()
   }
   const { identity } = await startEngine(dir, testnet ? { bootstrap: testnet.bootstrap } : {})
   setInterval(() => rpc && rpc.request('ping').catch(() => {}), HEARTBEAT / 2)
+  shareI2P()
+  setInterval(shareI2P, 10 * 60 * 1000)
   log('engine up') // no identity named: the log is one file for all of them
   if (SELFTEST) return selftest(HOME)
   if (FRAMECHECK) return framecheck(HOME)

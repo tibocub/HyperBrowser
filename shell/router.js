@@ -18,7 +18,7 @@ const PORT_TAKEN = 3 // router/process.js's exit code when SAM can't listen on i
 
 export class Router extends EventEmitter {
   /**
-   * @param {{ dataDir: string, run: Run, entry?: string, options?: { bandwidth?: string, share?: number, notransit?: boolean, ipv6?: boolean, upnp?: boolean }, maxBackoff?: number }} opts
+   * @param {{ dataDir: string, run: Run, entry?: string, options?: { bandwidth?: string, share?: number, notransit?: boolean, ipv6?: boolean, upnp?: boolean, reseedThreshold?: number }, maxBackoff?: number }} opts
    */
   constructor ({ dataDir, run, entry = ENTRY, options = {}, maxBackoff = 60000 }) {
     super()
@@ -41,6 +41,11 @@ export class Router extends EventEmitter {
     this.child = null
     /** @type {ReturnType<typeof setTimeout> | null} */
     this.timer = null
+  }
+
+  /** Picks its SAM port without starting (engines get it before the router runs). */
+  async pickPort () {
+    if (!this.port) this.port = await freePort()
   }
 
   async start () {

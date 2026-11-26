@@ -8,6 +8,10 @@ import { Router } from './router.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SWITCH_MS = 10 * 60 * 1000
+const FRESH = 25 // fewer router records than this: a fresh router (i2pd reseeds below it too)
+const PEERS = 3 // a fresh router takes peers' records from this many at least, never from one alone
+const PEERS_MS = 60000 // how long a fresh router waits for them before starting from the official reseed only
+const SHARE = 100 // router records handed to peers: the newest
 
 // Java I2P's strict countries (i2p.net, "Strict Countries List (as of 2024)"): the router relays nothing there.
 export const STRICT = new Set(['AF', 'AZ', 'BH', 'BY', 'BN', 'BI', 'CM', 'CF', 'TD', 'CN', 'CU', 'CD', 'EG', 'GQ', 'ER', 'ET', 'IR', 'IQ', 'KZ',
@@ -72,10 +76,11 @@ export function admit (identity, guards) {
  */
 
 /**
- * @param {{ home: string, run: import('./router.js').Run, zone: string, locale: string, log: (line: string) => void }} opts
+ * @param {{ home: string, run: import('./router.js').Run, zone: string, locale: string, log: (line: string) => void, peersMs?: number }} opts
+ *   peersMs: how long a fresh router waits for peers' records (tests)
  *   home: the data folder (the router's own folder and i2p.json go there, outside every identity's)
  */
-export function i2p ({ home, run, zone, locale, log }) {
+export function i2p ({ home, run, zone, locale, log, peersMs = PEERS_MS }) {
   const file = path.join(home, 'i2p.json')
   /** @type {Settings} */
   let settings = { relay: true, upnp: true }
@@ -86,8 +91,14 @@ export function i2p ({ home, run, zone, locale, log }) {
   try { shipped = JSON.parse(fs.readFileSync(path.join(HERE, 'i2p-bootstrap.json'), 'utf-8')) } catch {}
   /** @type {{ anonymous: number | null, regular: number | null }} */
   const last = { anonymous: null, regular: null }
+  const netDb = path.join(home, 'i2p-router', 'netDb')
+  /** @type {Map<string, import('../engine/reseed.js').RouterRecord[]>} peer -> its records */
+  const heard = new Map()
+  /** @type {(() => void) | null} resolves a fresh router's wait for peers */
+  let enough = null
+  let threshold = 0 // the official reseed still runs while the router knows fewer than this (0: i2pd's own)
 
-  const options = () => ({ bandwidth: 'O', share: 50, notransit: !!strict || !settings.relay, upnp: settings.upnp })
+  const options = () => ({ bandwidth: 'O', share: 50, notransit: !!strict || !settings.relay, upnp: settings.upnp, ...(threshold ? { reseedThreshold: threshold } : {}) })
   const make = () => {
     const r = new Router({ dataDir: path.join(home, 'i2p-router'), run, options: options() })
     r.on('state', (state, reason) => log('i2p router: ' + state + (reason ? ' (' + reason + ')' : '')))
@@ -98,6 +109,37 @@ export function i2p ({ home, run, zone, locale, log }) {
   return {
     get router () { return router },
     start: () => router.start(),
+    /**
+     * Starts the router; a fresh one, for a regular identity, first waits (up to a minute) for router records from
+     * at least 3 peers (heard()), writes them into its netDb and keeps I2P's official reseed on beside them.
+     * @param {{ peers: boolean }} opts peers: a regular identity is opening (an anonymous one never waits on peers)
+     */
+    async begin ({ peers }) {
+      await router.pickPort() // engines get the port now; the router may start later
+      if (peers && count() < FRESH) {
+        await new Promise((resolve) => { enough = () => resolve(null); setTimeout(resolve, peersMs) })
+        enough = null
+        if (heard.size >= PEERS) {
+          const written = writeRecords()
+          threshold = count() + FRESH // above what it now holds: the official reseed runs too
+          const port = router.port
+          router = make()
+          router.port = port
+          log('i2p: a fresh router, with ' + written + ' records from ' + heard.size + ' peers')
+        }
+      }
+      await router.start()
+    },
+    /** A peer's share (the engine's 'i2p.reseed'): records for a fresh router, nodes for this regular identity's next start. @param {{ peer: string, records: import('../engine/reseed.js').RouterRecord[], nodes: string[] }} m @param {IdentityLike} identity */
+    heard (m, identity) {
+      if (m.records.length) heard.set(m.peer, m.records)
+      if (enough && heard.size >= PEERS) enough()
+      if (!identity.anonymous && m.nodes.length) this.learn(identity, [...new Set([...learned(identity), ...m.nodes])])
+    },
+    /** The newest router records this router holds, to hand peers. @returns {import('../engine/reseed.js').RouterRecord[]} */
+    records () {
+      return files().sort((a, b) => b.mtime - a.mtime).slice(0, SHARE).map((f) => ({ name: path.basename(f.path), data: fs.readFileSync(f.path).toString('base64') }))
+    },
     stop: () => router.stop(),
     /** What an identity's engine opens with. @param {IdentityLike} identity */
     open (identity) {
@@ -130,6 +172,39 @@ export function i2p ({ home, run, zone, locale, log }) {
       router.port = port // engines keep theirs: they open a new session once it is back
       await router.start()
     }
+  }
+
+  /** @returns {Array<{ path: string, mtime: number }>} */
+  function files () {
+    /** @type {Array<{ path: string, mtime: number }>} */
+    const out = []
+    let dirs = []
+    try { dirs = fs.readdirSync(netDb).filter((d) => /^r.$/.test(d)) } catch { return out }
+    for (const d of dirs) {
+      for (const n of fs.readdirSync(path.join(netDb, d))) {
+        if (!n.startsWith('routerInfo-')) continue
+        const p = path.join(netDb, d, n)
+        try { out.push({ path: p, mtime: fs.statSync(p).mtimeMs }) } catch {}
+      }
+    }
+    return out
+  }
+
+  function count () { return files().length }
+
+  // Peers' records, at most SHARE from each, in i2pd's layout (netDb/r<first character of the hash>/); i2pd checks
+  // each record's signature as it loads them and drops a bad one.
+  function writeRecords () {
+    let n = 0
+    for (const list of heard.values()) {
+      for (const r of list.slice(0, SHARE)) {
+        const dir = path.join(netDb, 'r' + r.name.slice(11, 12))
+        const target = path.join(dir, r.name)
+        if (fs.existsSync(target)) continue
+        try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(target, Buffer.from(r.data, 'base64')); n++ } catch {}
+      }
+    }
+    return n
   }
 
   /** @param {IdentityLike} identity @returns {string[]} */
