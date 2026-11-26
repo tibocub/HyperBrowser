@@ -37,6 +37,9 @@ jobs:
         run: |
           "$VCPKG_INSTALLATION_ROOT/vcpkg" install --triplet ${{ matrix.triplet }} $VCPKG_PORTS
           echo "DEPS=$VCPKG_INSTALLATION_ROOT/installed/${{ matrix.triplet }}" >> $GITHUB_ENV
+          # vcpkg's toolchain: without it the runner's own OpenSSL wins and zlib's static lib isn't found
+          echo "CMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $GITHUB_ENV
+          echo "VCPKG_DEFAULT_TRIPLET=${{ matrix.triplet }}" >> $GITHUB_ENV
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
       - name: build (Windows)
