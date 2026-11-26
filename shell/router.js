@@ -66,7 +66,7 @@ export class Router extends EventEmitter {
   }
 
   #spawn () {
-    this.#set('starting', null)
+    if (this.state !== 'starting') this.#set('starting', null) // start() said it already
     const started = Date.now()
     const child = this.run(this.entry, [this.dataDir, String(this.port), JSON.stringify(this.options)])
     this.child = child
