@@ -105,8 +105,15 @@ async function runHelper () {
   const [a, b] = pair()
   const engine = start(a)
   guard(engine, process, { stack: false }) // one line in the journal; a restart would re-join everything
-  const rpc = connect(b)
-  await rpc.request('init', { dir: config.dir, bootstrap: opts.bootstrap })
+  const rpc = connect(b, {
+    onEvent: (/** @type {string} */ event, /** @type {any} */ data) => {
+      // its I2P address: a DHT node of I2P to list in shell/i2p-bootstrap.json (a new address after a router restart)
+      if (event === 'transport') console.log(data.state === 'ready' ? `i2p: ready, ${data.address}:1` : `i2p: connecting${data.reason ? ' (' + data.reason + ')' : ''}`)
+    }
+  })
+  const router = config.i2p === 'on' ? await startRouter(config.dir) : null
+  const i2p = router ? { transport: 'dual', sam: { port: router.port, node: true, bootstrap: shippedNodes() } } : {}
+  await rpc.request('init', { dir: config.dir, bootstrap: opts.bootstrap, ...i2p })
   console.log(`helper ${(await rpc.request('contacts.me')).identity} in ${config.dir}`)
   const h = helper({ rpc, dir: config.dir, preset })
   /** @type {ReturnType<typeof setTimeout> | null} */
@@ -130,6 +137,7 @@ async function runHelper () {
     await h.close()
     await rpc.request('close').catch(() => {})
     await engine.closed
+    if (router) await router.stop().catch(() => {})
     console.log('stopped')
     process.exit(0)
   }
@@ -138,4 +146,20 @@ async function runHelper () {
   await h.apply(config)
   await h.report()
   console.log('online; stop with Ctrl+C or systemctl stop')
+}
+
+// The helper's own I2P router (it runs no shell): in its engine folder, relaying with the app's cap.
+/** @param {string} dir */
+async function startRouter (dir) {
+  const { Router } = await import('../shell/router.js')
+  const Sidecar = (await import('bare-sidecar')).default
+  const router = new Router({ dataDir: path.join(dir, 'i2p-router'), run: (entry, args) => /** @type {import('../shell/router.js').RouterChild} */ (/** @type {unknown} */ (new Sidecar(entry, args))), options: { bandwidth: 'O', share: 50 } })
+  router.on('state', (state, reason) => console.log(`i2p router: ${state}${reason ? ' (' + reason + ')' : ''}`))
+  await router.start()
+  return router
+}
+
+/** @returns {string[]} the DHT nodes inside I2P shipped with the app */
+function shippedNodes () {
+  try { return JSON.parse(fs.readFileSync(fileURLToPath(new URL('../shell/i2p-bootstrap.json', import.meta.url)), 'utf-8')) } catch { return [] }
 }
