@@ -18,7 +18,7 @@ const PORT_TAKEN = 3 // router/process.js's exit code when SAM can't listen on i
 
 export class Router extends EventEmitter {
   /**
-   * @param {{ dataDir: string, run: Run, entry?: string, options?: { bandwidth?: string, share?: number, notransit?: boolean, ipv6?: boolean }, maxBackoff?: number }} opts
+   * @param {{ dataDir: string, run: Run, entry?: string, options?: { bandwidth?: string, share?: number, notransit?: boolean, ipv6?: boolean, upnp?: boolean }, maxBackoff?: number }} opts
    */
   constructor ({ dataDir, run, entry = ENTRY, options = {}, maxBackoff = 60000 }) {
     super()

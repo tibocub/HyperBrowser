@@ -9,7 +9,7 @@ on:
 
 env:
   I2PD_COMMIT: 137dde2f433b2142eec7a2307608d7d082be086f # i2pd tag 3.0.0, pinned by its commit: a tag can move
-  VCPKG_PORTS: boost-asio boost-beast boost-filesystem boost-program-options boost-atomic boost-property-tree boost-date-time openssl zlib
+  VCPKG_PORTS: boost-asio boost-beast boost-filesystem boost-program-options boost-atomic boost-property-tree boost-date-time boost-uuid openssl zlib miniupnpc
 
 jobs:
   addon:

@@ -8,6 +8,8 @@
 #include "NetDb.hpp"
 #include "Tunnel.h"
 #include "Transports.h"
+#include "UPnP.h"
+#include <memory>
 
 #ifdef _WIN32
 // The import lib names node.exe; bind to whatever exe hosts us (bare.exe, electron.exe), as node-gyp does.
@@ -21,6 +23,8 @@ extern "C" const PfnDliHook __pfnDliNotifyHook2 = loadHook;
 #endif
 
 static bool inited = false;
+static bool useUpnp = true;
+static std::unique_ptr<i2p::transport::UPnP> upnp;
 static bool running = false;
 
 static napi_value prop (napi_env env, napi_value obj, const char* name) {
@@ -43,7 +47,7 @@ static std::string str (napi_env env, napi_value v) {
 static int num (napi_env env, napi_value v) { int n = 0; napi_get_value_int32(env, v, &n); return n; }
 static bool flag (napi_env env, napi_value v) { bool b = false; napi_get_value_bool(env, v, &b); return b; }
 
-// start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6? })
+// start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6?, upnp? }): upnp on unless false
 static napi_value start (napi_env env, napi_callback_info info) {
   size_t argc = 1; napi_value argv[1];
   napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
@@ -57,18 +61,20 @@ static napi_value start (napi_env env, napi_callback_info info) {
     a = {"i2pd", "--datadir=" + d, "--log=file", "--logfile=" + d + "/i2pd.log", "--loglevel=warn",
          "--sam.enabled=true", "--sam.address=127.0.0.1", "--sam.port=" + std::to_string(num(env, port)),
          "--http.enabled=false", "--httpproxy.enabled=false", "--socksproxy.enabled=false",
-         "--i2pcontrol.enabled=false", "--bob.enabled=false", "--i2cp.enabled=false", "--upnp.enabled=false"};
+         "--i2pcontrol.enabled=false", "--bob.enabled=false", "--i2cp.enabled=false", "--upnp.name=HyperBrowser"};
     napi_value v;
     if ((v = prop(env, argv[0], "bandwidth"))) a.push_back("--bandwidth=" + str(env, v));
     if ((v = prop(env, argv[0], "share"))) a.push_back("--share=" + std::to_string(num(env, v)));
     if ((v = prop(env, argv[0], "notransit")) && flag(env, v)) a.push_back("--notransit");
     if ((v = prop(env, argv[0], "ipv6")) && flag(env, v)) a.push_back("--ipv6");
+    useUpnp = !((v = prop(env, argv[0], "upnp")) && !flag(env, v));
     static std::vector<char*> p; p.clear();
     for (auto& s : a) p.push_back(&s[0]);
     i2p::api::InitI2P((int)p.size(), p.data(), "i2pd");
     inited = true;
   }
   i2p::api::StartI2P();
+  if (useUpnp) { upnp = std::make_unique<i2p::transport::UPnP>(); upnp->Start(); } // as i2pd's daemon does
   i2p::client::context.Start();
   running = true;
   return nullptr;
@@ -78,6 +84,7 @@ static napi_value start (napi_env env, napi_callback_info info) {
 static napi_value stop (napi_env env, napi_callback_info) {
   if (running) {
     i2p::client::context.Stop();
+    if (upnp) { upnp->Stop(); upnp = nullptr; }
     i2p::api::StopI2P();
     running = false;
   }
@@ -101,6 +108,7 @@ static napi_value status (napi_env env, napi_callback_info) {
     set(env, o, "floodfills", i2p::data::netdb.GetNumFloodfills());
     set(env, o, "transit", (double)i2p::tunnel::tunnels.CountTransitTunnels());
     set(env, o, "transitBytes", (double)i2p::transport::transports.GetTotalTransitTransmittedBytes());
+    napi_value u; napi_get_boolean(env, upnp != nullptr, &u); napi_set_named_property(env, o, "upnp", u);
   }
   return o;
 }

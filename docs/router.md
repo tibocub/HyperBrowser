@@ -19,25 +19,28 @@ by Windows Defender, our library build is not.
   session on it (127.0.0.1, a port picked at start and kept across restarts). Same computer, same IP: sharing the
   router costs no privacy, and relaying and tunnels survive switches.
 - The process prints one JSON status line every 10 s: `running`, `sam` (SAM listening), router `status` (OK,
-  Firewalled, …), known `routers`, `transit` tunnels, `transitBytes`, its own `rssMB` and `cpuS`.
+  Firewalled, …), `upnp`, known `routers`, `transit` tunnels, `transitBytes`, its own `rssMB` and `cpuS`.
 - A crash or exit is restarted after 1 s, doubling up to 60 s; a run longer than a minute resets the backoff.
 - i2pd carries on when SAM can't bind its port (another program took it): the process then exits with code 3 and
   the supervisor restarts it on a new port, said with a `port` event.
-- i2pd saves the router records it learns about once a minute, not when it stops: a router stopped in its first
-  minute starts again from the reseed servers.
-- No web console, no proxies, no UPnP, no IPv6 unless asked; i2pd logs warnings to `i2pd.log` in its data folder.
+- A router stopped in its first minute starts again from the reseed servers.
+- No web console, no proxies, no IPv6 unless asked; i2pd logs warnings to `i2pd.log` in its data folder.
+- UPnP is on (`upnp: false` turns it off): it opens the router's port on a home NAT so others can reach it and it
+  can relay. Without it, a router behind a NAT stays "Firewalled" and relays almost nothing.
 - Relaying is on by default: `bandwidth` O (256 KB/s), `share` 50 %. `notransit` turns it off.
+- i2pd saves the router records it learns about once a minute, not when it stops (a limit we accept).
 - The addon reads its options once per process (i2pd's config can't be initialised twice): `stop()` then `start()`
   in one process runs again with the first options. Changing them means restarting the process.
 
 ## The addon
 
-`start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6? })` starts the router and SAM; `stop()` stops both;
-`status()` reports as above (`running: false` alone when stopped). It binds to whatever exe loads it (Bare,
+`start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6?, upnp? })` starts the router, SAM and UPnP;
+`stop()` stops them; `status()` reports as above, with `upnp` (`running: false` alone when stopped). It binds to whatever exe loads it (Bare,
 Electron, Node) through a delay-load hook on Windows; Linux and macOS take `napi_*` from the host.
 
 Building on Windows (MSVC, the same toolset as the dependencies, CMake, Ninja; dependencies from vcpkg, triplet
-`x64-windows-static`):
+`x64-windows-static`: Boost, OpenSSL, zlib, miniupnpc). Besides `libi2pd` and `libi2pd_client`, the addon
+compiles i2pd's `daemon/UPnP.cpp`, the only daemon file:
 
 ```bash
 router\addon\build.cmd <i2pd-src> <vcpkg installed\x64-windows-static> <node-api headers> <out>
