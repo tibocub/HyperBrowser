@@ -111,7 +111,10 @@ async function runHelper () {
       if (event === 'transport') console.log(data.state === 'ready' ? `i2p: ready, ${data.address}:1` : `i2p: connecting${data.reason ? ' (' + data.reason + ')' : ''}`)
     }
   })
-  const router = config.i2p === 'on' && !process.env.HYPERBROWSER_NO_I2P ? await startRouter(config.dir) : null // tests: no router
+  const addon = new URL(`../router/prebuilds/${process.platform}-${process.arch}/i2pd.node`, import.meta.url) // not in git
+  const hasAddon = fs.existsSync(addon)
+  if (config.i2p === 'on' && !hasAddon) console.log(`i2p: off, no router addon at ${fileURLToPath(addon)} (docs/helper.md)`)
+  const router = config.i2p === 'on' && hasAddon && !process.env.HYPERBROWSER_NO_I2P ? await startRouter(config.dir, config.port) : null // tests: no router
   const i2p = router ? { transport: 'dual', sam: { port: router.port, node: true, bootstrap: shippedNodes() } } : {}
   await rpc.request('init', { dir: config.dir, bootstrap: opts.bootstrap, ...i2p })
   console.log(`helper ${(await rpc.request('contacts.me')).identity} in ${config.dir}`)
@@ -149,11 +152,14 @@ async function runHelper () {
 }
 
 // The helper's own I2P router (it runs no shell): in its engine folder, relaying with the app's cap.
-/** @param {string} dir */
-async function startRouter (dir) {
+/**
+ * @param {string} dir
+ * @param {number} [port]
+ */
+async function startRouter (dir, port) {
   const { Router } = await import('../shell/router.js')
   const Sidecar = (await import('bare-sidecar')).default
-  const router = new Router({ dataDir: path.join(dir, 'i2p-router'), run: (entry, args) => /** @type {import('../shell/router.js').RouterChild} */ (/** @type {unknown} */ (new Sidecar(entry, args))), options: { bandwidth: 'O', share: 50 } })
+  const router = new Router({ dataDir: path.join(dir, 'i2p-router'), run: (entry, args) => /** @type {import('../shell/router.js').RouterChild} */ (/** @type {unknown} */ (new Sidecar(entry, args))), options: { bandwidth: 'O', share: 50, ...(port ? { port } : {}) } })
   router.on('state', (state, reason) => console.log(`i2p router: ${state}${reason ? ' (' + reason + ')' : ''}`))
   await router.start()
   return router

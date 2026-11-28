@@ -13,6 +13,7 @@ const LISTS = new Set(['join', 'seed'])
  * @property {string[]} join
  * @property {'on' | 'off'} i2p on: it also listens on I2P (its own router) and is a node of the DHT inside I2P, so
  *   anonymous identities find its spaces and others; off: the regular network only
+ * @property {number} [port] the I2P router's port (TCP and UDP), to open in the firewall; unset: a new one at every start
  */
 
 /** @param {string} n */
@@ -28,7 +29,8 @@ const CHECK = {
   apps: (v) => (v === 'official' || v === 'none' ? v : undefined),
   seed: (v) => (KEY.test(v) ? v : undefined),
   join: (v) => (/^hg:\S+$/.test(v) ? v : undefined),
-  i2p: (v) => (v === 'on' || v === 'off' ? v : undefined)
+  i2p: (v) => (v === 'on' || v === 'off' ? v : undefined),
+  port: (v) => (/^\d+$/.test(v) && Number(v) >= 1024 && Number(v) <= 65535 ? Number(v) : undefined)
 }
 
 export const configFile = () => path.join(os.homedir(), '.config', 'hyperbrowser-helper.conf')
@@ -98,6 +100,9 @@ export function template (base = defaults()) {
 # seed = <key>
 # on: also on I2P (its own router, which relays), for anonymous identities. off: the regular network only (restart).
 # i2p = ${base.i2p}
+# The I2P router's port, TCP and UDP: open it in the firewall so others reach it and it relays. Default: a new
+# one at every start (restart).
+# port = 10489
 
 # An invite to a circle; used once.
 # join = hg:...

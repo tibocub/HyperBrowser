@@ -25,8 +25,13 @@ fi
 if ! id "$NAME" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$HOME_DIR" --shell /usr/sbin/nologin "$NAME"
 fi
+# npm ci is killed for lack of memory on a 1 GB machine with no swap
+if [ "$(awk '/MemTotal|SwapTotal/ {s += $2} END {print s}' /proc/meminfo)" -lt 1800000 ]; then
+  echo "Less than 1.8 GB of RAM and swap: npm would run out of memory. Add swap first (docs/helper.md, Install)." >&2
+  exit 1
+fi
 mkdir -p "$ROOT"
-chown "$NAME:$NAME" "$ROOT"
+chown -R "$NAME:$NAME" "$ROOT" # a git pull by hand (as another user, or sudo) leaves files the service user can't write
 as () { sudo -u "$NAME" -H "$@"; }
 
 for r in $REPOS; do
@@ -37,6 +42,9 @@ for r in $REPOS; do
   how=ci; [ -f "$ROOT/$r/package-lock.json" ] || how=install # swarmwire commits no lockfile
   (cd "$ROOT/$r" && as npm "$how" --omit=dev --no-audit --no-fund)
 done
+
+ADDON="$ROOT/HyperBrowser/router/prebuilds/linux-x64/i2pd.node"
+[ -f "$ADDON" ] || echo "No I2P router addon at $ADDON (not in git, docs/helper.md): the helper runs without I2P."
 
 install -m 644 "$ROOT/HyperBrowser/scripts/hyperbrowser-helper.service" /etc/systemd/system/hyperbrowser-helper.service
 systemctl daemon-reload

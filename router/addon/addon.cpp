@@ -47,7 +47,7 @@ static std::string str (napi_env env, napi_value v) {
 static int num (napi_env env, napi_value v) { int n = 0; napi_get_value_int32(env, v, &n); return n; }
 static bool flag (napi_env env, napi_value v) { bool b = false; napi_get_value_bool(env, v, &b); return b; }
 
-// start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6?, upnp?, reseedThreshold? }): upnp on unless false;
+// start({ dataDir, samPort, port?, bandwidth?, share?, notransit?, ipv6?, upnp?, reseedThreshold? }): upnp on unless false;
 // reseedThreshold: the official reseed runs while the router knows fewer routers than this (after peers' records)
 static napi_value start (napi_env env, napi_callback_info info) {
   size_t argc = 1; napi_value argv[1];
@@ -64,6 +64,8 @@ static napi_value start (napi_env env, napi_callback_info info) {
          "--http.enabled=false", "--httpproxy.enabled=false", "--socksproxy.enabled=false",
          "--i2pcontrol.enabled=false", "--bob.enabled=false", "--i2cp.enabled=false", "--upnp.name=HyperBrowser"};
     napi_value v;
+    // port: the router's TCP and UDP port; without it i2pd picks a new one at every start, so no firewall rule holds
+    if ((v = prop(env, argv[0], "port"))) a.push_back("--port=" + std::to_string(num(env, v)));
     if ((v = prop(env, argv[0], "bandwidth"))) a.push_back("--bandwidth=" + str(env, v));
     if ((v = prop(env, argv[0], "share"))) a.push_back("--share=" + std::to_string(num(env, v)));
     if ((v = prop(env, argv[0], "notransit")) && flag(env, v)) a.push_back("--notransit");
