@@ -34,7 +34,7 @@ by Windows Defender, our library build is not.
 
 ## The addon
 
-`start({ dataDir, samPort, bandwidth?, share?, notransit?, ipv6?, upnp? })` starts the router, SAM and UPnP;
+`start({ dataDir, samPort, port?, bandwidth?, share?, notransit?, ipv6?, upnp? })` starts the router, SAM and UPnP;
 `stop()` stops them; `status()` reports as above, with `upnp` (`running: false` alone when stopped). It binds to whatever exe loads it (Bare,
 Electron, Node) through a delay-load hook on Windows; Linux and macOS take `napi_*` from the host.
 

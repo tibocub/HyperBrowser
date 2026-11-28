@@ -16,18 +16,20 @@ test('config: key = value, comments, lists, bad lines logged and ignored', (t) =
 name = Box one
 share = 12.5
 apps = none
+port = 10489
 seed = ${KEY}
 seed = ${KEY.replace('y', 'n')}
 join = hg:abc
 colour = blue
 share = lots
 apps = some
+port = 80
 seed = not-a-key
 toString = x
 `)
-  t.alike(values, { name: 'Box one', share: 12.5, apps: 'none', seed: [KEY, KEY.replace('y', 'n')], join: ['hg:abc'] })
-  t.is(errors.length, 5, errors.join('; '))
-  t.ok(errors[0].startsWith('line 8: unknown setting "colour"'))
+  t.alike(values, { name: 'Box one', share: 12.5, apps: 'none', port: 10489, seed: [KEY, KEY.replace('y', 'n')], join: ['hg:abc'] })
+  t.is(errors.length, 6, errors.join('; '))
+  t.ok(errors[0].startsWith('line 9: unknown setting "colour"'))
 })
 
 test('config: the written file sets nothing; command line, then file, then defaults', (t) => {

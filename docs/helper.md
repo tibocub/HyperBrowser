@@ -30,6 +30,16 @@ dependencies, as on a developer's machine; `HB_GITHUB=<url>` clones from elsewhe
 each (no Electron), and installs, enables and starts `scripts/hyperbrowser-helper.service` (systemd: starts at boot,
 restarted on failure, stopped with SIGTERM, which closes the engine cleanly).
 
+With 1 GB of RAM or less, `npm ci` runs out of memory without swap: the script stops and says so. Add 2 GB first:
+
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+The I2P router addon is not in git: put `router/prebuilds/linux-x64/i2pd.node` (the `router-linux-x64` artifact of the
+router workflow, [router.md](router.md)) in `/opt/hyperbrowser/HyperBrowser/`, owned by `hyperbrowser`. Without it the
+script warns, and the helper runs on the regular network only.
+
 Once `package.json` has the release channel (`"upgrade"`, see [packaging.md](packaging.md)), the script also installs
 Pear (`npm i -g pear`) and a second service, `scripts/hyperbrowser-seed.service`, which runs `pear seed <channel>` so
 new HyperBrowser versions stay downloadable while your PC is off. The channel is written to
@@ -69,6 +79,8 @@ except `dir`, at the next start.
 | `apps` | `official` | `official`: every app in `shell/preset.json` (a `git pull` follows the list); `none` |
 | `seed` | | another site's key to keep online (repeatable) |
 | `join` | | a circle invite, `hg:…` (repeatable) |
+| `i2p` | `on` | `on`: also on I2P, its own router ([I2P](#i2p)); `off`: the regular network only (restart) |
+| `port` | a new one at every start | the I2P router's port, TCP and UDP, to open in the firewall (restart) |
 
 **Joining a circle**: in HyperBrowser, your circle's **…** → Invite: paste the link as a `join = hg:…` line. Each link
 is used once: joined, or refused (already used, expired…), and remembered in `<dir>/helper.json`, never tried again.
@@ -111,6 +123,11 @@ i2p: ready, <52 letters>:1
 That `<address>:1` goes into `shell/i2p-bootstrap.json` (a list) so every HyperBrowser starts from it. It stays the
 same across restarts: its key is kept in its folder (`i2p-destination`). `i2p = off` (restart): the regular network
 only.
+
+The router has one port, TCP and UDP. On a server, set it (`port = 10489`, restart) and open it in every firewall in
+front of the machine (the system's and the provider's): without `port` i2pd picks a new one at every start, and a
+router nobody can reach stays "Firewalled": it works for itself but relays almost nothing. UPnP finds nothing on a
+VPS, which is harmless.
 
 ## Not yet
 
